@@ -1,0 +1,56 @@
+# Personal config never shipped
+.env
+*.env
+!.env.example
+!*/config/.env.example
+config/.env
+*/config/.env
+**/config/.env
+
+# Credentials
+.credentials.json
+mcp-needs-auth-cache.json
+*credentials*
+*-secret*
+oauth-token*
+auth-token*
+api-token*
+
+# Per-engagement state (root-level only — not skill names like engagement-protocol)
+/engagement/
+/engagement-*/
+/engagement-archived/
+
+# Local working files
+*.log
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+*.pyo
+
+# LangGraph adversary bridge runtime — venv + checkpoint DB are created
+# next to scripts/adversary_lg.py on first run; never commit them
+.venv*/
+*.sqlite*
+
+# Auto-memory
+projects/*/memory/
+memory/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+
+# Local MCP server config (personal paths)
+.mcp.json
+
+# OS
+desktop.ini
+
+# Yandex skills runtime cache (only inside config/, not skill assets)
+**/config/cache/
+**/config/runtime/

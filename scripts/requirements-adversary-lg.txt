@@ -1,0 +1,18 @@
+# Dependencies for adversary_lg.py (LangGraph adversary bridge).
+# Install into the dedicated venv:
+#   python -m venv "%USERPROFILE%\.claude\scripts\.venv-adversary-lg"
+#   "%USERPROFILE%\.claude\scripts\.venv-adversary-lg\Scripts\python.exe" -m pip install -r requirements-adversary-lg.txt
+#
+# adversary_lg.py re-execs itself under that venv automatically.
+# Pinned to the versions verified on Python 3.14 (2026-05-14).
+
+langgraph==1.2.0
+langgraph-checkpoint-sqlite==3.1.0
+langchain-core==1.4.0
+
+# Only needed for --invoker api (opt-in; subprocess mode is the default and needs neither).
+langchain-anthropic==1.4.3
+langchain-openai==1.2.1
+
+# Pulled in transitively by langgraph; pinned for reproducibility.
+pydantic==2.13.4
