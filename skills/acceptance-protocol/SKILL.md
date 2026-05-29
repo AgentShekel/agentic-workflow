@@ -359,6 +359,10 @@ After writing the verdict (ACCEPT or REJECT) on every M/L engagement, the manage
 
 Director's monthly sweep clusters these by `target × class` and triggers SkillOpt cycles when cluster size ≥3 OR when Langfuse trend Δ crosses thresholds (see `system-optimization-protocol` §"Trigger" Layer 3 pathway).
 
+### SkillOpt readiness signal (run after writing reflections / signals)
+
+After the verdict + any reflections/signals are written, run `python ~/.claude/scripts/skillopt-ready.py`. If it reports a bucket **DUE** (≥3 same-class, loop-actionable live signals), surface it to the user in the engagement summary — e.g. "SkillOpt cycle due for dev (3× rule_wrong) → run `прогнать skill-evolution dev`". This is the immediate path; a SessionStart hook re-runs the same check every session as a safety net, so a missed surfacing is caught next session. The checker excludes `dryrun:` / `resolved:` and script-only-targeted signals, so it does not false-fire.
+
 ### Engagement = directory
 
 All tiers use the same FS state convention:
