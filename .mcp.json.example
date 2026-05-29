@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "codex": {
+      "command": "<absolute-path-to-codex-cli>",
+      "args": ["mcp-server"],
+      "env": {}
+    }
+  }
+}
