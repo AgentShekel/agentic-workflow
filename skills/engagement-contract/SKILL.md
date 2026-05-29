@@ -33,6 +33,17 @@ If you are NOT inside an engagement (the user invoked you directly, no `engageme
 
 6. **State cross-contract claims verbatim.** If your output depends on another specialist's deliverable ("I assume the auth service returns 401 on expired token"), write that claim verbatim. The top-lead reconciles cross-contract claims in handoff §4 / §4a.
 
+## Event emission (one line, best-effort)
+
+After you finish writing your `executor-reports/{name}.md`, emit one ledger event so the engagement's `events.jsonl` records your completion (observability — leads and sub-engines emit too; without this the orchestration layer is invisible in the ledger). It **never blocks**: if `python` or the ledger is unavailable the command prints a stderr warning and exits 0.
+
+```bash
+python ~/.claude/scripts/ledger-emit.py engagement/ --agent {your-agent-name} \
+    --type specialist_completed --report executor-reports/{your-agent-name}.md
+```
+
+This is the only ledger event a specialist emits — you do not heartbeat (you have no phases). One emit, after the report is written.
+
 ## What this contract is NOT
 
 - It is not a substitute for `engagement-protocol`. Leads and managers still load the full protocol; specialists need only this carve-out.

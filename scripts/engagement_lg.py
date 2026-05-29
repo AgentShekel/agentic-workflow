@@ -113,6 +113,9 @@ except Exception:
     EventLedger = None  # type: ignore
     _LEDGER_AVAILABLE = False
 
+# Shared claude CLI resolver — single source of the Windows .CMD->.exe logic.
+from lib.claude_path import find_claude_cmd as _find_claude_cmd  # noqa: E402
+
 _RUN_LEDGER: "Optional[EventLedger]" = None
 
 
@@ -259,23 +262,7 @@ def _not_implemented(node_name: str, state: EngagementState) -> dict:
 # ---------------------------------------------------------------------------
 
 
-import shutil as _shutil  # noqa: E402
-
-
-def _find_claude_cmd() -> Optional[str]:
-    # Windows: claude.CMD wrapper truncates multiline argv at the first
-    # newline (CMD line-parsing semantics), silently mangling multi-line
-    # prompts. Resolve to the underlying claude.exe when the resolved
-    # entry is a .CMD wrapper. Unix/macOS path unaffected.
-    for c in ("claude", "claude.cmd", "claude.exe"):
-        p = _shutil.which(c)
-        if p:
-            if Path(p).suffix.lower() == ".cmd":
-                exe = Path(p).parent / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe"
-                if exe.exists():
-                    return str(exe)
-            return p
-    return None
+# claude CLI resolution moved to lib/claude_path.py (imported above as _find_claude_cmd).
 
 
 def _run_size_detect(eng: Path, scripts_dir: Path) -> dict:
@@ -1533,8 +1520,7 @@ def _resume_interrupt_main(eng: Path, args) -> int:
 
     if isinstance(final_state, dict) and final_state.get("__interrupt__"):
         # Could pause again at a later HITL point.
-        msg = _format_pause(final_state, args.resume_interrupt, eng, args)
-        return 0
+        return _format_pause(final_state, args.resume_interrupt, eng, args)
 
     return _print_final(final_state, args)
 

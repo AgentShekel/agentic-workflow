@@ -122,6 +122,9 @@ except Exception:
     EventLedger = None  # type: ignore
     _LEDGER_AVAILABLE = False
 
+# Shared claude CLI resolver — single source of the Windows .CMD->.exe logic.
+from lib.claude_path import find_claude_cmd  # noqa: E402
+
 _RUN_LEDGER = None  # Optional[EventLedger]; set in main() per invocation.
 
 
@@ -648,18 +651,6 @@ def extract_json(text: str) -> Optional[dict]:
 # Every invoker returns (returncode, stdout, stderr, elapsed_s) so the parsing
 # path downstream is uniform.
 # ===========================================================================
-
-
-def find_claude_cmd() -> Optional[str]:
-    cmd = shutil.which("claude")
-    if not cmd:
-        return None
-    p = Path(cmd)
-    if p.suffix.lower() == ".cmd":
-        exe = p.parent / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe"
-        if exe.exists():
-            return str(exe)
-    return cmd
 
 
 def find_codex_cmd() -> Optional[str]:

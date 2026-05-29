@@ -88,6 +88,12 @@ failures are noise; patching them overfits). This is SkillOpt's
 synthetic exercises (dry-run seed) and must not drive real edits. A real
 cycle reflect step considers only signals without that marker.
 
+**Resolved signals are skipped.** Signals closed by a direct fix outside a
+cycle carry a `resolved: <date> — <how>` line. Exclude them from cluster
+counting (the ≥3-same-class trigger) and from edit authoring — the gap is
+already closed. Like `dryrun:`, the marker is load-bearing: a fixed signal
+left unmarked would inflate a future cluster and trigger a redundant cycle.
+
 Director dispatches **Codex via `codex-bridge`** with: the accumulated signals,
 `acceptance-log.md`, `consilium-summary.md`, `validation-outputs/`. Codex classifies each
 recurring finding and attributes it to a specific `agents/X.md` or `skills/Y/SKILL.md`:

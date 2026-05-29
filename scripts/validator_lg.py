@@ -106,7 +106,6 @@ import json
 import operator
 import os
 import re
-import shutil
 import sqlite3
 import subprocess
 import sys
@@ -131,6 +130,9 @@ try:
 except Exception:
     EventLedger = None  # type: ignore
     _LEDGER_AVAILABLE = False
+
+# Shared claude CLI resolver — single source of the Windows .CMD->.exe logic.
+from lib.claude_path import find_claude_cmd as _find_claude_cmd  # noqa: E402
 
 # Module-level ledger for the current main() invocation. Set in main(), used
 # by node functions. Single-process / single-invocation assumption; concurrent
@@ -523,22 +525,6 @@ class ValidatorState(TypedDict, total=False):
 #   api         opt-in  — LangChain ChatAnthropic per validator, needs API key
 #   mock        testing — canned output, no LLM calls
 # ===========================================================================
-
-
-def _find_claude_cmd() -> Optional[str]:
-    # Windows: claude.CMD wrapper truncates multiline argv at the first
-    # newline (CMD line-parsing semantics), silently mangling multi-line
-    # prompts. Resolve to the underlying claude.exe when the resolved
-    # entry is a .CMD wrapper. Unix/macOS path unaffected.
-    for c in ("claude", "claude.cmd", "claude.exe"):
-        p = shutil.which(c)
-        if p:
-            if Path(p).suffix.lower() == ".cmd":
-                exe = Path(p).parent / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe"
-                if exe.exists():
-                    return str(exe)
-            return p
-    return None
 
 
 class Invoker:

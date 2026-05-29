@@ -82,6 +82,12 @@ SKIP_LINE_HINTS = re.compile(
 # Strip line-suffix like `:45-52` or `:45`
 LINE_SUFFIX = re.compile(r":\d+(?:-\d+)?$")
 
+# Post-ACCEPT archive destination: engagement-protocol §"Engagement archival"
+# creates engagement-archived/{YYYY-MM-DD}-{name}/ only AFTER the manager
+# verdict, never at handoff time. A handoff that cites it (e.g. "will move to
+# engagement-archived/...") is forward-looking, not a phantom-evidence path.
+FUTURE_PATH_PATTERN = re.compile(r"^engagement-archived?(?:/|$)")
+
 
 def extract_paths(handoff_text: str) -> list[str]:
     paths: set[str] = set()
@@ -104,6 +110,10 @@ def extract_paths(handoff_text: str) -> list[str]:
                 continue
             # Skip schema placeholders {iteration}, {N}, etc.
             if re.search(r"\{[\w\-_]+\}", clean):
+                continue
+            # Skip the post-ACCEPT archive destination — created after handoff,
+            # not a phantom path (created after the verdict, not at handoff).
+            if FUTURE_PATH_PATTERN.match(clean):
                 continue
             paths.add(clean)
     return sorted(paths)
