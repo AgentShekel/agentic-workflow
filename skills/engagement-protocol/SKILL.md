@@ -715,6 +715,39 @@ If `validation-log.md`'s most recent Heartbeat is older than:
 - Don't heartbeat mid-phase — only at phase boundaries.
 - Don't heartbeat from specialists — they have no phases.
 
+### Event emission (events.jsonl) — machine-queryable twin of the heartbeat
+
+The prose heartbeat above is human-readable but not machine-queryable, and it only covers leads. The sub-engines (`validator_lg` / `adversary_lg` / `handoff-precheck`) already emit structured events to `engagement/events.jsonl`, but the orchestration layer (lead phases, specialist completion) was invisible there. To close that gap, **every lead emits a structured ledger event at each phase boundary**, and **every specialist emits one on report completion** (the specialist side lives in `engagement-contract`).
+
+Markdown agents cannot `import lib.ledger`, so emit via the thin CLI. It is **best-effort and never blocks**: if `python` or the ledger module is unavailable it prints a stderr warning and exits 0, and your real work continues.
+
+```bash
+python ~/.claude/scripts/ledger-emit.py engagement/ --agent dev-lead --tier M \
+    --type phase_completed --phase plan --note "3 specialists planned"
+```
+
+| Boundary | `--type` | Extra flags |
+|---|---|---|
+| First action (Phase 1, criteria locked) | `engagement_started` | — |
+| Entering a phase | `phase_started` | `--phase {name}` |
+| Phase done (pair with the prose heartbeat) | `phase_completed` | `--phase {name} --note "..."` |
+| Dispatching a specialist / mid-lead | `specialist_dispatched` | `--specialist {agent}` |
+| Writing handoff.md | `handoff_submitted` | `--verdict ACCEPT` |
+| Optional tick inside a long phase | `heartbeat` | `--phase {name}` |
+
+This is **additive** — keep writing the prose heartbeat line to `validation-log.md` (the stall-detection above still reads it). `--agent` is your own agent name; `--tier` is the `criteria.md` `size:`. The same CLI is what specialists use for `specialist_completed`.
+
+**Authority rules 6/7 (same CLI, two extra modes).** At engagement start, prefer `--snapshot-skills` over a plain `engagement_started` — it emits the same event plus a snapshot of loaded skill names + content hashes (rule 7, protects against silent skill drift mid-engagement). On a rule-6 authority conflict during dispatch, emit it instead of only prose:
+
+```bash
+python ~/.claude/scripts/ledger-emit.py engagement/ --agent dev-lead --tier M \
+    --authority-conflict --conflict-kind skill_vs_agent_body \
+    --sources-json '[{"kind":"skill","name":"engagement-protocol","claim":"..."},{"kind":"agent","name":"dev-lead","claim":"..."}]' \
+    --resolution "skill wins per precedence rule 4" --decided-by auto-precedence
+```
+
+Omit `--resolution` for a **blocking** conflict — it emits `verdict=REJECT`; you still halt dispatch and escalate to the human judge per §"Authority and conflict resolution".
+
 ### Token budget guard + size auto-promote (Tier 14)
 
 Detail moved to **`references/budget.md`** (now in `references/`) — load that file when entering Phase 4 (costly subagent waves) or running a heartbeat thereafter. Hot-path summary:
@@ -897,6 +930,8 @@ led.emit_authority_conflict(
 ```
 
 If `resolution=None`, the event is blocking: caller MUST halt dispatch and escalate to the human judge before continuing. The manager picks up the event during acceptance sweep and records adjudication in `acceptance-log.md`.
+
+> **Markdown agents (leads) vs Python orchestrators.** The `emit_skill_snapshot` / `emit_authority_conflict` helpers above are the Python API used by orchestrators (`engagement_lg.py`, the LG engines). A lead invoked via `claude -p --agent` is a markdown agent and cannot run them inline — it uses the thin `ledger-emit.py` CLI instead: *lifecycle* events (phase / dispatch / handoff) plus, now, the two Authority modes `--snapshot-skills` (rule 7) and `--authority-conflict` (rule 6) — see §"Event emission" under Lead heartbeat. A blocking rule-6 conflict (omit `--resolution`) emits `verdict=REJECT`; the lead still halts dispatch and escalates to the human judge.
 
 ## Engagement-mode contract (when dispatched inside an engagement)
 

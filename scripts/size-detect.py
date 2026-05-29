@@ -43,7 +43,6 @@ except Exception:
 import argparse
 import json
 import re
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -75,6 +74,26 @@ INTAKE_S_SIGNALS = [
     r"\bsmall\s+(change|update|fix)\b", r"\bquick\b",
     r"\bправк[аи]\b", r"\bпочин(и|ить)\b", r"\bобнов(и|ить)\s+текст\b",
     r"\bмелк(ая|ие)\s+(правк|задач)\b",
+]
+
+# Structural narrowness signals — explicit scope-limiting language that marks
+# an S task regardless of how many done-when bullets were written.
+# Structural facts (one file / one endpoint / no migration / mirrors
+# existing code) must
+# outweigh bullet count, which had over-inflated legitimate S tasks to M.
+STRUCTURAL_S_SIGNALS = [
+    r"\b(?:one|single)\s+file\b", r"\b(?:one|single)\s+endpoint\b",
+    r"\b(?:one|single)\s+function\b", r"\b(?:one|single)\s+method\b",
+    r"\b(?:one|single)\s+component\b", r"\bone[- ]?liner?\b",
+    r"\bno\s+migration", r"\bno\s+schema\s+change", r"\bno\s+db\s+change",
+    r"\bno\s+new\s+(?:dependenc|deps?|packages?|librar)",
+    r"\bmirror(?:s|ing)?\s+(?:the\s+)?(?:existing|house|current)\b",
+    r"\b(?:existing|house)\s+pattern\b", r"\bsame\s+pattern\s+as\b",
+    # RU
+    r"\bодин\s+файл\b", r"\bодного\s+файла\b", r"\bодна\s+функци",
+    r"\bодин\s+(?:эндпоинт|метод|компонент)\b", r"\bбез\s+миграц",
+    r"\bбез\s+(?:новых\s+)?зависимост", r"\bбез\s+изменени[йя]\s+схем",
+    r"\bзеркал", r"\bпо\s+образцу\b", r"\bтот\s+же\s+паттерн\b",
 ]
 
 
@@ -156,9 +175,19 @@ def intake_heuristic(eng: Path) -> dict:
 
     # Keyword scan
     text_lc = text.lower()
-    l_hits = [p for p in INTAKE_L_SIGNALS if re.search(p, text_lc, re.IGNORECASE)]
-    m_hits = [p for p in INTAKE_M_SIGNALS if re.search(p, text_lc, re.IGNORECASE)]
-    s_hits = [p for p in INTAKE_S_SIGNALS if re.search(p, text_lc, re.IGNORECASE)]
+    # Negation guard: phrases like "no migration", "without schema change",
+    # "no new dependency" must NOT trip L/M keyword signals (the bare word
+    # "migration" inside "no migration" would otherwise read as an L pull).
+    # Strip the negated head for the L/M/S keyword scan only; the structural-S
+    # scan below still sees the original text and reads "no migration" as S.
+    text_kw = re.sub(
+        r"\b(?:no|without|not|zero|никак\w*|без|нет)\s+(?:new\s+|новы\w+\s+)?\w+",
+        " ",
+        text_lc,
+    )
+    l_hits = [p for p in INTAKE_L_SIGNALS if re.search(p, text_kw, re.IGNORECASE)]
+    m_hits = [p for p in INTAKE_M_SIGNALS if re.search(p, text_kw, re.IGNORECASE)]
+    s_hits = [p for p in INTAKE_S_SIGNALS if re.search(p, text_kw, re.IGNORECASE)]
 
     if l_hits:
         score += 1
@@ -168,6 +197,19 @@ def intake_heuristic(eng: Path) -> dict:
         reasons.append(f"S-signal keywords: {[h.strip(chr(92)+chr(98)) for h in s_hits[:3]]}")
     if m_hits and not l_hits:
         reasons.append(f"M-signal keywords: {[h.strip(chr(92)+chr(98)) for h in m_hits[:3]]}")
+
+    # Structural narrowness OVERRIDES bullet count. A task that names
+    # concrete scope limits
+    # (one file / no migration / mirrors existing code) is structurally S
+    # even with several done-when bullets. Gated so a legitimate L keyword,
+    # ux_heavy floor, or cross-domain floor still holds the size up.
+    struct_s_hits = [p for p in STRUCTURAL_S_SIGNALS if re.search(p, text_lc, re.IGNORECASE)]
+    if struct_s_hits and not l_hits and ux_heavy != "true":
+        score -= 2
+        reasons.append(
+            "structural-S signals override bullet count: "
+            f"{[h.strip(chr(92)+chr(98)) for h in struct_s_hits[:3]]}"
+        )
 
     # cross-domain criteria.md hint = L floor
     if "Cross-domain dependency" in text and "Secondary domain" in text:
@@ -393,9 +435,9 @@ def auto_promote_apply(eng: Path, current: str, observed: str, reason: str) -> d
         scope_sync.write_text(scope_sync.read_text(encoding="utf-8") + entry, encoding="utf-8")
     else:
         header = (
-            f"# Scope sync — auto-edits log\n\n"
-            f"This file records lead/secretary clarifications and size auto-promotions "
-            f"that did not require user touch (per engagement-protocol §criteria.md mutability rules).\n"
+            "# Scope sync — auto-edits log\n\n"
+            "This file records lead/secretary clarifications and size auto-promotions "
+            "that did not require user touch (per engagement-protocol §criteria.md mutability rules).\n"
         )
         scope_sync.write_text(header + entry, encoding="utf-8")
 
