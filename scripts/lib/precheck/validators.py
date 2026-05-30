@@ -30,12 +30,19 @@ def check_validator_outputs(eng: Path) -> dict:
         return {"name": "validator-outputs", "status": "skip", "detail": "validation-log.md not present"}
     text = log.read_text(encoding="utf-8")
 
-    # Find every '### {name}' block and look for an Output file: line near it.
-    blocks = re.findall(
-        r"^###\s+(?P<name>[\w\-./]+).*?(?=^###\s|\Z)",
-        text,
-        re.MULTILINE | re.DOTALL,
-    )
+    # Find every '### {name}' block. Validator agent names are lowercase-hyphenated
+    # (code-reviewer, security-auditor, skeptic, ...); filtering to name.islower()
+    # excludes prose section headings like "### Phase 6a" / "### Transport note"
+    # that the bare regex would otherwise mis-count as phantom validators.
+    blocks = [
+        name
+        for name in re.findall(
+            r"^###\s+(?P<name>[\w\-./]+).*?(?=^###\s|\Z)",
+            text,
+            re.MULTILINE | re.DOTALL,
+        )
+        if name.islower()
+    ]
     if not blocks:
         return {"name": "validator-outputs", "status": "skip", "detail": "no validators logged yet"}
 
@@ -96,6 +103,8 @@ def check_validator_outputs(eng: Path) -> dict:
         "complete", "warning", "not_verifiable",
         # Adversary verdicts (consilium roles)
         "satisfied", "rework_required", "suspicious_too_clean",
+        # canonical verdicts (validator_lg.canonicalize_validator_output)
+        "approved_with_caveats", "suspicious", "skipped",
     }
     # Validators where methodology declaration is OBLIGATORY (numerical / formula-driven)
     methodology_required = {
@@ -145,7 +154,7 @@ def check_validator_outputs(eng: Path) -> dict:
             "name": "validator-outputs",
             "status": "fail",
             "detail": "; ".join(problems),
-            "fix": "Each validator-output JSON must have {'verdict': 'approved|changes_required|blocked', ...}. See validation-pipeline skill.",
+            "fix": "Each validator-output JSON needs a recognized 'verdict' (or 'status'): approved | approved_with_caveats | changes_required | blocked | satisfied | rework_required | suspicious | skipped (full vocabulary in validation-pipeline skill + validator_lg canonical map).",
         }
     if warnings:
         return {
