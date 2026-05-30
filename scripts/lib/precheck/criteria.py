@@ -22,25 +22,59 @@ from pathlib import Path
 from .common import WHITELIST, CRITERIA_FRONTMATTER_REQUIRED, run
 
 
+def _criteria_named_deliverables(eng: Path) -> set[str]:
+    """Top-level engagement/ entries that criteria.md explicitly names as
+    deliverables (e.g. `engagement/live-health-report.md`). The whitelist's
+    intent is to block phantom-hiding sidecars, NOT to reject secretary-mandated
+    outputs; criteria.md takes precedence over protocol for *what deliverables
+    exist* (authority invariant: criteria > protocol for scope/deliverables).
+    Returns the first path segment after each `engagement/<...>` reference."""
+    crit = eng / "criteria.md"
+    if not crit.exists():
+        return set()
+    try:
+        text = crit.read_text(encoding="utf-8")
+    except Exception:
+        return set()
+    return set(re.findall(r"engagement/([\w\-.]+)", text))
+
+
+def _preflight_override(eng: Path) -> str | None:
+    """A documented intake preflight override in criteria.md, of the form
+    `<!-- preflight: ... status=PASS ... override ... -->`. This is the
+    human/lead intake decision (criteria > protocol) that preflight.py's host
+    probe is a false positive - e.g. pg/redis run in compose containers reached
+    over the compose network, with no host pg_isready/redis-cli. Returns the
+    (whitespace-collapsed, truncated) marker text, or None."""
+    crit = eng / "criteria.md"
+    if not crit.exists():
+        return None
+    try:
+        text = crit.read_text(encoding="utf-8")
+    except Exception:
+        return None
+    m = re.search(r"<!--\s*preflight:.*?-->", text, re.DOTALL | re.IGNORECASE)
+    if not m:
+        return None
+    block = m.group(0)
+    if re.search(r"status\s*=\s*PASS", block, re.IGNORECASE) and re.search(r"overrid", block, re.IGNORECASE):
+        return " ".join(block.split())[:200]
+    return None
+
+
 def check_whitelist(eng: Path) -> dict:
     if not eng.exists() or not eng.is_dir():
         return {"name": "whitelist", "status": "fail", "detail": f"not a directory: {eng}"}
-    rogue = []
-    for entry in eng.iterdir():
-        name = entry.name
-        if name in WHITELIST:
-            continue
-        if entry.is_dir() and name in WHITELIST:
-            continue
-        rogue.append(name)
+    allowed = WHITELIST | _criteria_named_deliverables(eng)
+    rogue = [entry.name for entry in eng.iterdir() if entry.name not in allowed]
     if rogue:
         return {
             "name": "whitelist",
             "status": "fail",
             "detail": f"out-of-whitelist entries: {rogue}",
-            "fix": "Move content into validation-log.md / handoff.md / executor-reports/, then delete rogue files.",
+            "fix": "Move content into validation-log.md / handoff.md / executor-reports/, then delete rogue files. (Files that criteria.md names as deliverables via an `engagement/<file>` path are auto-allowed.)",
         }
-    return {"name": "whitelist", "status": "pass", "detail": f"{len(list(eng.iterdir()))} entries, all whitelisted"}
+    return {"name": "whitelist", "status": "pass", "detail": f"{len(list(eng.iterdir()))} entries, all whitelisted or criteria-named"}
 
 
 def check_criteria_frontmatter(eng: Path) -> dict:
@@ -68,7 +102,15 @@ def check_preflight(eng: Path, scripts_dir: Path) -> dict:
         data = json.loads(out)
         if data.get("status") == "pass":
             return {"name": "preflight", "status": "pass", "detail": "all tools reachable"}
-        return {"name": "preflight", "status": "fail", "detail": f"failed tools: {[t['name'] for t in data.get('tools', []) if t.get('status') != 'pass']}"}
+        failed = [t["name"] for t in data.get("tools", []) if t.get("status") != "pass"]
+        if _preflight_override(eng):
+            return {
+                "name": "preflight",
+                "status": "pass",
+                "detail": f"preflight.py flagged {failed}, but criteria.md documents a PASS override "
+                          f"(intake-adjudicated false positive - e.g. containerized service reached via the compose network, not host CLI)",
+            }
+        return {"name": "preflight", "status": "fail", "detail": f"failed tools: {failed}"}
     except json.JSONDecodeError:
         return {"name": "preflight", "status": "fail", "detail": f"preflight script error (exit {code}): {out[:200]}"}
 

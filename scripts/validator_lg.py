@@ -114,7 +114,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Optional, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send, Command, interrupt
@@ -174,7 +174,8 @@ LENIENT_STATUSES = {
     "clean", "issues_found",
     "go", "no_go", "conditional",
     "blocked", "not_applicable",
-    "approved", "approved_with_suggestions", "changes_required",
+    "approved", "approved_with_suggestions", "approved_with_caveats",
+    "changes_required",
     "ok", "error",
 }
 
@@ -195,6 +196,41 @@ class ValidatorOutput(BaseModel):
     findings: list[Finding] = Field(default_factory=list)
     summary: Optional[str] = None
     methodology: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_status(cls, data):
+        """Some validator agents express their verdict via a `verdict` / `result`
+        / `overall` field, or only via {critical,major,minor}_findings counts,
+        with no `status`. Derive `status` from those so they validate instead of
+        raising `status Field required` - which would otherwise sink the whole
+        validator run AND the M-tier consilium. extra='allow' keeps the original
+        fields intact."""
+        if not isinstance(data, dict) or data.get("status"):
+            return data
+        data = dict(data)
+        for alt in ("verdict", "result", "overall", "outcome", "decision"):
+            if data.get(alt):
+                data["status"] = data[alt]
+                return data
+
+        def _as_int(x):
+            try:
+                return int(x)
+            except (TypeError, ValueError):
+                return 0
+
+        count_keys = ("critical_findings", "major_findings", "minor_findings",
+                      "critical_count", "major_count", "critical", "major")
+        if any(k in data for k in count_keys):
+            crit = _as_int(data.get("critical_findings",
+                                    data.get("critical_count", data.get("critical", 0))))
+            major = _as_int(data.get("major_findings",
+                                     data.get("major_count", data.get("major", 0))))
+            data["status"] = "rework_required" if (crit > 0 or major > 0) else "satisfied"
+            return data
+        data["status"] = "error"
+        return data
 
     @field_validator("status")
     @classmethod
