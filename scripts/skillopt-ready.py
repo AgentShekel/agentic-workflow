@@ -60,12 +60,31 @@ def find_log(explicit: Optional[str]) -> Optional[Path]:
 
 
 def class_key(failure_class: str) -> str:
-    """Descriptive problem identity, dropping a trailing taxonomy paren.
+    """Stable problem-identity key for clustering — tolerant of BOTH authored
+    conventions for the `Failure class:` line:
 
-    "intake-size-misclassification (rule_wrong)" -> "intake-size-misclassification"
-    """
-    s = re.sub(r"\s*\(rule_\w+\)\s*$", "", failure_class.strip(), flags=re.IGNORECASE)
-    return s.strip().lower()
+      "intake-size-misclassification (rule_wrong)"  -> "intake-size-misclassification"
+      "rule_ignored (mandatory consilium skipped...)" -> "rule_ignored"
+      "rule_ignored"                                 -> "rule_ignored"
+      "token-drift"                                  -> "token-drift"
+
+    Convention A leads with a descriptive slug and trails a (rule_token); the
+    slug is the key. Convention B leads with the taxonomy token and trails FREE
+    PROSE — prose is not a stable cluster key, so we key on the token instead.
+    Without this, a token-leading signal keys on its whole verbose line and never
+    clusters with a same-gap signal worded differently."""
+    s = failure_class.strip()
+    # Convention A: strip a trailing "(rule_token)" -> descriptive slug remains.
+    a = re.sub(r"\s*\(rule_\w+\)\s*$", "", s, flags=re.IGNORECASE).strip()
+    if a.lower() != s.lower():
+        return a.lower()
+    # Convention B: text leads with a taxonomy token (optionally + a prose tail)
+    # -> key on the stable token, dropping the variable prose.
+    m = re.match(r"^(rule_missing|rule_wrong|rule_ignored)\b", s, flags=re.IGNORECASE)
+    if m:
+        return m.group(1).lower()
+    # Otherwise the whole class string is its own identity (e.g. "token-drift").
+    return s.lower()
 
 
 def parse_signals(text: str) -> list:

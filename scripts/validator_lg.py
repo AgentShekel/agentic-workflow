@@ -232,6 +232,22 @@ class ValidatorOutput(BaseModel):
         data["status"] = "error"
         return data
 
+    @field_validator("summary", "methodology", mode="before")
+    @classmethod
+    def _coerce_text(cls, v):
+        """Tolerate agents that emit summary/methodology as a dict or list:
+        a structured value would raise 'Input should be a valid string' and sink
+        the whole validator run even when the content is fine. Coerce structured
+        values to a compact JSON string; leave str / None untouched."""
+        if v is None or isinstance(v, str):
+            return v
+        if isinstance(v, (dict, list)):
+            try:
+                return json.dumps(v, ensure_ascii=False)
+            except Exception:
+                return str(v)
+        return str(v)
+
     @field_validator("status")
     @classmethod
     def normalize_status(cls, v: str) -> str:
@@ -598,7 +614,10 @@ class SubprocessInvoker(Invoker):
             r = subprocess.run(
                 cmd,
                 capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=600,
+                encoding="utf-8", errors="replace",
+                # stdin=DEVNULL: guard the headless `claude -p` stdin-wait hang
+                # (a never-closing inherited pipe blocks the reviewer to timeout).
+                stdin=subprocess.DEVNULL, timeout=600,
             )
             stdout = (r.stdout or "").strip()
             if r.returncode != 0:
