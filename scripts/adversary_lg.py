@@ -711,8 +711,13 @@ class SubprocessInvoker(Invoker):
         for d in (allow_dirs or []):
             cmd += ["--add-dir", d]
         try:
+            # stdin=DEVNULL: a headless `claude -p` waits on stdin even WITH a
+            # prompt arg; an inherited never-closing pipe in a subprocess context
+            # blocks it to the timeout with empty stdout. DEVNULL = instant EOF,
+            # so it proceeds with the argv prompt instead of hanging.
             r = subprocess.run(cmd, capture_output=True, text=True,
-                               encoding="utf-8", errors="replace", timeout=timeout_s)
+                               encoding="utf-8", errors="replace",
+                               stdin=subprocess.DEVNULL, timeout=timeout_s)
             return r.returncode, r.stdout, r.stderr
         except subprocess.TimeoutExpired:
             return 124, "", f"timeout after {timeout_s}s"
@@ -729,8 +734,10 @@ class SubprocessInvoker(Invoker):
             )
         for variant in ([codex, "exec", prompt], [codex, prompt]):
             try:
+                # stdin=DEVNULL — same headless-stdin hang guard as _invoke_claude.
                 r = subprocess.run(variant, capture_output=True, text=True,
-                                   encoding="utf-8", errors="replace", timeout=timeout_s)
+                                   encoding="utf-8", errors="replace",
+                                   stdin=subprocess.DEVNULL, timeout=timeout_s)
                 if r.returncode == 2 and "usage" in (r.stderr or "").lower():
                     continue
                 return r.returncode, r.stdout, r.stderr

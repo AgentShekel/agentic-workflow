@@ -329,7 +329,8 @@ def _invoke_lead_subprocess(domain: str, eng: Path, prompt: str,
         r = _sp.run(
             [claude, "-p", "--agent", agent_name, prompt],
             capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=timeout,
+            encoding="utf-8", errors="replace",
+            stdin=_sp.DEVNULL, timeout=timeout,
         )
         return {
             "status": "ok" if r.returncode == 0 else "error",
@@ -401,7 +402,8 @@ def _invoke_specialist_subprocess(specialist: str, eng: Path, prompt: str,
         r = _sp.run(
             [claude, "-p", "--agent", specialist, prompt],
             capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=timeout,
+            encoding="utf-8", errors="replace",
+            stdin=_sp.DEVNULL, timeout=timeout,
         )
         return {
             "status": "ok" if r.returncode == 0 else "error",
@@ -460,7 +462,8 @@ def _invoke_manager_subprocess(domain: str, eng: Path, prompt: str,
         r = _sp.run(
             [claude, "-p", "--agent", agent_name, prompt],
             capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=timeout,
+            encoding="utf-8", errors="replace",
+            stdin=_sp.DEVNULL, timeout=timeout,
         )
         return {
             "status": "ok" if r.returncode == 0 else "error",
