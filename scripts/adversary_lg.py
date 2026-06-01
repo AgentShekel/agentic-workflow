@@ -694,11 +694,22 @@ class SubprocessInvoker(Invoker):
     billing. This is the path adversary.py used."""
     name = "subprocess"
 
-    def _invoke_claude(self, prompt: str, model: str, timeout_s: int) -> tuple[int, str, str]:
+    def _invoke_claude(self, prompt: str, model: str, timeout_s: int,
+                       allow_dirs: Optional[list] = None) -> tuple[int, str, str]:
         claude = find_claude_cmd()
         if not claude:
             return 127, "", "claude CLI not found in PATH; install Claude Code CLI"
-        cmd = [claude, "-p", prompt, "--model", model]
+        # A headless `claude -p` reviewer must be granted read tools + access to
+        # the (temp-dir) curated / engagement paths it has to read. Without this it
+        # runs in default permission mode where every Read is denied in -p mode, so
+        # the role reports "permission_denied_all_engagement_files" and produces no
+        # verdict — the dispatch-environment gap that silently skipped the consilium.
+        # Read-only grant (Read/Glob/Grep): the reviewer inspects artefacts and
+        # prints JSON; it never edits, runs Bash, or deploys.
+        cmd = [claude, "-p", prompt, "--model", model,
+               "--allowedTools", "Read", "Glob", "Grep"]
+        for d in (allow_dirs or []):
+            cmd += ["--add-dir", d]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True,
                                encoding="utf-8", errors="replace", timeout=timeout_s)
@@ -732,7 +743,10 @@ class SubprocessInvoker(Invoker):
     def invoke(self, role: str, config: dict, prompt: str) -> tuple[int, str, str, float]:
         t0 = time.time()
         if config["engine"] == "claude":
-            rc, stdout, stderr = self._invoke_claude(prompt, config["model"], config["timeout_s"])
+            rc, stdout, stderr = self._invoke_claude(
+                prompt, config["model"], config["timeout_s"],
+                allow_dirs=config.get("allow_dirs"),
+            )
         else:
             rc, stdout, stderr = self._invoke_codex(prompt, config["timeout_s"])
         return rc, stdout, stderr, round(time.time() - t0, 1)
@@ -954,8 +968,9 @@ def run_two_pass(role: str, eng: Path, iter_n: int, invoker: Invoker, *,
             prompt1 = config["prompt_pass1"].format(
                 curated_path=str(curated), role=role, iter_n=iter_n,
             )
+            # Pass-1 reviewer reads the CURATED copy (temp dir) -> grant it that dir.
             preliminary, rc1, stdout1, stderr1, elapsed1 = _invoke_with_retry(
-                invoker, role, config, prompt1,
+                invoker, role, {**config, "allow_dirs": [str(curated)]}, prompt1,
             )
             if not preliminary:
                 raw_path = _save_raw_for_debug(eng, role, iter_n, "pass1", stdout1, stderr1)
@@ -1006,8 +1021,9 @@ def run_two_pass(role: str, eng: Path, iter_n: int, invoker: Invoker, *,
         preliminary_json=json.dumps(preliminary, ensure_ascii=False, indent=2),
         peer_findings=peer_findings or "(none)",
     )
+    # Pass-2 reviewer reads the FULL real engagement -> grant it that dir.
     parsed2, rc2, stdout2, stderr2, elapsed2 = _invoke_with_retry(
-        invoker, role, config, prompt2,
+        invoker, role, {**config, "allow_dirs": [str(eng)]}, prompt2,
     )
     if not parsed2:
         raw_path = _save_raw_for_debug(eng, role, iter_n, "pass2", stdout2, stderr2)

@@ -586,9 +586,17 @@ class SubprocessInvoker(Invoker):
             f"Output JSON only to stdout matching the validator's standard schema. "
             f"No prose, no markdown fences."
         )
+        # A headless `claude -p --agent` validator must be granted read tools +
+        # access to the engagement AND the project root it reviews — otherwise it
+        # runs in default permission mode where every Read is denied, reports a
+        # permission block, and emits no JSON. Read-only grant: validators inspect
+        # artefacts + source and print JSON; they never edit or deploy.
+        cmd = [self.claude, "-p", "--agent", validator, prompt,
+               "--allowedTools", "Read", "Glob", "Grep",
+               "--add-dir", str(eng), "--add-dir", str(eng.parent)]
         try:
             r = subprocess.run(
-                [self.claude, "-p", "--agent", validator, prompt],
+                cmd,
                 capture_output=True, text=True,
                 encoding="utf-8", errors="replace", timeout=600,
             )

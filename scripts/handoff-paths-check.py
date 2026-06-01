@@ -88,6 +88,23 @@ LINE_SUFFIX = re.compile(r":\d+(?:-\d+)?$")
 # engagement-archived/...") is forward-looking, not a phantom-evidence path.
 FUTURE_PATH_PATTERN = re.compile(r"^engagement-archived?(?:/|$)")
 
+# A cited `a/b`-shaped token is treated as an existence-checkable path ONLY if its
+# first segment is a recognized project/engagement root. This excludes git-ref
+# tokens (`feature/<branch>`), template-relative refs (`pages/article.html` that
+# actually live under `frontend/templates/`), and other slug-like strings the
+# checker cannot resolve against the project root — it must NOT false-flag those as
+# "missing". Root-anchored evidence paths (engagement/…, frontend/…, api/…, src/…)
+# are still fully checked, so genuine phantom-evidence detection is unaffected.
+KNOWN_ROOTS = frozenset({
+    "engagement", "engagement-archived",
+    # group(2) project roots (keep in sync with PATH_PATTERN)
+    "src", "tests", "test", "app", "lib", "scripts", "hooks", "agents", "skills",
+    # common backend / web / data roots seen across the projects
+    "api", "backend", "frontend", "clients", "alembic", "docs", "var",
+    "static", "public", "templates", "services", "core", "internal",
+    "pkg", "cmd", "packages", "components", "config",
+})
+
 
 def extract_paths(handoff_text: str) -> list[str]:
     paths: set[str] = set()
@@ -114,6 +131,10 @@ def extract_paths(handoff_text: str) -> list[str]:
             # Skip the post-ACCEPT archive destination — created after handoff,
             # not a phantom path (created after the verdict, not at handoff).
             if FUTURE_PATH_PATTERN.match(clean):
+                continue
+            # Only existence-check root-anchored paths; non-anchored tokens (git
+            # refs, template-relative refs) are skipped rather than false-flagged.
+            if clean.split("/", 1)[0].lower() not in KNOWN_ROOTS:
                 continue
             paths.add(clean)
     return sorted(paths)
