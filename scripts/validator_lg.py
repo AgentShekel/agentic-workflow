@@ -456,6 +456,86 @@ VALIDATOR_CONFIG: dict[str, dict] = {
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
 
+# Diff-scoped gating for the infra/CI reviewers. The matrix marks deploy-reviewer /
+# infrastructure-reviewer "mandatory IF CI/infra touched"; their predicates were previously
+# hardcoded True, so both ran on every dev engagement and surfaced project-wide PRE-EXISTING
+# infra/CI noise on backend-only work (which tripped --interrupt-on-critical). These now gate
+# on whether the engagement's actual changed files touch infra/CI paths.
+_INFRA_PATH_RE = re.compile(
+    r"(?:^|/)(?:dockerfile|\.dockerignore|docker-compose[^/]*\.ya?ml|compose\.ya?ml|"
+    r"requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|package(?:-lock)?\.json|"
+    r"nginx[^/]*\.conf|makefile|\.env(?:\.[\w.]+)?$|infra/|deploy/|k8s/|helm/|charts/)",
+    re.IGNORECASE,
+)
+_CI_PATH_RE = re.compile(
+    r"(?:^|/)(?:\.github/workflows/|\.gitlab-ci\.ya?ml|\.circleci/|azure-pipelines\.ya?ml|"
+    r"jenkinsfile|\.drone\.ya?ml|vercel\.json|railway\.(?:toml|json)|fly\.toml|"
+    r"netlify\.toml|\.travis\.ya?ml|/ci/)",
+    re.IGNORECASE,
+)
+_CHANGED_PATHS_CACHE: dict[str, Optional[list]] = {}
+
+
+def _repo_root(eng: Path) -> Optional[Path]:
+    for d in [eng, *eng.parents][:6]:
+        if (d / ".git").exists():
+            return d
+    return None
+
+
+def _changed_paths(eng: Path) -> Optional[list]:
+    """Best-effort repo-relative changed-file list for THIS engagement, for diff-scoped
+    gating. Tries git working-tree status at the repo root (covers the no-commit engagement
+    convention — untracked + modified), then handoff.md §1 file paths. None = undeterminable
+    (caller stays conservative / runs the validator — no coverage regression)."""
+    key = str(eng)
+    if key in _CHANGED_PATHS_CACHE:
+        return _CHANGED_PATHS_CACHE[key]
+    paths = None
+    root = _repo_root(eng)
+    if root is not None:
+        try:
+            r = subprocess.run(
+                ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=all"],
+                capture_output=True, text=True, timeout=15, stdin=subprocess.DEVNULL,
+            )
+            if r.returncode == 0:
+                got = []
+                for ln in r.stdout.splitlines():
+                    p = ln[3:].strip() if len(ln) > 3 else ""
+                    if "->" in p:  # rename "old -> new"
+                        p = p.split("->")[-1].strip()
+                    if p:
+                        got.append(p)
+                # Empty working tree is inconclusive (changes may be committed per-wave),
+                # so fall through to handoff §1 rather than skip everything on a clean tree.
+                paths = got or None
+        except Exception:
+            paths = None
+    if paths is None:  # git unavailable / clean tree -> fall back to handoff §1 file list
+        ho = eng / "handoff.md"
+        if ho.exists():
+            try:
+                text = ho.read_text(encoding="utf-8", errors="ignore")
+                m = re.search(r"(?ims)^#+\s*1\b.*?(?=^#+\s|\Z)", text)
+                blob = m.group(0) if m else ""
+                got = re.findall(r"[\w./-]+\.[A-Za-z0-9]+", blob)
+                if got:
+                    paths = got
+            except Exception:
+                paths = None
+    _CHANGED_PATHS_CACHE[key] = paths
+    return paths
+
+
+def _diff_touches(eng: Path, rx) -> bool:
+    """True if the engagement's changed files match rx — OR the diff is undeterminable
+    (conservative: run the validator when we can't tell)."""
+    cp = _changed_paths(eng)
+    if cp is None:
+        return True
+    return any(rx.search(p) for p in cp)
+
 
 def _read_criteria_frontmatter(eng: Path) -> dict:
     crit = eng / "criteria.md"
@@ -500,9 +580,9 @@ def _predicate_check(predicate: str, eng: Path, criteria_fm: dict) -> bool:
     if predicate == "interview_completed":
         return (eng / "specs" / "user-spec.md").exists()
     if predicate == "infra_changes":
-        return True  # conservative
+        return _diff_touches(eng, _INFRA_PATH_RE)
     if predicate == "ci_cd_changes":
-        return True
+        return _diff_touches(eng, _CI_PATH_RE)
     if predicate == "ui_present":
         return (eng / "ui").exists() or (eng / "screens").exists()
     if predicate == "docs_changes":
