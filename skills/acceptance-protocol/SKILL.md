@@ -357,11 +357,11 @@ After writing the verdict (ACCEPT or REJECT) on every M/L engagement, the manage
 
 **Zero reflections is a valid outcome** — a clean engagement with nothing to change should leave `engagement-reflections.md` empty (file may not exist at all). Inventing reflections to look productive corrupts the signal.
 
-Director's monthly sweep clusters these by `target × class` and triggers SkillOpt cycles when cluster size ≥3 OR when Langfuse trend Δ crosses thresholds (see `system-optimization-protocol` §"Trigger" Layer 3 pathway).
+These cluster by `target × class` and trigger SkillOpt cycles at cluster size ≥3 (or on Langfuse trend Δ — see `system-optimization-protocol` §"Trigger" Layer 3). `skillopt-ready.py` harvests them automatically (Channel B): it surfaces a due reflection cluster through the same SessionStart reminder as the log channel, so this no longer waits on a manual monthly sweep — the director's pass is now the deeper review over what the checker surfaces.
 
 ### SkillOpt readiness signal (run after writing reflections / signals)
 
-After the verdict + any reflections/signals are written, run `python ~/.claude/scripts/skillopt-ready.py`. If it reports a bucket **DUE** (≥3 same-class, loop-actionable live signals), surface it to the user in the engagement summary — e.g. "SkillOpt cycle due for dev (3× rule_wrong) → run `прогнать skill-evolution dev`". This is the immediate path; a SessionStart hook re-runs the same check every session as a safety net, so a missed surfacing is caught next session. The checker excludes `dryrun:` / `resolved:` and script-only-targeted signals, so it does not false-fire.
+After the verdict + any reflections/signals are written, run `python ~/.claude/scripts/skillopt-ready.py`. It reads BOTH channels — log SIGNALs (clustered by domain/class) and orphan reflections (clustered by domain/target/class) — and reports a bucket **DUE** when either reaches ≥3 loop-actionable live entries; surface it in the engagement summary — e.g. "SkillOpt cycle due for dev (3× rule_wrong) → run `прогнать skill-evolution dev`". This is the immediate path; a SessionStart hook re-runs the same check every session as a safety net, so a missed surfacing is caught next session. The checker excludes `dryrun:` / `resolved:` / script-only-targeted signals and reflections that have a log twin, so it does not false-fire or double-count.
 
 ### Engagement = directory
 

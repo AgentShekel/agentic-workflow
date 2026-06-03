@@ -33,7 +33,7 @@ low-volume, subjective-output agency with no automatic scorer.
 | Reflect (backward) | This loop, step 1 — attribute failures to a skill/agent |
 | Edit patch (gradient) | `append` / `insert_after` / `replace` / `delete` op on a skill/agent file |
 | Learning rate / clipping | `edit_budget` — max edits accepted per cycle |
-| Validation gate | Golden-scenario run via `skill-testing` |
+| Validation gate | Golden-scenario **rubric judgment** (Codex reads pass/fail, director adjudicates; `skill-testing` harness only for executable high-blast checks) |
 | Momentum (anti-forgetting) | Slow-update: golden-set before/after, 4-bucket categorisation |
 | Meta-learning | Two-level meta (shared process + domain content) |
 | Optimizer ≠ target | **Codex proposes edits (cross-family); director judges. Never the same brain.** |
@@ -67,13 +67,18 @@ Fire only when ONE of:
 - An engagement needed **>1 rework round** in this domain.
 - `anti-pattern-detector` fired on a wave in this domain.
 - **≥3 engagements** in this domain show the *same* failure class accumulated in the log.
-- **Reflection sweep pathway (monthly):** director runs a clustering pass over
-  `engagement/engagement-reflections.md` files (last 30–60 days, this domain).
-  Triggers a cycle when **cluster size ≥3 same `target × class`** OR (once event
-  ledger lands) Langfuse trend Δ thresholds: reject-rate ↑ ≥20%, validator
-  FP-rate ↑ ≥30%, P95 latency ≥2× baseline. This pathway catches slow-burn
-  patterns sub-threshold per-engagement but supra-threshold pooled —
-  Reflexion-style per-engagement signal feeding the SkillOpt event-driven gate.
+- **Reflection sweep pathway:** the `engagement/engagement-reflections.md` files
+  (last 30–60 days, this domain) are clustered by **`target × class`**; a cycle fires
+  on **cluster size ≥3** OR (once event ledger lands) Langfuse trend Δ thresholds:
+  reject-rate ↑ ≥20%, validator FP-rate ↑ ≥30%, P95 latency ≥2× baseline. This
+  pathway catches slow-burn patterns sub-threshold per-engagement but supra-threshold
+  pooled — Reflexion-style per-engagement signal feeding the SkillOpt event-driven gate.
+  **`skillopt-ready.py` now harvests this channel automatically** (Channel B): it scans
+  the reflection files, drops any reflection with a log twin (same engagement+taxonomy —
+  the log is authoritative and carries resolution) and any `resolved:`/`dryrun:` ones,
+  clusters the remaining *orphans* by `(domain, target, class)`, and surfaces a due
+  cluster through the same SessionStart reminder as Channel A. The director's manual
+  pass is now the deeper review over what the checker surfaces, not the only harvest.
 
 Optimise on a **common pattern across the batch**, never a single trajectory (single
 failures are noise; patching them overfits). This is SkillOpt's
@@ -105,6 +110,14 @@ recurring finding and attributes it to a specific `agents/X.md` or `skills/Y/SKI
   text to an ignored rule just grows the file without changing behaviour.
 - Plus the domain's own failure types (see the per-domain director file).
 
+**Cross-check the target before authoring.** A signal's `Traced to` (and a
+reflection's `target`) names a best-guess file; it is load-bearing but fallible — a wrong
+trace yields a right-pattern / wrong-file edit that the gate then rejects (pure waste).
+Codex MUST verify the target points at the agent/skill whose CONTENT enforces the catch —
+the validator/rule that would PRODUCE the catching artefact — not the producer of the
+buggy output, by cross-reading the relevant golden scenario's pass-criteria before
+emitting a patch.
+
 Codex output = a JSON patch list (see edit format). Director reads the shared process-meta
 + its domain content-meta BEFORE judging, and the rejection buffer (step 2).
 
@@ -118,8 +131,12 @@ Codex output = a JSON patch list (see edit format). Director reads the shared pr
 
 ### 3. Gate (golden-set, blast-radius tiered)
 
-Before any edit reaches the blessed mirror it must pass `skill-testing` on the relevant
-golden scenarios. Tier the gate by **blast radius** (anti-overhead):
+Before any edit reaches the blessed mirror it must pass the **golden-scenario gate** — a
+rubric judgment over the relevant scenarios (Codex proposes a pass/fail read, the director
+adjudicates; the `skill-testing` harness is optional, reserved for high-blast edits whose
+scenarios are executable). The gate runs as a judgment with NO patch applied: the director
+reasons whether the edit satisfies each scenario's pass-criteria without regressing. Tier
+the gate by **blast radius** (anti-overhead):
 
 | Blast radius | Examples | Gate |
 |---|---|---|
@@ -207,6 +224,10 @@ manager/director agent definitions.
 ## State files
 
 - `skill-evolution-log.md` — append-only signal log + cycle records (domain-tagged).
+  Channel A. Read by `skillopt-ready.py` (the SessionStart readiness hook).
+- `engagement/engagement-reflections.md` (per engagement) — Channel B. Also read by
+  `skillopt-ready.py`, which harvests orphan reflections (no log twin) and clusters them
+  by `(domain, target, class)`; a `resolved:` line under a reflection drops it from the count.
 - `skill-rejected-edits.md` — negative memory (above).
 - `skill-evolution-meta.md` — two-level meta (shared process + per-domain content).
 - Golden sets — `~/.claude/skills/system-optimization-protocol/golden/<domain>/` (scenarios
