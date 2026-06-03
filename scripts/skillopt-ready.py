@@ -74,8 +74,11 @@ def class_key(failure_class: str) -> str:
     Without this, a token-leading signal keys on its whole verbose line and never
     clusters with a same-gap signal worded differently."""
     s = failure_class.strip()
-    # Convention A: strip a trailing "(rule_token)" -> descriptive slug remains.
-    a = re.sub(r"\s*\(rule_\w+\)\s*$", "", s, flags=re.IGNORECASE).strip()
+    # Convention A: strip a trailing "(rule_token[ / extra prose])" -> descriptive slug
+    # remains. The `[^)]*` tolerates a parenthetical carrying the token PLUS extra text,
+    # e.g. "(rule_wrong / internal-contradiction)" -> still keyed by the slug, so two
+    # slug-identical signals worded with/without the extra cluster together.
+    a = re.sub(r"\s*\(rule_\w+\b[^)]*\)\s*$", "", s, flags=re.IGNORECASE).strip()
     if a.lower() != s.lower():
         return a.lower()
     # Convention B: text leads with a taxonomy token (optionally + a prose tail)

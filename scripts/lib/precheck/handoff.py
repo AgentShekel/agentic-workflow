@@ -175,7 +175,9 @@ def check_self_acceptance_thinness(eng: Path, size: str) -> dict:
     concern_lines = re.findall(r"^\s*(?:[-*]|\d+\.)\s+(.+)$", block, re.MULTILINE)
     concern_lines = [c for c in concern_lines if not c.strip().startswith(("$", "`", "{"))]
 
-    crit_tagged = sum(1 for c in concern_lines if re.search(r"\[crit-\d+\]", c, re.IGNORECASE))
+    # Accept the engagement's actual criteria-ID scheme in the tag, not only crit-N:
+    # `[crit-3]`, hybrid `[crit-D2]`, and bare deliverable tags `[D2]`/`[D-2]`/`[FB-1]`.
+    crit_tagged = sum(1 for c in concern_lines if re.search(r"\[(?:crit-[\w-]+|[A-Za-z]{1,3}-?\d+)\]", c, re.IGNORECASE))
     non_crit_tagged = sum(1 for c in concern_lines if "[non-criteria]" in c.lower())
     scope_creep_tagged = sum(1 for c in concern_lines if "[scope-creep]" in c.lower())
     untagged = len(concern_lines) - crit_tagged - non_crit_tagged - scope_creep_tagged

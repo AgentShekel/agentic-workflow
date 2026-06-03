@@ -943,6 +943,46 @@ def _find_completed_roles(eng: Path, iter_n: int) -> set[str]:
     return done
 
 
+# Cross-repo reviewer access. A claude-family reviewer is granted --add-dir for the
+# curated copy (Pass 1) and the engagement dir (Pass 2) only. When a deliverable lives
+# in a DIFFERENT repo than the engagement dir (e.g. an engagement that mirrors a contract
+# or doc into a sibling repo), the reviewer hits "path outside allowed working
+# directories" on that sibling repo and reviews it semi-blind. _EXTRA_ADD_DIRS holds
+# opt-in extra roots (criteria.md frontmatter `extra_roots:` and/or CLI --extra-add-dir),
+# appended to BOTH passes. Default [] = unchanged single-root behaviour.
+_EXTRA_ADD_DIRS: list[str] = []
+
+
+def _read_extra_roots_from_criteria(eng: Path) -> list[str]:
+    """Optional `extra_roots:` in criteria.md frontmatter -- additional repo roots a
+    cross-repo reviewer must read (e.g. a sibling repo a deliverable was mirrored into).
+    Accepts an inline YAML list (`extra_roots: [/path/a, /path/b]`) or a comma/space-
+    separated scalar. Returns existing absolute dir paths only (missing entries are
+    dropped with a warning)."""
+    crit = eng / "criteria.md"
+    if not crit.exists():
+        return []
+    try:
+        text = crit.read_text(encoding="utf-8")
+    except Exception:
+        return []
+    fm = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+    if not fm:
+        return []
+    m = re.search(r"^extra_roots\s*:\s*(.+)$", fm.group(1), re.MULTILINE)
+    if not m:
+        return []
+    raw = m.group(1).strip().strip("[]")
+    out = []
+    for p in (x.strip().strip("'\"") for x in re.split(r"[,\s]+", raw) if x.strip()):
+        rp = Path(p)
+        if rp.is_dir():
+            out.append(str(rp.resolve()))
+        else:
+            print(f"WARN: criteria extra_roots entry not a directory, skipped: {p}", file=sys.stderr)
+    return out
+
+
 def run_two_pass(role: str, eng: Path, iter_n: int, invoker: Invoker, *,
                  resume: bool = False) -> dict:
     """Run one reviewer role through the two-pass protocol.
@@ -977,7 +1017,7 @@ def run_two_pass(role: str, eng: Path, iter_n: int, invoker: Invoker, *,
             )
             # Pass-1 reviewer reads the CURATED copy (temp dir) -> grant it that dir.
             preliminary, rc1, stdout1, stderr1, elapsed1 = _invoke_with_retry(
-                invoker, role, {**config, "allow_dirs": [str(curated)]}, prompt1,
+                invoker, role, {**config, "allow_dirs": [str(curated), *_EXTRA_ADD_DIRS]}, prompt1,
             )
             if not preliminary:
                 raw_path = _save_raw_for_debug(eng, role, iter_n, "pass1", stdout1, stderr1)
@@ -1030,7 +1070,7 @@ def run_two_pass(role: str, eng: Path, iter_n: int, invoker: Invoker, *,
     )
     # Pass-2 reviewer reads the FULL real engagement -> grant it that dir.
     parsed2, rc2, stdout2, stderr2, elapsed2 = _invoke_with_retry(
-        invoker, role, {**config, "allow_dirs": [str(eng)]}, prompt2,
+        invoker, role, {**config, "allow_dirs": [str(eng), *_EXTRA_ADD_DIRS]}, prompt2,
     )
     if not parsed2:
         raw_path = _save_raw_for_debug(eng, role, iter_n, "pass2", stdout2, stderr2)
@@ -1822,6 +1862,10 @@ def main() -> int:
                         help="Mandatory addresses (used with --decision DIRECTED).")
     parser.add_argument("--override",
                         help="Override instructions (used with --decision DIRECTED).")
+    parser.add_argument("--extra-add-dir", action="append", metavar="DIR", default=[],
+                        help="Extra repo root(s) reviewers may read beyond the engagement dir "
+                             "(cross-repo deliverables). Repeatable; merged with criteria.md "
+                             "`extra_roots:`. Default none = single-root behaviour.")
     parser.add_argument("--help-billing", action="store_true",
                         help="Explain the --invoker billing model and exit.")
     args = parser.parse_args()
@@ -1858,6 +1902,14 @@ def main() -> int:
     if not eng.exists() or not eng.is_dir():
         print(f"ERROR: engagement directory not found: {eng}", file=sys.stderr)
         return 2
+
+    # Opt-in extra reviewer roots = CLI --extra-add-dir + criteria extra_roots.
+    # Default [] preserves single-root behaviour; only a cross-repo engagement opts in.
+    global _EXTRA_ADD_DIRS
+    _cli_extra = [str(Path(d).resolve()) for d in (args.extra_add_dir or []) if Path(d).is_dir()]
+    _EXTRA_ADD_DIRS = sorted(set(_cli_extra) | set(_read_extra_roots_from_criteria(eng)))
+    if _EXTRA_ADD_DIRS:
+        print(f"INFO: cross-repo reviewer --add-dir roots: {_EXTRA_ADD_DIRS}", file=sys.stderr)
 
     iter_n = args.iter if args.iter is not None else read_iter_counter(eng)
 
