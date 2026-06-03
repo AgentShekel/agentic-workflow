@@ -56,8 +56,17 @@ TOOL_CHECKS = {
         "auto_fix": "playwright_install",
     },
     "postgres": {
-        "cmd": ["pg_isready"],
-        "fix_msg": "Запусти PostgreSQL (`pg_isready` должен возвращать exit 0). В docker-compose проектах: `docker compose up -d db`.",
+        # Host pg_isready first; then probe the compose-internal server for Docker-only
+        # projects (no host postgres client by design — postgres is reachable only over
+        # the compose network). First success wins; the docker probes are skipped fast
+        # when their service name is absent. pg_isready needs no -U for a readiness check.
+        "cmd_any": [
+            ["pg_isready"],
+            ["docker", "compose", "exec", "-T", "postgres", "pg_isready"],
+            ["docker", "compose", "exec", "-T", "db", "pg_isready"],
+            ["docker", "compose", "exec", "-T", "pg", "pg_isready"],
+        ],
+        "fix_msg": "Запусти PostgreSQL (`pg_isready` exit 0). Docker-only проекты: `docker compose up -d db` — preflight сам пробует `docker compose exec <svc> pg_isready`.",
         "auto_fix": "compose_up_db",
     },
     "node": {

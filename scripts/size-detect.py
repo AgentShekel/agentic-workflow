@@ -244,6 +244,13 @@ THRESHOLDS = {
     # L — anything above M is L
 }
 
+# M→L auto-promote needs a STRONGER signal than one borderline soft-axis crossing
+# (L = the expensive 5-reviewer consilium). A lone soft axis must overshoot its M-cap by
+# >= this factor to promote alone; otherwise >=2 soft axes (or a production deploy) are
+# required. Stops borderline single-axis (e.g. loc just over cap) from forcing a documented
+# override on every such engagement.
+L_PROMOTE_HYSTERESIS = 1.5
+
 
 def count_executor_specialists(eng: Path) -> int:
     d = eng / "executor-reports"
@@ -361,25 +368,41 @@ def runtime_observe(eng: Path) -> dict:
         observed_score = 1
         triggered.append(f"ux_heavy={ux_heavy} → M floor")
 
-    # M → L boundary
-    if specialists > m_t["max_specialists"]:
+    # M → L boundary. A LONE borderline soft-axis crossing must NOT force L (the
+    # expensive 5-reviewer consilium) — that over-promoted M engagements and forced a
+    # documented override on every +N-LOC-over-cap task. Require a stronger signal:
+    #   - production deploy (deploy-log.md) — standalone qualitative L floor, OR
+    #   - >=2 soft axes over their M-cap, OR
+    #   - one soft axis >= L_PROMOTE_HYSTERESIS x its M-cap (clear overshoot, not borderline).
+    soft_axes = [
+        ("specialists", specialists, m_t["max_specialists"]),
+        ("diff_files", files, m_t["max_files"]),
+        ("loc_added", loc, m_t["max_loc"]),
+        ("tasks", tasks, m_t["max_tasks"]),
+        ("ui_surfaces", ui_surfaces, m_t["max_ui_surfaces"]),
+    ]
+    soft_crossed = [(n, v, cap) for (n, v, cap) in soft_axes if v > cap]
+    strong_overshoot = [
+        (n, v, cap) for (n, v, cap) in soft_crossed
+        if cap > 0 and v >= cap * L_PROMOTE_HYSTERESIS
+    ]
+    if deploy or len(soft_crossed) >= 2 or strong_overshoot:
         observed_score = 2
-        triggered.append(f"specialists={specialists} > M-cap {m_t['max_specialists']}")
-    if files > m_t["max_files"]:
-        observed_score = 2
-        triggered.append(f"diff_files={files} > M-cap {m_t['max_files']}")
-    if loc > m_t["max_loc"]:
-        observed_score = 2
-        triggered.append(f"loc_added={loc} > M-cap {m_t['max_loc']}")
-    if tasks > m_t["max_tasks"]:
-        observed_score = 2
-        triggered.append(f"tasks={tasks} > M-cap {m_t['max_tasks']}")
-    if ui_surfaces > m_t["max_ui_surfaces"]:
-        observed_score = 2
-        triggered.append(f"ui_surfaces={ui_surfaces} > M-cap {m_t['max_ui_surfaces']}")
-    if deploy:
-        observed_score = 2
-        triggered.append("deploy-log.md present (production deploy → L floor)")
+        if deploy:
+            triggered.append("deploy-log.md present (production deploy → L floor)")
+        for n, v, cap in soft_crossed:
+            mult = f" ({v / cap:.1f}x M-cap)" if cap > 0 else ""
+            triggered.append(f"{n}={v} > M-cap {cap}{mult}")
+    elif soft_crossed:
+        # Lone borderline soft axis — record WHY it did NOT promote (the lead retains
+        # documented runtime size-authority either way; this just stops the auto-gate
+        # from forcing the override).
+        n, v, cap = soft_crossed[0]
+        mult = f" ({v / cap:.1f}x)" if cap > 0 else ""
+        triggered.append(
+            f"{n}={v} > M-cap {cap}{mult} — lone borderline axis "
+            f"(<{L_PROMOTE_HYSTERESIS:g}x M-cap, no 2nd axis, no deploy) → stays M"
+        )
 
     observed = SIZE_NAMES[observed_score]
     current_score = SIZE_ORDER[current]
