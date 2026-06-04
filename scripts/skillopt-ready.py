@@ -157,7 +157,11 @@ def parse_signals(text: str) -> list:
         dom = DOMAIN_RE.search(header)
         eng = ENG_RE.search(header)
         cls = CLASS_RE.search(body)
-        tax = TAXON_RE.search(body)
+        # Taxonomy comes ONLY from the declared `Failure class:` line, never arbitrary
+        # prose: a note/evidence line that merely *mentions* rule_missing/wrong/ignored
+        # (e.g. cross-referencing another signal) must NOT mint a phantom taxonomy that
+        # then twin-excludes a real same-engagement reflection from Channel B.
+        tax = TAXON_RE.search(cls.group(1)) if cls else None
         traced = TRACED_RE.search(body)
         traced_s = traced.group(1).strip() if traced else ""
         out.append({
