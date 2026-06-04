@@ -732,7 +732,13 @@ class SubprocessInvoker(Invoker):
                 "authenticate via `codex auth` (uses ChatGPT subscription) or set "
                 "OPENAI_API_KEY for API-key auth."
             )
-        for variant in ([codex, "exec", prompt], [codex, prompt]):
+        # `codex exec` is the non-interactive path (rides the ChatGPT subscription via
+        # ~/.codex/auth.json — no API key; sandbox read-only). --skip-git-repo-check is
+        # REQUIRED: reviewers run in a curated temp dir that is not a git repo; without it
+        # codex exits 1 "Not inside a trusted directory" with empty stdout (else the role
+        # is silently reported "unavailable").
+        for variant in ([codex, "exec", "--skip-git-repo-check", prompt],
+                        [codex, "exec", prompt], [codex, prompt]):
             try:
                 # stdin=DEVNULL — same headless-stdin hang guard as _invoke_claude.
                 r = subprocess.run(variant, capture_output=True, text=True,
