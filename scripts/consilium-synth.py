@@ -39,7 +39,6 @@ import argparse
 import json
 import re
 import sys
-from collections import defaultdict
 from difflib import SequenceMatcher
 from pathlib import Path
 
@@ -92,7 +91,29 @@ def load_outputs(eng: Path, iter_n: int) -> list[dict]:
 
 
 def text_similarity(a: str, b: str) -> float:
+    # Empty / whitespace-only issue text is NOT evidence of sameness: SequenceMatcher
+    # returns 1.0 for two empty strings, which degenerately collapses blank-issue findings
+    # into a single "1 blank MINOR" cluster (the real-engagement consilium-synth bug).
+    # A missing description means "cannot judge similarity" -> keep the findings separate.
+    if not a.strip() or not b.strip():
+        return 0.0
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+
+# Reviewer schemas vary: peer-opus / codex use `issue`; the naive (haiku/sonnet) scoped
+# reviewers put their description in `observation`. Normalize so findings cluster and
+# render by their real content regardless of which field a reviewer populated - otherwise
+# a whole reviewer's findings read as blank and degenerately collapse to "1 blank MINOR".
+_ISSUE_FIELDS = ("issue", "observation", "gap", "title", "description", "message")
+
+
+def finding_text(f: dict) -> str:
+    """Canonical issue text for a finding across the reviewer-output schemas."""
+    for k in _ISSUE_FIELDS:
+        v = (f.get(k) or "").strip()
+        if v:
+            return f.get(k)
+    return ""
 
 
 def normalize_path(path: str) -> str:
@@ -152,8 +173,8 @@ def cluster_findings(
         placed = False
         for bucket in buckets:
             # Within same path, lenient similarity merging
-            sample_issue = bucket[0].get("issue", "")
-            if text_similarity(item.get("issue", ""), sample_issue) >= intra_path_threshold:
+            sample_issue = finding_text(bucket[0])
+            if text_similarity(finding_text(item), sample_issue) >= intra_path_threshold:
                 bucket.append(item)
                 placed = True
                 break
@@ -173,7 +194,7 @@ def cluster_findings(
     for cluster in no_path_clusters:
         placed = False
         for existing in merged_no_path:
-            if text_similarity(cluster[0].get("issue", ""), existing[0].get("issue", "")) >= cross_path_threshold:
+            if text_similarity(finding_text(cluster[0]), finding_text(existing[0])) >= cross_path_threshold:
                 existing.extend(cluster)
                 placed = True
                 break
@@ -182,18 +203,27 @@ def cluster_findings(
 
     final_clusters = has_path_clusters + merged_no_path
 
+    def _rep(cluster: list[dict], accessor) -> str:
+        """Representative value: first non-blank across the cluster, so a cluster
+        never renders blank when any constituent carries that text."""
+        for c in cluster:
+            v = (accessor(c) or "").strip()
+            if v:
+                return accessor(c)
+        return ""
+
     summarized = []
     for cluster in final_clusters:
         roles = sorted({c["role"] for c in cluster})
         sevs = [c.get("severity", "minor").lower() for c in cluster]
         max_sev = max(sevs, key=lambda s: SEVERITY_ORDER.get(s, 0))
         summarized.append({
-            "issue": cluster[0].get("issue", ""),
-            "evidence_path": cluster[0].get("evidence_path", ""),
+            "issue": _rep(cluster, finding_text),
+            "evidence_path": _rep(cluster, lambda c: c.get("evidence_path", "")),
             "max_severity": max_sev,
             "found_by": roles,
-            "fix_hint": cluster[0].get("fix_hint", ""),
-            "all_descriptions": [c.get("issue", "") for c in cluster],
+            "fix_hint": _rep(cluster, lambda c: c.get("fix_hint", "")),
+            "all_descriptions": [finding_text(c) for c in cluster],
             "cluster_size": len(cluster),
         })
     summarized.sort(
@@ -215,7 +245,7 @@ def compute_similarity_matrix(outputs: list[dict]) -> list[dict]:
             items.append({
                 "id": f"{role}#{i}",
                 "role": role,
-                "issue": f.get("issue", ""),
+                "issue": finding_text(f),
                 "evidence_path": f.get("evidence_path", ""),
             })
     pairs = []
@@ -288,10 +318,20 @@ def determine_aggregate_verdict(
         c for c in convergent
         if c["max_severity"] == "critical" and len(c["found_by"]) >= 2
     ]
-    if critical_convergent:
-        return "rework_required", (
-            f"{len(critical_convergent)} critical issue(s) confirmed by ≥2 reviewers"
-        )
+    rework_reviewers = sorted(
+        o["role"] for o in outputs if o["data"].get("verdict") == "rework_required"
+    )
+    # rework_required MUST dominate the softer director_review signals below: the aggregate
+    # may never be softer than the strongest constituent verdict (the real-engagement
+    # "aggregate softer than constituent" bug, where a real rework_required reviewer was
+    # downgraded to director_review by a co-occurring naive-catch flag).
+    if critical_convergent or rework_reviewers:
+        reasons = []
+        if critical_convergent:
+            reasons.append(f"{len(critical_convergent)} critical issue(s) confirmed by >=2 reviewers")
+        if rework_reviewers:
+            reasons.append(f"{len(rework_reviewers)} reviewer(s) demanded rework ({', '.join(rework_reviewers)})")
+        return "rework_required", "; ".join(reasons)
 
     # Cross-family disagreement → mandatory director review
     cross_family_dis = [d for d in disagreements if d["kind"] == "cross-family"]
@@ -305,10 +345,6 @@ def determine_aggregate_verdict(
         return "director_review_required", (
             f"{len(naive_catches)} obvious-miss finding(s) only naive reviewers flagged"
         )
-
-    # Any rework_required verdict → director_review_required
-    if any(o["data"].get("verdict") == "rework_required" for o in outputs):
-        return "rework_required", "at least one reviewer demanded rework"
 
     # All satisfied with no flags → satisfied (rare on L-tier, normal on M)
     if all(o["data"].get("verdict") == "satisfied" for o in outputs):
