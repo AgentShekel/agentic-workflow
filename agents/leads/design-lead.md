@@ -76,6 +76,8 @@ Design work is sequence-sensitive. Violating order produces token drift and rewo
 
 If a criterion spans multiple steps, plan phases in this order. If brand is out of scope (existing brand), skip Phase-1 production but LOCK existing brand tokens first so later phases don't drift.
 
+**Creative-direction routing (standing default):** every VISUAL step in this sequence — brand logo / identity (step 1), hi-fi UI visuals (step 3), asset / icon / banner creative (step 4), presentation imagery (step 5) — routes its creative direction + generation to **Codex/ChatGPT** (see `codex-bridge` § "Codex as the default creative director"). Claude orchestrates, specs, tokenizes, assembles and QAs; structure / tokens / copy / flows / accessibility stay Claude. Your specialists already default to this — plan and dispatch on that assumption; don't ask a specialist to hand-author visuals.
+
 ## Workflow
 
 ### Phase 1 — Intake understanding

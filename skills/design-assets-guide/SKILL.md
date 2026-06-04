@@ -2,9 +2,9 @@
 name: design-assets-guide
 domain: design
 description: |
-  [METHODOLOGY] AI-generated visual assets pipeline — logo generation
-  (55 styles, Gemini AI), corporate identity program (50 deliverables, CIP
-  mockups), icon design (15 styles, SVG, Gemini 3.1 Pro), social photos
+  [METHODOLOGY] AI-generated visual assets pipeline — Codex/ChatGPT-directed
+  logo generation (55-style reference library), corporate identity program
+  (50 deliverables, CIP mockups), icon design (15 styles, SVG), social photos
   (HTML→screenshot, multi-platform). Preloaded by design-visual-designer agent.
 argument-hint: "[asset-type] [context]"
 license: MIT
@@ -15,7 +15,9 @@ metadata:
 
 # Design Assets
 
-AI-generated visual assets: logo, CIP, icons, social photos. Uses Gemini AI for generation.
+AI-generated visual assets: logo, CIP, icons, social photos.
+
+**Default creative engine: Codex / ChatGPT** (via `codex-bridge`, `mcp__codex__codex`) — it directs and generates the visual concept for raster/photographic work (logo, CIP mockups, social photos), producing the "N bold directions". The Gemini `generate.py` scripts below are the **fallback** (Codex offline / quota) and the path for **structured SVG icons** (which legitimately stay Gemini). Lead with Codex for raster/photographic creative; fall back to Gemini and say so if you downgrade.
 
 For UI/component work use `ui-styling-guide`. For banners use `banner-design-guide`. For presentations use `presentation-design`. For design tokens use `design-system-methodology`. For brand identity use `brand-methodology`.
 
@@ -55,7 +57,7 @@ python3 ~/.claude/skills/design-assets-guide/scripts/logo/generate.py --prompt "
 
 **IMPORTANT:** When scripts fail, try to fix them directly.
 
-After generation, **ALWAYS** ask user about HTML preview via `AskUserQuestion`. If yes, invoke `ui-ux-methodology` for gallery.
+After generation, offer an HTML preview gallery in plain chat (do NOT use `AskUserQuestion` — globally banned); if the user wants it, invoke `ui-ux-methodology` for the gallery.
 
 ## CIP Design
 
