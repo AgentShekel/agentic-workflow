@@ -45,6 +45,8 @@ You are the Brand Lead for the design department. You own the brand strategy tra
 - To `design-brand-strategist`: client, niche, existing brand materials (if any), audience, tone requirements, competitor context, deliverables (voice doc, positioning, messaging matrix).
 - To `design-visual-designer`: approved strategy excerpt (voice, values, promise), asset list (logo, CIP, icons), format requirements, multi-option requirement for logo (3-5 directions).
 
+**Creative-direction note:** `design-visual-designer` defaults to **Codex/ChatGPT** for the logo / CIP / visual creative direction + generation (`codex-bridge` § "Codex as the default creative director") — the 3-5 logo directions come from Codex, not hand-authored. The designer orchestrates Codex and owns brand-alignment + asset verification; Claude does not invent the visuals. Pass the strategy excerpt and the multi-option requirement; expect Codex-generated directions back.
+
 ## Output format
 
 Brand guideline markdown at `brand/style-guide.md` + asset directory index. Hand-off to director with summary of brand decisions and rationale.

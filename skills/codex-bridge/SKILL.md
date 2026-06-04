@@ -29,6 +29,27 @@ Underlying model: GPT-5-based coding agent with capabilities:
 - MCP resource reading
 - Sub-agents (only on explicit delegation)
 
+## Codex as the default creative director for visual work
+
+For ANY visual-creative deliverable — logo / brand identity, hi-fi UI visuals, campaign banners, presentation slide visuals, photography / imagery, art direction, "give me N bold directions" — **Codex is the default creative engine, not a fallback or an afterthought.** The Claude specialist does NOT hand-author the visual concept; it ORCHESTRATES Codex and integrates the result.
+
+Division of labour (the standing default for every design/visual engagement — baked into the visual agents + their methodology skills, NOT a per-engagement choice):
+
+| Step | Owner |
+|---|---|
+| Creative direction / concept / "N bold visual directions" | **Codex** (`mcp__codex__codex`) — more divergent, more interesting visuals than Claude |
+| Art direction, composition, imagery, raster / photoreal generation | **Codex** |
+| Orchestration: brief → Codex prompt, variant iteration (`codex-reply`), choosing the direction | Claude specialist |
+| Brand-alignment judgement + asset verification (Read the output, confirm it matches the brief) | Claude specialist |
+| Spec / tokens / component code / responsive / dark-mode / accessibility / HTML+Chart.js assembly | Claude specialist (NEVER Codex — structural / engineering) |
+| Copy, messaging, UX flow / IA logic | Claude (structure / text) |
+
+**Why:** this Claude model family is comparatively weak at visual-creative divergence; Codex / ChatGPT (gpt-image class) is stronger and more interesting. The creative *idea* comes from Codex; Claude conducts and builds.
+
+**Graceful fallback (never a silent quality downgrade):** if Codex is offline or quota-exhausted, fall back to Gemini (the `design-assets-guide` / `banner-design-guide` scripts) or escalate to the user — and SAY the creative path was downgraded. Do not quietly substitute a weaker Claude-authored visual and present it as the intended quality.
+
+The `## When to use Codex` table below is the per-deliverable routing UNDER this default (structural / data-driven / tokenizable work stays Claude; SVG icons may stay Gemini). Read it as "when does a fallback or a structured-Claude path apply", not "should I use Codex at all for the creative".
+
 ## When to use Codex (vs Gemini, vs Claude tools, vs static SVG)
 
 | Task | Use Codex? | Alternative |

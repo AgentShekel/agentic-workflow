@@ -3,7 +3,7 @@ name: banner-design-guide
 domain: marketing
 description: |
   [METHODOLOGY] Multi-format banner design (social, ads, web hero,
-  print) with multiple art direction options and AI-generated visual elements.
+  print) with multiple art direction options and Codex/ChatGPT-generated visual elements.
   Preloaded by marketing-banner-designer agent.
 argument-hint: "[platform] [style] [dimensions]"
 license: MIT
@@ -16,6 +16,8 @@ metadata:
 
 Design banners across social, ads, web, and print formats. Generates multiple art direction options per request with AI-powered visual elements. This skill handles banner design only. Does NOT handle video editing, full website design, or print production.
 
+**Default creative engine: Codex / ChatGPT** (via `codex-bridge`, `mcp__codex__codex`) — it directs and generates the banner visuals (photo-based, hero, illustrated, multi-variant art directions), producing the "N bold directions". The Gemini `gemini_batch_process.py` calls below are the **fallback** (Codex offline / quota) and the structured path for text-on-color / geometric / gradient banners assembled in HTML→screenshot. Lead with Codex for the creative visual; HTML/CSS composition + text/CTA/logo overlay stay Claude (assembly, not creative). Fall back to Gemini and say so if you downgrade.
+
 ## When to Activate
 
 - User requests banner, cover, or header design
@@ -27,9 +29,9 @@ Design banners across social, ads, web, and print formats. Generates multiple ar
 
 ## Workflow
 
-### Step 1: Gather Requirements (AskUserQuestion)
+### Step 1: Gather Requirements
 
-Collect via AskUserQuestion:
+Collect in plain chat (do NOT use `AskUserQuestion` — globally banned); ask as plain text:
 1. **Purpose** — social cover, ad banner, website hero, print, or creative asset?
 2. **Platform/size** — which platform or custom dimensions?
 3. **Content** — headline, subtext, CTA, logo placement?
