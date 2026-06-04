@@ -310,6 +310,26 @@ This is the most expensive acceptance, applied to the most expensive engagements
 
 ## Cross-tier rules (apply at every tier)
 
+### Consilium fidelity + provenance cross-check (M/L only - REQUIRED before human gate)
+
+Before step 6 presents `engagement/consilium-summary.md` to the human supreme judge, the manager/director MUST read the current iteration's acceptance artefacts already on disk and append this cross-check to `engagement/acceptance-log.md`. Present any flags and suppressed criticals with the summary. This is evidence adjudication, **not a validator re-run or re-sweep**; the `Role boundary` remains intact.
+
+```markdown
+### Consilium fidelity/provenance cross-check
+- {role}: summary={verdict}/{findings_count}; raw=`engagement/validation-outputs/{role}-iter-{N}-*.json` `canonical.verdict`={verdict}, findings={count}; ledger `engagement/events.jsonl` `consilium_role_completed.verdict`={verdict}
+- Provenance: final role JSON={present|absent}; `consilium-synth.py` mechanical-aggregation provenance marker={present|absent}
+- FIDELITY DIVERGENCE | PROVENANCE ABSENT - too-clean / suspicious: {details or none}
+- Suppressed critical `{id/title}`: `{verbatim raw id/title or issue}` - SUSTAINED | OVERRULED ({merits rationale})
+```
+
+Repeat the role line for every expected reviewer role, using the matching final, non-`preliminary` raw JSON and latest matching ledger event. Diff the summary's per-role verdict + findings count against raw `canonical.verdict` + `findings` and the ledger verdict.
+
+If the summary renders a role softer by downgrading its verdict or dropping/downgrading findings, record a **FIDELITY DIVERGENCE - too-clean / suspicious** flag citing the raw path and verdict. Reproduce every suppressed `severity=critical` finding verbatim by raw id/title, or exact raw `issue` where that is the schema field, and adjudicate each on its merits. A confirmed suppressed critical is `SUSTAINED` and blocks ACCEPT.
+
+If `consilium-summary.md` exists but no backing final role JSON and no `consilium-synth.py` provenance marker are present, record **PROVENANCE ABSENT - too-clean / suspicious** and do not treat the summary as a real consilium. Either missing element must be reconciled before ACCEPT.
+
+The summary aggregate and final manager verdict may NEVER be softer than the strongest constituent raw/ledger verdict (`rework_required`/`REJECT` dominates `satisfied`/`ACCEPT`). A real adversary or cross-family REJECT cannot silently become ACCEPT. Any unreconciled fidelity/provenance divergence results in REJECT, or is routed to a DIRECTED directive/escalation before verdict - never ACCEPT.
+
 ### ux_heavy gradient
 
 `ux_heavy: true | minor | false` — independent of tier. Determines evidence type:
@@ -426,6 +446,8 @@ The verdict is binary: **ACCEPT** or **REJECT**. There is no third option. `ACCE
 If validation cannot be completed (Docker not running, Playwright unavailable, DB unreachable, secrets missing): the verdict is **REJECT** with reason `validation incomplete: <specific tool/artefact>`. Coordinate with the lead and (if needed) escalate ONCE to the user to bring validation environment online — then re-review. Do not defer the verification itself to the user.
 
 ### Canonical form (machine-parseable, structurally enforced)
+
+Before writing any M/L verdict, the manager MUST verify that the current iteration's pre-human **Consilium fidelity/provenance cross-check** exists in `acceptance-log.md` and is reconciled. A missing or unreconciled fidelity/provenance flag, any constituent `REJECT`/`rework_required`, or any SUSTAINED suppressed critical makes `ACCEPT` forbidden: write `REJECT`, or obtain a DIRECTED/escalation resolution before the verdict.
 
 `engagement/acceptance-log.md` (append, never overwrite). M/L tier verdicts MUST include the **Adversary findings adjudication** section with explicit markers per consilium signal — `director-verdict-check.py` enforces this mechanically.
 
