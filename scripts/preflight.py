@@ -96,8 +96,17 @@ TOOL_CHECKS = {
         "auto_fix": None,
     },
     "redis": {
-        "cmd_any": [["redis-cli", "ping"]],
-        "fix_msg": "Запусти Redis (`redis-cli ping` должен возвращать PONG).",
+        # Host redis-cli first; then probe the compose-internal server for Docker-only
+        # projects (no host redis client by design — redis is reachable only over the
+        # compose network). First success wins; the docker probes are skipped fast when
+        # their service name is absent. Mirrors the postgres host-probe fallback.
+        "cmd_any": [
+            ["redis-cli", "ping"],
+            ["docker", "compose", "exec", "-T", "redis", "redis-cli", "ping"],
+            ["docker", "compose", "exec", "-T", "cache", "redis-cli", "ping"],
+            ["docker", "compose", "exec", "-T", "valkey", "redis-cli", "ping"],
+        ],
+        "fix_msg": "Запусти Redis (`redis-cli ping` → PONG). Docker-only проекты: `docker compose up -d redis` — preflight сам пробует `docker compose exec <svc> redis-cli ping`.",
         "auto_fix": "compose_up_redis",
     },
 }
