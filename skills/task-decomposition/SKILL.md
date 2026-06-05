@@ -94,7 +94,7 @@ After individual validation passes, run a final cross-task check:
 1. Summary: task count, waves, dependencies, validation results (iterations, issues found/fixed).
 2. Wait for user approval.
 3. Git commit: `chore(tasks): task decomposition approved for {feature}`
-4. Suggest next step: hand off to `feature-execution` skill for wave-based execution.
+4. Suggest next step: the engagement-workflow deliver phase runs the tasks wave-based.
 
 **Checkpoint:**
 - [ ] Summary presented to user

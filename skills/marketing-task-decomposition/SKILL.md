@@ -26,8 +26,8 @@ unit. This skill defines the contract.
 | **M** | RECOMMENDED if ≥2 specialists OR ≥3 distinct deliverables | iter-2 cost saving outweighs decomposition overhead. |
 | **L** | YES | Multi-specialist coordination requires explicit dependency graph; full-engagement re-runs cost too much. |
 
-If lead skips decomposition on a size: L engagement, director will REJECT
-on `## Tasks` missing — same gate as missing `## Validation log`.
+If the plan skips decomposition on a size: L engagement, the handoff gate fails
+(handoff-precheck) on missing `tasks/` — same gate as a missing `## Validation log`.
 
 ## Inputs
 
@@ -130,38 +130,28 @@ For each task file, lead self-checks:
 
 If any check fails — fix the file, don't dispatch.
 
-### Phase 3: Dispatch (lead → mid-leads → specialists)
+### Phase 3: Execution (the engagement-workflow Workflow runs the waves)
 
-Pass tasks to mid-leads grouped by track:
+The decomposed `tasks/*.md` feed the Workflow's deliver phase. There is NO mid-lead dispatch tier — each task's `owner` names the specialist agentType directly (e.g. `marketing-seo-specialist`, `marketing-keyword-researcher`, `marketing-web-analyst`, `marketing-copywriter`, `marketing-banner-designer`), and the Workflow dispatches it wave-by-wave (same-wave tasks run in parallel on disjoint artefact paths).
 
-- `marketing-traffic-lead` ← all tasks where `owner` is `marketing-seo-specialist | marketing-ppc-specialist | marketing-keyword-researcher`.
-- `marketing-analytics-lead` ← `marketing-web-analyst | marketing-ai-visibility-specialist`.
-- `marketing-content-lead` ← `marketing-copywriter | marketing-banner-designer`.
-
-Each mid-lead receives the list of task file paths (not contents — paths only) and
-dispatches specialists wave-by-wave.
-
-Specialists open their assigned task file, do the work, and append their result to
-`executor-reports/{specialist-agent-name}.md` § "Task {NN}: {title}".
+Each specialist opens its assigned task, does the work, writes the artefact to its engagement path, and appends its result to `executor-reports/{specialist-agent-name}.md` § "Task {NN}: {title}".
 
 When done, specialist updates the task file's `status: done` and is finished.
-Mid-lead aggregates, top-lead consumes.
+The Workflow's deliver phase manifest-verifies the wave; the handoff step aggregates the executor-reports.
 
 ### Phase 4: Iter-2 retargeting (on REJECT)
 
-When director rejects, read which `crit-N` bullets failed. Find tasks where
-`crit_refs` includes those crit-N values. Re-dispatch ONLY those tasks (with
-specialist appending `## Iteration 2` to their executor-report per protocol).
-
-This is the payoff: instead of re-running the whole content phase to fix
-one ad creative, you re-run one task.
+On an iter-2 REJECT, the Workflow's rework loop re-runs ONLY the tasks whose `crit_refs`
+include the failing crit-N values (the specialist appends `## Iteration 2` to its
+executor-report per protocol). The atomic decomposition is what makes this targeted: instead
+of re-running the whole content phase to fix one ad creative, only the broken task re-runs.
 
 ## Anti-patterns
 
 - **Don't decompose retroactively** ("we already did the work, let me write the tasks now"). Either decompose at Phase 2.5 or skip it entirely (size: S/M-without-multispecialist). Retroactive task files are paperwork, not coordination.
 - **Don't write `tasks/*.md` content longer than 40 lines.** If the task needs more spec, the brief belongs in `executor-reports/{specialist}.md` after the specialist runs, not in the task file.
 - **Don't put the same crit-N in `crit_refs` of >3 tasks.** If one criterion needs that many tasks, the criterion is a deliverable list — sharpen criteria.md (lead-authority, no user touch) and respread.
-- **Don't make a task's `owner` a mid-lead.** Mid-leads coordinate; they don't deliver. Owner must be a specialist agent.
+- **Don't make a task's `owner` a lead.** The lead plans and the engagement-workflow dispatches; leads don't deliver. Owner must be a specialist agent.
 - **Don't skip `crit_refs` "because the task is implementation detail".** Every atom must trace to a criterion. If it doesn't trace — it's scope creep, drop it or escalate via scope-sync.
 
 ## What this is NOT

@@ -7,6 +7,14 @@ this do», this document answers «how exactly is it built inside». Read
 top to bottom: problem → five layers → key mechanisms → state model →
 flow.
 
+> **v0.3 (2026-06-05):** the pre-gate cascade (plan → deliver → validate
+> → handoff → gate) is now the **engagement-workflow** Workflow, conducted
+> by the main loop and stopping at the handoff seam; the LangGraph
+> human-gate (consilium → directive → manager acceptance) remains the
+> active path after the seam. Domain leads are planning-only (the
+> `lead:plan` step); specialist coordination is structural — encoded as
+> waves in the lead's plan. See §8.5 and [`CHANGELOG.md`](CHANGELOG.md).
+>
 > **v0.2.4 (2026-05-28):** Windows-compatibility bugfix — `claude.CMD`
 > npm-wrapper truncates multiline argv at the first newline (CMD
 > line-parsing); `subprocess.run(text=True)` decodes UTF-8 Russian as
@@ -94,28 +102,28 @@ flowchart TB
         H3[Commons-maintainer for SkillOpt promotions]
     end
 
-    subgraph Agents ["Agents layer · 66 agents"]
+    subgraph Agents ["Agents layer · 58 agents"]
         AM[Managers · 3]
         AD[Directors · 3]
-        AL[Leads · 11]
+        AL[Leads · 3 · plan-only]
         AS[Specialists · 20]
         AV[Validators · 29]
     end
 
-    subgraph Skills ["Skills layer · 48 skills"]
+    subgraph Skills ["Skills layer · 46 skills"]
         SK1[Agency protocol · 8]
-        SK2[Dev methodology · 18]
+        SK2[Dev methodology · 16]
         SK3[Design methodology · 8]
         SK4[Marketing methodology · 5]
         SK5[Yandex hub · 6]
         SK6[Skill development · 3]
     end
 
-    subgraph Orch ["Orchestration layer · 14 main + 3 optional Python scripts"]
+    subgraph Orch ["Orchestration · Workflow engines + 16 main + 3 optional scripts"]
         O1[Mechanical gates]
-        O2[Adversary bridge · LangGraph]
-        O3[Validator bridge · LangGraph]
-        O4[Engagement bridge · LangGraph]
+        O2[engagement-workflow · pre-gate Workflow]
+        O3[Adversary bridge · LangGraph]
+        O4[Validator bridge · LangGraph]
         O5[Consilium synth + present]
         O6[Director-verdict check]
         O7[Archival]
@@ -153,7 +161,7 @@ Each layer has a clear scope of responsibility:
 | Layer | What it does | What it does NOT do |
 |---|---|---|
 | **Human** | Triggers intake, issues supreme verdict on M/L, approves SkillOpt promotions | Doesn't write markdown, doesn't validate routinely |
-| **Agents** | Plan, execute, judge, run the SkillOpt loop (out-of-band) | Don't write scripts, don't determine tiers, managers don't dispatch |
+| **Agents** | Plan, execute, judge, run the SkillOpt loop (out-of-band) | Don't write scripts, don't determine tiers; leads plan but don't dispatch (the engagement-workflow does), managers don't dispatch |
 | **Skills** | Loaded into agent context — methodology, protocols, tool guides | Not invoked directly from chat; some are `triggers:`-aware for the loader |
 | **Orchestration** | Mechanical gates, adversary bridge, consilium, event ledger | Doesn't make judgments about content quality |
 | **State** | Stores all engagement state on FS — every fact lives in a file | No logic — only schemas, whitelist, mutability rules |
@@ -170,7 +178,7 @@ read by the loader.
 | Category | # | Purpose |
 |---|---|---|
 | **Agency protocol** | 8 | Agency work contract: schemas, lifecycle, gates, acceptance, system-optimization |
-| **Dev methodology** | 18 | TDD, code review, spec planning, deploy, security |
+| **Dev methodology** | 16 | TDD, code review, spec planning, deploy, security |
 | **Design methodology** | 8 | Brand, design system, UI/UX, presentation |
 | **Marketing methodology** | 5 | SEO, semantic drift, AI visibility, task decomposition, benchmark research (standalone entry-point) |
 | **Regional SEO/PPC stack** | 6 | API integrations for Russian-market analytics platforms |
@@ -183,7 +191,7 @@ read by the loader.
 name: code-writing
 domain: dev
 triggers:
-  - "loaded by every lead / manager / mid-lead via skills frontmatter"
+  - "loaded by every lead / manager via skills frontmatter"
 description: |
   [METHODOLOGY] Universal quality coding process (plan, TDD, reviews).
 ---
@@ -238,7 +246,7 @@ hot-path summary indicates the section is relevant.
 
 ## 4. Agents layer
 
-66 Claude Code subagents in `~/.claude/agents/`. Each agent has
+58 Claude Code subagents in `~/.claude/agents/`. Each agent has
 frontmatter with `name`, `description`, `model`, `skills:`,
 `allowed-tools:`. The mirror organises agents into
 `agents/{directors,leads,managers,specialists,validators}/` subdirectories.
@@ -288,28 +296,18 @@ The director **never authors edits itself** — Codex is the proposer,
 the director is the judge, the human is the commons-maintainer for
 cross-domain promotions.
 
-### Leads (11)
+### Leads (3)
 
-**Top-leads (3):** `dev-lead`, `design-lead`, `marketing-lead` —
-primary planners for their domains. Receive intake from `agency-intake`,
-plan phased execution, dispatch mid-leads (when applicable), run
-cross-cutting validators, form the handoff.
-
-**Mid-leads (8):**
-
-| Lead | Track |
-|---|---|
-| `dev-product-lead` | discovery — research, specs |
-| `dev-engineering-lead` | delivery — implementation |
-| `dev-quality-lead` | validation, security audit, pre/post-deploy QA |
-| `design-brand-lead` | brand voice, identity, guidelines |
-| `design-product-design-lead` | UX + UI tracks |
-| `marketing-traffic-lead` | SEO + PPC + keyword research |
-| `marketing-content-lead` | copy, ad creative, banners |
-| `marketing-analytics-lead` | Metrika, AI visibility, semantic drift |
-
-Mid-leads are tier-aware: forbidden on S, optional on M (used only
-when ≥2 specialists need coordination), required on L.
+`dev-lead`, `design-lead`, `marketing-lead` — **planning-only**. Each is
+the `lead:plan` step inside the `engagement-workflow`: it reads
+`criteria.md` and returns the plan — specialists, validators, and tasks
+grouped into **waves** with dependencies. The lead does NOT dispatch; the
+Workflow script fans specialists out by `task.owner`, wave by wave
+(same-wave tasks run in parallel on disjoint files; a later wave may
+depend on an earlier one). The coordination a separate coordinator layer
+would otherwise provide is **structural** here — encoded as the wave
+grouping in the plan, so tier complexity scales by adding waves, not by
+adding a routing tier.
 
 ### Specialists (20)
 
@@ -371,7 +369,7 @@ raw fields (normalized verdict + severity + validator_type).
 
 ## 5. Orchestration layer
 
-14 main + 3 optional Python scripts in `~/.claude/scripts/`. All scripts
+16 main + 3 optional Python scripts in `~/.claude/scripts/`. All scripts
 are **exit-code gates**: a non-zero exit blocks the pipeline, no
 prompts, no negotiations. **No model judgment** — purely deterministic
 logic.
@@ -382,7 +380,8 @@ logic.
 |---|---|
 | `adversary_lg.py` | LangGraph adversary bridge — 5 reviewer roles, two-pass curated-view isolation, `Send` fan-out, SQLite-checkpointed `--resume`, native HITL via `interrupt()`, event ledger wired (lifecycle + per-role + early-return guards) |
 | `validator_lg.py` | LangGraph atomic-validator fan-out via `Send`, retry edge, auto-plan from criteria.md predicates, `--resume`, native HITL via `--interrupt-on-critical`, canonical envelope, event ledger wired (8 emit sites) |
-| `engagement_lg.py` | LangGraph engagement-level orchestrator (v0.2.2+) owning the full lifecycle intake → plan → dispatch → validate → consilium → accept → archive. 11 nodes including `_barrier_dispatch_node` (sync after Send fan-out to specialists) + 3 HITL pause points (`criteria_lock`, `danger_gate`, `human_directive`). Three execution modes: `--dry-run` (default, placeholders), `--mock` (real graph paths + canned subprocess artefacts — full end-to-end smoke without claude CLI), `--real` (full subprocess with `claude -p --agent X`). Delegates to `validator_lg.py` and `adversary_lg.py` as subprocesses (process isolation; promotion to sub-graphs deferred until field data shows overhead matters). 4 new ledger payload types: `engagement_completed`, `phase_skipped`, `dryrun_marker`. Event ledger wired. |
+| `ledger-emit.py` | CLI emitter for the append-only event ledger (`engagement/events.jsonl`) |
+| `skillopt-ready.py` | SkillOpt due-signal harvester — clusters manager-emitted signals + orphan reflections by `target × class` and reports when a director cycle is due |
 | `consilium-synth.py` | Adversary output aggregation, two-stage dedup |
 | `consilium-present.py` | Chat-ready format with decision menu for the human |
 | `director-verdict-check.py` | Mechanical adjudication completeness (legacy name; in v0.2 targets `*-manager` verdict) |
@@ -496,9 +495,9 @@ tools_required: [...]
 
 | Tier | Use case | Schema | Adversary | Manager | Validator dispatch | Mechanical checks |
 |---|---|---|---|---|---|---|
-| **S** | Hotfix, single deliverable | 4-section minimum | None | None | Manual parallel | 6 |
-| **M** | Multi-specialist, mid-stakes | Full 11-section | 1× peer-opus | Judge mode | `validator_lg.py --auto` default | 13 |
-| **L** | Cross-domain, high-stakes | Full + tasks INDEX | 5× consilium | Judge + adjudication | `validator_lg.py --auto` mandatory | 21 |
+| **S** | Hotfix, single deliverable | 4-section minimum | None | None | engagement-workflow validate phase | 6 |
+| **M** | Multi-specialist, mid-stakes | Full 11-section | 1× peer-opus | Judge mode | engagement-workflow validate phase | 13 |
+| **L** | Cross-domain, high-stakes | Full + tasks INDEX | 5× consilium | Judge + adjudication | engagement-workflow validate phase | 21 |
 
 Tier is chosen at intake by heuristics: number of specialists involved,
 cross-domain nature, ux-heavy flag, risk profile. `size-detect.py
@@ -569,118 +568,83 @@ Every adversary run writes to `engagement/events.jsonl` via the shared
 `satisfied → ACCEPT`, `rework_required` / `suspicious_too_clean` →
 `REJECT`, `fail` → `REJECT`).
 
-## 8.5 Engagement-level orchestration (engagement_lg.py)
+## 8.5 Pre-gate orchestration (engagement-workflow)
 
-The third LangGraph engine, added in v0.2.2 and completed in v0.2.3. Owns the **full engagement lifecycle** from intake
-through archive — the layer that was implicit in v0.1 (lead agents
-coordinated work through artefact files alone). `engagement_lg.py` makes
-the lifecycle explicit as a `StateGraph` with checkpointable state, HITL
-pause points, and subprocess delegation to the two phase-level engines
-(`validator_lg.py`, `adversary_lg.py`).
+The **engagement-workflow** is a Claude Code **Workflow-tool script**
+(`workflows/engagement-workflow.js`) that the main loop conducts after
+`agency-intake` locks `criteria.md`. It owns the whole pre-gate cascade —
+from planning to the handoff gate — then STOPS at the **handoff seam**,
+where the LangGraph human-gate (consilium -> directive -> manager
+acceptance, sections 10-11) takes over. The boundary is the human
+decision: everything before it is the Workflow; the human-pause and
+acceptance machinery stays LangGraph.
 
-### State and node graph
+### Phases
 
 ```mermaid
 flowchart TB
-    START([START])
-    INT[intake_node<br/>read criteria.md + size-detect --auto-promote]
-    CL{HITL: criteria_lock<br/>opt-in --interrupt-on-criteria}
-    PLAN[plan_node<br/>claude -p --agent {domain}-lead<br/>writes plan.md w/ specialists]
-    DG{HITL: danger_gate<br/>conditional on danger-scan findings}
-    DISP[dispatch_node<br/>Send fan-out per specialist]
-    SPEC[specialist_node<br/>parallel via Send<br/>claude -p --agent X]
-    BAR[barrier_dispatch_node<br/>sync after specialist fan-out]
-    VAL[validate_node<br/>subprocess validator_lg.py --auto]
-    CONS[consilium_node<br/>subprocess adversary_lg.py --consilium TIER]
-    HD{HITL: human_directive<br/>MANDATORY M/L after consilium}
-    MGR[manager_accept_node<br/>claude -p --agent {domain}-manager<br/>writes acceptance-log.md]
-    ARCH[archive_node<br/>engagement-archive.py]
-    END([END])
+    START([main loop invokes])
+    PLAN[discovery · lead:plan<br/>reads criteria.md → tasks / waves / validators]
+    DEC[decompose · gated<br/>L, or M with ≥2 specialists → tasks/*.md + INDEX]
+    DEL[deliver · specialist waves<br/>isolated git worktrees · per-task review→rework · per-wave consolidate]
+    VAL[validate<br/>validators in parallel + adversarial-verify each finding]
+    HO[handoff · tier-aware sections]
+    GATE[gate · handoff-precheck.py]
+    SEAM([handoff seam → LangGraph human-gate])
+    STOP([hard-stop · readyForAcceptance = false])
 
-    START --> INT
-    INT --> CL
-    CL --> PLAN
-    PLAN --> DG
-    DG --> DISP
-    DISP -->|Send per specialist| SPEC
-    DISP -->|empty list| BAR
-    SPEC --> BAR
-    BAR --> VAL
-    VAL -->|REJECT + iter<max| PLAN
-    VAL -->|tier in {M,L}| CONS
-    VAL -->|tier S| MGR
-    CONS --> HD
-    HD -->|REJECT_NOW| END
-    HD --> MGR
-    MGR -->|REJECT + iter<max| PLAN
-    MGR -->|ACCEPT| ARCH
-    MGR -->|ABORTED| END
-    ARCH --> END
+    START --> PLAN --> DEC --> DEL --> VAL --> HO --> GATE --> SEAM
+    DEL -->|blocked / review-failed / malformed plan| STOP
 
     classDef node fill:#dbeafe,stroke:#2563eb,color:#000
-    classDef hitl fill:#fef3c7,stroke:#d97706,color:#000
     classDef term fill:#dcfce7,stroke:#16a34a,color:#000
-
-    class INT,PLAN,DISP,SPEC,BAR,VAL,CONS,MGR,ARCH node
-    class CL,DG,HD hitl
-    class START,END term
+    class PLAN,DEC,DEL,VAL,HO,GATE node
+    class START,SEAM,STOP term
 ```
 
-State is a 20-field `EngagementState` TypedDict: tier, domain, ux_heavy,
-iter_n / iter_max, per-phase verdicts, specialist_results (annotated
-`list + operator.add` reducer for safe parallel Send branches),
-hitl_enabled, paused_at, human_directive, started_at, last_phase_at,
-error, mock (bool, propagates `--mock` CLI flag to subprocess wrappers).
+- **discovery (`lead:plan`)** — the domain lead runs as the planning step:
+  reads `criteria.md`, sizes the engagement, and returns tasks, validators,
+  and a wave grouping (with dependencies). The lead does not dispatch.
+- **decompose** (gated: tier L, or M with >=2 specialists) — writes the
+  atomic `tasks/*.md` + `tasks/INDEX.md`.
+- **deliver** — sequential waves; within a wave, one specialist per task in
+  parallel, each in its OWN git worktree branched off the current
+  integration HEAD (so a later wave sees earlier waves' merged work). Each
+  task carries a scoped review -> bounded-rework loop (tier budget S=1 /
+  M=2 / L=3). At the wave barrier the phase consolidates: **code** mode
+  octopus-merges the disjoint branches (overlap -> sequential-merge +
+  resolver) and runs repo-root tests; **artefact** mode (design / marketing
+  deliverables not merged as code) manifest-verifies each file exists and
+  is non-empty.
+- **validate** — every validator in the plan runs in parallel (by
+  agentType), then each non-info finding is **adversarially verified** by an
+  independent skeptic (refuted findings dropped). The phase writes the
+  per-validator `validation-outputs/{validator}-iter-N-{ts}.json` with the
+  canonical envelope — byte-identical to what `validator_lg.py` writes, so
+  `handoff-precheck.py` and the manager consume them unchanged.
+- **handoff** — assembles the tier-aware `handoff.md`.
+- **gate** — runs `handoff-precheck.py --mode ready`; returns
+  `readyForAcceptance`.
 
-### Three execution modes
+### Robustness
 
-| Mode | What runs | When to use |
-|---|---|---|
-| `--dry-run` (default) | Placeholders skip real work; graph completes deterministically with skeleton ACCEPT verdicts | Smoke-test graph structure / checkpointer / HITL wiring without spending tokens |
-| `--mock` | Real graph paths exercised; subprocess wrappers write canned artefacts (plan.md, executor-reports, consilium-summary, acceptance-log) | End-to-end smoke on a box without `claude` CLI installed — validates the full state machine including fan-out, barrier, rework loop, REJECT_NOW short-circuit |
-| `--real` | Full subprocess to `claude -p --agent X` + sibling LG scripts | Production engagement |
+A wave **hard-stops** the engagement (`readyForAcceptance = false`, no
+consolidation) if any task is blocked, crashes, or does not genuinely pass
+its scoped review, or if the plan is malformed (duplicate / unknown / orphan
+task ids) — there is no silent proceed past a broken wave. State is the
+Workflow run journal: re-invoking with `resumeFromRunId` replays completed
+steps from cache and re-runs only the changed or failed ones.
 
-`--real` and `--mock` are mutually exclusive (CLI parser error). Default
-stays `--dry-run` until field validation promotes `--real` to default.
+### Why a Workflow here, LangGraph at the gate
 
-### Subprocess delegation vs sub-graphs
-
-`engagement_lg.py` calls `validator_lg.py` and `adversary_lg.py` as
-**separate processes** (subprocess delegation), not as in-process
-sub-graphs. Rationale:
-
-1. **Crash isolation** — a hang or memory blowup in adversary doesn't
-   take down the engagement-level graph.
-2. **Independent checkpointers** — each engine has its own SQLite file;
-   merging them is a separate design decision.
-3. **Observability through unified ledger** — all three engines emit to
-   the same `engagement/events.jsonl` via the shared `lib/ledger.py`
-   shim. The cross-engine timeline reconstructs by `cat events.jsonl |
-   jq`.
-4. **Promotion path is open** — when subprocess overhead becomes a
-   measurable bottleneck (needs field data), promotion to in-process
-   sub-graph is incremental: wrap the existing engine in a
-   `build_validator_subgraph()` factory and use
-   `builder.add_node("validate", validator_subgraph)`.
-
-### HITL pause points (3)
-
-| Pause | When | Default | Resume payload |
-|---|---|---|---|
-| `criteria_lock` | After intake, before plan | OFF (`--interrupt-on-criteria` to enable) | `{decision: PROCEED \| ABORT}` |
-| `danger_gate` | After plan, before dispatch, only if danger-scan finds unauthorized ops | AUTO (only when findings) | `{decision: PROCEED, scope_sync_updated: true}` |
-| `human_directive` | After consilium, before manager_accept (M/L only) | MANDATORY M/L | `{decision: PROCEED_TO_VERDICT \| REJECT_NOW \| DIRECTED_VERDICT, note, reasons}` |
-
-All three use the `interrupt(payload)` primitive + `Command(resume=payload)`
-pattern, identical to `adversary_lg.py`'s `_interrupt_apply_directive_node`.
-
-### Event ledger payload types added
-
-Three new payload types in v0.2.2: `engagement_completed` (final, with
-overall verdict + duration), `phase_skipped` (e.g. consilium for S-tier
-short-circuits with a phase_skipped event), `dryrun_marker` (emitted at
-graph start when `--dry-run` to make skeleton runs visible in the
-ledger).
+The pre-gate cascade is deterministic fan-out — plan, parallel waves,
+worktree isolation, consolidation, validate — which the Workflow tool
+expresses directly (and runs out-of-band, surviving a main-loop
+compaction). The human-gate needs a durable interactive pause; that is
+LangGraph's `interrupt()` stronghold, so consilium + acceptance stay there.
+The seam is exactly the line between the two. A second Workflow engine,
+`skillopt-workflow.js`, runs the director's SkillOpt cycle out-of-band
+(section 12).
 
 ## 9. Consilium synthesis (L-tier)
 
@@ -902,7 +866,7 @@ parsing the JSONL directly.
 | **Format-first validation** | Validators check root causes; format is split out into a separate mechanical layer; the canonical envelope enforces verdict / severity normalization |
 | **Vector-only communication** | Findings are passed in full text; dedup is via textual similarity |
 | **Silent rule drift mid-engagement** | Authority invariant rule 7: engagement snapshots loaded skills at start |
-| **Mid-lead routing for 1-specialist work** | Tier-aware policy: mid-leads forbidden on S, optional on M, required on L |
+| **Coordinator layer for 1-specialist work** | No separate coordinator layer — the lead plans waves; the engagement-workflow fans specialists out directly by `task.owner` |
 | **Reflection bloat** | Per-engagement reflection strict constraint: `target = skill/agent rule`, `class ∈ {rule_missing, rule_wrong, rule_ignored}`. Zero reflections is valid. |
 
 ## 18. Entry point and flow
@@ -934,36 +898,36 @@ The system then runs the engagement autonomously through all layers:
 sequenceDiagram
     autonumber
     participant U as Human
-    participant SK as agency-intake (skill)
-    participant L as Domain Lead
+    participant ML as Main loop · agency-intake
+    participant WF as engagement-workflow · Workflow
     participant SP as Specialists
     participant V as Validators
-    participant SC as Scripts (orchestration)
+    participant SC as LangGraph + scripts
     participant ADV as Adversary subprocess
-    participant M as Manager (acceptor)
+    participant M as Manager · acceptor
     participant FS as engagement/
 
-    U->>SK: trigger phrase
-    SK->>FS: classify → criteria.md (S/M/L)
-    SK->>L: handoff to lead
+    U->>ML: trigger phrase
+    ML->>FS: classify → criteria.md (S/M/L)
+    ML->>WF: invoke engagement-workflow
 
     rect rgb(245, 245, 250)
-        Note over L,V: Producing phase
-        L->>FS: plan.md
-        L->>SP: dispatch tasks
-        SP->>FS: executor-reports/
-        L->>V: dispatch validators (validator_lg.py --auto on M/L)
+        Note over WF,V: Pre-gate cascade (Workflow) — stops at the seam
+        WF->>WF: discovery · lead:plan → plan.md (tasks / waves / validators)
+        WF->>SP: deliver — specialist waves in git worktrees (review→rework)
+        SP->>FS: executor-reports/ + consolidated work
+        WF->>V: validate — validators in parallel + adversarial-verify
         V->>FS: validation-outputs/*.json (raw + canonical envelope)
-        L->>FS: handoff.md
+        WF->>FS: handoff.md
+        WF->>SC: gate · handoff-precheck.py
+        SC-->>WF: exit 0 / fail
     end
-
-    L->>SC: handoff-precheck.py
-    SC-->>L: exit 0 / fail
+    WF-->>ML: readyForAcceptance — handoff seam
 
     alt M/L tier
         rect rgb(245, 250, 245)
-            Note over SC,ADV: Adversary phase
-            SC->>ADV: adversary_lg.py --consilium {M|L}
+            Note over SC,ADV: Adversary phase (LangGraph human-gate)
+            ML->>SC: adversary_lg.py --consilium {M|L} --interrupt
             Note over ADV,FS: events.jsonl: consilium_started / consilium_role_completed per role
             ADV->>FS: validation-outputs/{role}-*-preliminary.json
             ADV->>FS: validation-outputs/{role}-*-final.json
@@ -975,7 +939,7 @@ sequenceDiagram
             Note over U,M: Human + Manager phase
             U->>SC: PROCEED / REJECT / DIRECTED
             SC->>FS: human-directive.py → human-directive.md
-            SC->>M: invoke manager (judge mode)
+            ML->>M: invoke {domain}-manager (judge mode)
             M->>FS: acceptance-log.md per directive
             M->>FS: engagement-reflections.md (0–3 actionable)
             M->>SC: director-verdict-check.py
@@ -984,8 +948,7 @@ sequenceDiagram
         Note over U: Human glance — accept / reject directly
     end
 
-    SC-->>U: ACCEPT
-    SC->>FS: engagement-archive.py — idempotent archival
+    ML->>FS: engagement-archive.py — idempotent archival (on ACCEPT)
 ```
 
 S-tier skips adversary, consilium, and manager phase: producer

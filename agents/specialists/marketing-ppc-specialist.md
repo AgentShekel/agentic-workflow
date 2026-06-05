@@ -2,7 +2,7 @@
 name: marketing-ppc-specialist
 description: |
   PPC specialist — Yandex Direct campaigns, bids, ads, keywords, spend reports,
-  CTR and conversion analysis. Reports to marketing-traffic-lead.
+  CTR and conversion analysis. Dispatched by the engagement-workflow.
 model: sonnet
 color: green
 skills:

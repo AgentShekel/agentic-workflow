@@ -45,7 +45,7 @@ A pattern qualifying for a cycle = **≥3 engagements** showing the same class (
 
 ## Domain-owned vs commons
 
-**You own (full authority after gate):** `dev-lead`, `dev-manager`, all `dev-*` specialists, and dev methodology skills — `code-writing`, `code-reviewing`, `dev-methodology`, `feature-execution`, `feature-research`, `tech-spec-planning`, `task-decomposition`, `testing-methodology`, `deploy-pipeline`, `infrastructure-setup`, `persistent-tasks-methodology`, `project-planning`, `user-spec-planning`, `documentation-writing`, `security-auditing`.
+**You own (full authority after gate):** `dev-lead`, `dev-manager`, all `dev-*` specialists, and dev methodology skills — `code-writing`, `code-reviewing`, `dev-methodology`, `feature-research`, `tech-spec-planning`, `task-decomposition`, `testing-methodology`, `deploy-pipeline`, `infrastructure-setup`, `project-planning`, `user-spec-planning`, `documentation-writing`, `security-auditing`. (`feature-execution` + `persistent-tasks-methodology` were archived 2026-06-05 — superseded by the engagement-workflow deliver/resume.)
 
 **Commons (propose only, escalate to human):** `engagement-protocol`, `validation-pipeline`, `acceptance-protocol`, `system-optimization-protocol`, `docs-pipeline`, `agency-intake`, `codex-bridge`, the shared validators (`code-reviewer`, `security-auditor`, `reality-checker`, `skeptic`, `anti-pattern-detector`, `product-context-validator`), and the manager/director agent definitions. See `system-optimization-protocol` §"Commons governance".
 

@@ -70,7 +70,7 @@ This Skill is not needed in the following situations:
 
 ## Quick Reference
 
-Per-category rule cheat-sheet (10 priority categories, ~230 lines of named rules with platform / WCAG sources) moved to **`references/quick-reference.md`** (now in `references/`). Load that file when:
+Per-category rule cheat-sheet (10 priority categories, ~230 lines of named rules with platform / WCAG sources) moved to **`references/quick-reference.md`** in v0.2. Load that file when:
 
 - doing an accessibility audit or contrast / focus-state check
 - selecting animation timing / motion patterns
@@ -341,7 +341,7 @@ python3 skills/ui-ux-methodology/scripts/search.py "fintech crypto" --design-sys
 
 ## Common Rules for Professional UI + Pre-Delivery Checklist
 
-Frequently-overlooked App UI rules (Icons & Visual Elements / Interaction / Light-Dark Contrast / Layout & Spacing) PLUS the 5-section Pre-Delivery Checklist (Visual Quality / Interaction / Light-Dark Mode / Layout / Accessibility) moved to **`references/professional-ui-rules.md`** (now in `references/`). Load that file at delivery time / pre-handoff sanity pass.
+Frequently-overlooked App UI rules (Icons & Visual Elements / Interaction / Light-Dark Contrast / Layout & Spacing) PLUS the 5-section Pre-Delivery Checklist (Visual Quality / Interaction / Light-Dark Mode / Layout / Accessibility) moved to **`references/professional-ui-rules.md`** in v0.2. Load that file at delivery time / pre-handoff sanity pass.
 
 Scope notice: rules + checklist are for App UI (iOS/Android/React Native/Flutter), not desktop-web interaction patterns.
 

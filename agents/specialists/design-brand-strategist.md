@@ -2,7 +2,7 @@
 name: design-brand-strategist
 description: |
   Brand strategist — brand voice, positioning, messaging frameworks,
-  tone-of-voice, brand consistency rules. Reports to design-brand-lead.
+  tone-of-voice, brand consistency rules. Dispatched by the engagement-workflow.
 model: sonnet
 color: green
 skills:

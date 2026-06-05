@@ -2,7 +2,7 @@
 name: design-ux-designer
 description: |
   UX designer — user flows, information architecture, wireframes, interaction
-  design, usability decisions, accessibility. Reports to design-product-design-lead.
+  design, usability decisions, accessibility. Dispatched by the engagement-workflow.
 model: sonnet
 color: green
 skills:

@@ -2,6 +2,26 @@
 
 All notable changes to agentic-workflow.
 
+## v0.3 — 2026-06-05 (Engagement orchestration unified under the engagement-workflow Workflow)
+
+The pre-gate cascade — everything from planning to the handoff gate — is now a single Claude Code **Workflow-tool script**, `workflows/engagement-workflow.js`, conducted by the main loop. The LangGraph human-gate (consilium → directive → manager acceptance) remains the active acceptance path after the handoff seam. The boundary is the human decision: deterministic fan-out before it (the Workflow), the durable interactive pause after it (LangGraph).
+
+### Architecture
+
+- **engagement-workflow** (`workflows/engagement-workflow.js`) — the pre-gate cascade: discovery (`lead:plan`) → decompose (gated: L, or M with ≥2 specialists) → deliver (specialist waves in isolated git worktrees, per-task review→rework, per-wave consolidation — code octopus-merge / artefact manifest-verify) → validate (validators in parallel + adversarial-verify each finding) → handoff → gate (`handoff-precheck.py`). Stops at the handoff seam, returning `readyForAcceptance`.
+- **skillopt-workflow** (`workflows/skillopt-workflow.js`) — the director SkillOpt cycle as a Workflow (harvest due signals → Codex proposes bounded edits → golden-set gate → promote / reject).
+- **Domain leads are planning-only** — each `{domain}-lead` is the workflow's `lead:plan` step. Specialist coordination is structural: encoded as the wave grouping in the plan, so tier complexity scales by adding waves rather than a routing tier.
+- **Two LangGraph engines** (`adversary_lg.py`, `validator_lg.py`) remain the human-gate machinery after the seam; the engagement-level orchestration is now the engagement-workflow Workflow (superseding the earlier engagement-level LangGraph engine).
+- **Robustness** — a delivery wave hard-stops the engagement (`readyForAcceptance = false`, no consolidation) if any task is blocked, fails its scoped review, or the plan is malformed; resume is the Workflow run journal (`resumeFromRunId`).
+
+### Counts
+
+58 agents (Managers 3 · Directors 3 · Leads 3 · Specialists 20 · Validators 29) · 46 skills · 16 main + 3 optional Python scripts · 2 Workflow engines + 2 LangGraph engines.
+
+### Docs
+
+All four narrative docs (`README.md` / `.ru.md`, `ARCHITECTURE.md` / `.ru.md`) refreshed to the new architecture — the five-layer diagram, the engagement-flow and §18 sequence diagrams, §8.5 (now *Pre-gate orchestration (engagement-workflow)*), the agents/skills catalogs, and the tier-dispatch table.
+
 ## v0.2.5 — 2026-05-28 (Doc refresh — engagement_lg.py architectural section + SkillOpt symmetry)
 
 Documentation-only release. After v0.2.4 shipped the Windows-compatibility bugfix, an audit of the four narrative docs (`README.md`, `README.ru.md`, `ARCHITECTURE.md`, `ARCHITECTURE.ru.md`) surfaced eight gaps where structural changes from v0.2.2 / v0.2.3 / v0.2.4 had been mentioned in version banners but had not propagated into the corresponding catalog sections. All eight closed in this release. **Zero code changes.**
@@ -357,7 +377,7 @@ Cumulative delta against v0.1 baseline. Covers incremental refactor passes, the 
   - `*-manager` (NEW): per-engagement ACCEPTOR (3 agents: dev/design/marketing-manager). Loads `acceptance-protocol` skill. Judges between producer and adversary, never re-runs validators.
   - `*-director` (REPURPOSED): per-domain SYSTEM-OPTIMIZER (out-of-band). Loads `system-optimization-protocol` skill. Runs SkillOpt-style skill-evolution loop: reflect → bounded edit → golden gate → promote. **Judge-only — Codex proposes edits via codex-bridge (cross-family).**
   - Origin: SkillOpt (Microsoft) "train the procedure, not the weights" — adapted, not full auto-loop (low volume, subjective output).
-- **Gamedev domain fully removed** — 46 gd-* agents + 51 gd-* commands + 11 gd-* skills deleted. the project kept in user memory.
+- **Gamedev domain retired** — the gamedev agents / commands / skills were moved out of the framework to keep it focused on the dev / design / marketing domains.
 - **Mid-leads soft-consolidated** — engagement-protocol skill +57 lines (canonical Engagement-mode contract + Criteria propagation sections); 3 top-leads -75 lines (heartbeat dupe removed); 8 mid-leads -443 lines total. Net: -461 lines of duplicate body.
 - **Layer 5 closure (researchers)** — 3 NEW researcher agents (code-researcher, brand-context-researcher, design-system-researcher) + product-context-validator for cross-domain coherence.
 

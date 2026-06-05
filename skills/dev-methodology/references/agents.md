@@ -11,10 +11,7 @@ input, do one job, return structured output.
 ## Dev Track Leadership
 - `dev-director` — system-optimizer (out-of-band); does NOT accept engagements
 - `dev-manager` — acceptor for dev-lead handoffs; writes accept/reject verdict (does not plan or execute)
-- `dev-lead` — plans + dispatches; owns the engagement
-- `dev-product-lead` — discovery track (planning, research, user-spec)
-- `dev-engineering-lead` — delivery track (tech-spec, tasks, execution)
-- `dev-quality-lead` — QA and review track (reviewers, security, pre/post-deploy)
+- `dev-lead` — plans the engagement (the `lead:plan` step of the `engagement-workflow` Workflow); does NOT dispatch — the Workflow script fans out specialists/validators
 - `dev-tech-architect` — tech-spec author + task decomposition
 
 ## Validators (run during spec/task creation)

@@ -142,6 +142,25 @@ If `size` is missing or invalid → treat as M (safe default). Verify via `pytho
    Pass 1: subprocess on curated copy (no handoff visible) → preliminary findings. Pass 2: subprocess on full engagement + preliminary findings injected → final adversary JSON. Outputs:
    - `engagement/validation-outputs/peer-opus-iter-{N}-preliminary-{ts}.json`
    - `engagement/validation-outputs/peer-opus-iter-{N}-{ts}.json`
+
+   > **Runbook — the consilium runs IN-SESSION (M and L alike).** `adversary_lg.py` dispatches each
+   > reviewer as a `claude -p` subprocess that rides your subscription: it self-bootstraps its venv,
+   > self-discovers the claude binary even when off PATH, and grants the reviewer read-only
+   > Read/Glob/Grep on the engagement. It is NOT a separate "director sub-process stack" and is NOT
+   > "unavailable" inside an agent session. If a role errors on permissions/PATH/venv, that is a bug
+   > to fix or escalate ONCE — **never silently skip the consilium or substitute independent-validator
+   > judgment for it** (a permissions/PATH misdiagnosis can otherwise skip the consilium entirely; the
+   > dispatch path is fixed — do not re-derive that skip).
+   >
+   > **A reviewer hang is NOT valid grounds to waive.** The empty-timeout reviewer hang (a headless
+   > `claude -p`/`codex` blocking on inherited stdin) is fixed and field-validated: the full L
+   > consilium runs clean — 5/5 roles × 2 iterations with real per-role JSON and a script-generated
+   > `consilium-summary.md`, and the cross-family reviewer catches issues the same-family validators
+   > miss. A `criteria.md` §note that waives the consilium on "adversary_lg hangs / empty timeout"
+   > grounds is STALE and INVALID — the engine runs in-session; run it. (Cross-repo deliverables
+   > — a donor->host transplant — need the host repo granted to the claude-family reviewers: set
+   > `criteria.md` `extra_roots:` or pass `adversary_lg.py --extra-add-dir <host-repo>`, do not waive.)
+
 5. **Synthesize:**
    ```bash
    python ~/.claude/scripts/consilium-synth.py engagement/
@@ -363,6 +382,13 @@ After writing the verdict (ACCEPT or REJECT) on every M/L engagement, the manage
 - the failure points at a specific `skill: X` or `agent: Y` rule that should change, AND
 - you can classify it as `rule_missing` / `rule_wrong` / `rule_ignored` (the SkillOpt taxonomy).
 
+**`target` semantics (finding F2 — load-bearing).** Point `target` at the skill/agent whose
+CONTENT must change to ENFORCE the catch (the rule/validator that would PRODUCE the catching
+artefact), NOT at the agent that produced the buggy output. A wrong target sends the optimizer's
+edit to the wrong file (right pattern, wrong place → gate-rejected, wasted cycle). If the real fix
+is a script, write `target: script: <file>` — recorded for the dev-director sweep but excluded
+from the SkillOpt readiness count (the loop edits skills/agents, not scripts).
+
 **Discard:** generic observations ("tests took long", "we had a typo", "could've been faster", "validator was slow"). Noise here surfaces as false signals at scale and degrades the director's signal-to-noise.
 
 **Format** (one block per reflection, append-only):
@@ -373,7 +399,15 @@ After writing the verdict (ACCEPT or REJECT) on every M/L engagement, the manage
   class: rule_missing | rule_wrong | rule_ignored
   observation: {1–2 lines describing the gap}
   evidence: {acceptance-log path / validator output path / consilium path}
+  resolved: {YYYY-MM-DD — how}   # OPTIONAL — add later if the gap is closed by a direct fix
 ```
+
+**`resolved:` convention.** Reflections are append-only and never edited away — but when a
+reflection's gap is later closed by a direct fix (outside a SkillOpt cycle), append a `resolved:`
+line under it. `skillopt-ready.py` then drops it from the readiness count, exactly as it does for a
+`resolved:` log signal. A reflection whose issue is also recorded as a log SIGNAL needs no marker:
+the checker already treats a log twin (same engagement + taxonomy) as authoritative and skips the
+reflection, so the log's `resolved:` covers both.
 
 **Zero reflections is a valid outcome** — a clean engagement with nothing to change should leave `engagement-reflections.md` empty (file may not exist at all). Inventing reflections to look productive corrupts the signal.
 
@@ -646,6 +680,7 @@ Read `metrics.jsonl` directly (one JSON per line) for retrospectives or to compu
 - **Don't run director phase on S-tier.** S has no director. Producer self-attest + mechanical + human glance.
 - **Don't skip adversary on M.** That's the whole point of M acceptance — adversary breaks framing contamination.
 - **Don't skip consilium on L.** Single Opus adversary on L misses cross-family blind spots.
+- **Don't skip the consilium because it "looks unavailable."** It runs in-session via subprocess `claude -p` (self-bootstrapping venv, off-PATH binary discovery, read-tool grant — see Runbook above). A permission/PATH/venv error is a bug to fix or escalate ONCE, never grounds to accept M/L without it. Substituting independent-validator coverage for the mandatory consilium is a silent skip (the dispatch-gap that forced this was fixed 2026-06-01; the reviewer empty-timeout hang was fixed + field-confirmed 2026-06-02 — "adversary_lg hangs" is no longer a valid waiver, see Runbook).
 - **Don't loop silently.** Escalate immediately on repeating critique. Counter-based escalation is the floor.
 - **Don't write "slot N/M" anywhere.** Slot language banned across all agency artefacts.
 - **Don't demote tier mid-engagement.** Auto-promote is one-way; if scope shrinks, acceptance still uses higher tier.

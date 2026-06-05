@@ -26,8 +26,8 @@ the broken unit (one logo direction, one component spec, one screen variant).
 | **M** | RECOMMENDED if ≥2 specialists OR brand+UI mixed | iter-2 cost saving outweighs decomposition overhead. |
 | **L** | YES | Full rebrand + product UI + design system requires explicit dependency graph and token-propagation tracking. |
 
-If lead skips decomposition on a size: L engagement, director will REJECT
-on `## Tasks` missing — same gate as missing `## Validation log`.
+If the plan skips decomposition on a size: L engagement, the handoff gate fails
+(handoff-precheck) on missing `tasks/` — same gate as a missing `## Validation log`.
 
 ## Inputs
 
@@ -74,8 +74,8 @@ Design has hard sequence rules from `design-lead` skill:
 3. Component tasks MUST land before screen tasks (screen consumes component).
 4. Brand identity tasks (logo, CIP) are independent of token/component chain — separate dependency tree.
 
-Encode this in `depends_on`. Director enforces order: a screen task with
-`depends_on: []` is REJECTed because tokens must precede.
+Encode this in `depends_on`. The Workflow runs waves in dependency order, so a
+screen task with `depends_on: []` is a planning error — tokens must precede it.
 
 ## Task file template
 
@@ -90,7 +90,7 @@ depends_on: [{task-NN}, ...]          # honour brand→tokens→components→scr
 wave: {N}                             # tasks with same wave can run in parallel
 status: pending | in_progress | done | blocked
 estimated_effort: XS | S | M          # XS = <30 min, S = ≤2h, M = ≤half day; L per task = split further
-validators: [{validator-name}, ...]   # critique, accessibility-validator, design-review, ux-review
+validators: [{validator-name}, ...]   # accessibility-validator, ux-review, reality-checker, product-context-validator
 crit_refs: [crit-{N}, ...]            # criteria.md bullets this task addresses
 theme: light | dark | both            # for screen / component tasks
 breakpoint: mobile | tablet | desktop | all  # for screen / component tasks
@@ -153,30 +153,23 @@ For each task file:
 
 If any check fails — fix the file, don't dispatch.
 
-### Phase 3: Dispatch (lead → mid-leads → specialists)
+### Phase 3: Execution (the engagement-workflow Workflow runs the waves)
 
-Pass tasks grouped by track:
+The decomposed `tasks/*.md` feed the Workflow's deliver phase. There is NO mid-lead dispatch tier — each task's `owner` field names the specialist agentType directly, and the Workflow dispatches it wave-by-wave (same-wave tasks run in parallel on disjoint artefact paths). Typical owners: `design-ui-designer` (tokens, components, screens), `design-ux-designer` (flows), `design-presentation-designer` (slides), `design-brand-strategist` (voice), `design-visual-designer` (logo, CIP, assets).
 
-- `design-brand-lead` ← `design-brand-strategist`, `design-visual-designer` tasks (voice, logo, CIP, assets).
-- `design-product-design-lead` ← `design-ux-designer`, `design-ui-designer`, `design-presentation-designer` tasks (tokens, components, screens, flows, slides).
-
-Each mid-lead receives the list of task file paths and dispatches specialists wave-by-wave.
-
-Specialists open their assigned task file, do the work, append result to
-`executor-reports/{specialist-agent-name}.md` § "Task {NN}: {title}", and update
-the task file's `status: done`.
+Each specialist opens its assigned task, does the work, writes the artefact to its engagement path, and appends its result to `executor-reports/{specialist-agent-name}.md` § "Task {NN}: {title}".
 
 ### Phase 4: Iter-2 retargeting (on REJECT)
 
-When director rejects, read blocking items. Find tasks where:
+On an iter-2 REJECT, the Workflow's rework loop re-runs ONLY the affected tasks — those where:
 - `crit_refs` includes the failing crit-N, OR
-- `deliverable_type` matches the rejected artefact (e.g. director says "screen X has wrong button radius" → re-run the screen task AND the button component task if token drifted).
+- `deliverable_type` matches the rejected artefact (e.g. the verdict says "screen X has wrong button radius" → re-run the screen task AND the button component task if the token drifted).
 
-Re-dispatch only those tasks. Specialist appends `## Iteration 2` to their executor-report (per `engagement-protocol` §4-iter).
+Only those tasks re-run; the specialist appends `## Iteration 2` to its executor-report (per `engagement-protocol` §4-iter).
 
 ## Token propagation safety
 
-Design's biggest iter-2 trap: a token changes (wave 2), but components (wave 3) and screens (wave 4) don't get re-rendered. Lead's Phase 4 must check:
+Design's biggest iter-2 trap: a token changes (wave 2), but components (wave 3) and screens (wave 4) don't get re-rendered. The plan's `depends_on` must guarantee:
 
 - If a wave-2 token task is re-run on iter-2, every wave-3 component task that consumed that token MUST also re-run, and every wave-4 screen using those components MUST re-render.
 - This is automatic IF `depends_on` is wired correctly. Manual audit: trace the dependency graph from the changed token and queue everything downstream.
@@ -189,7 +182,7 @@ Design's biggest iter-2 trap: a token changes (wave 2), but components (wave 3) 
 - **Don't write `tasks/*.md` content longer than 50 lines.** Spec details belong in `executor-reports/{specialist}.md`.
 - **Don't violate sequence.** A screen task with no token dependency = REJECT.
 - **Don't put the same `crit-N` in `crit_refs` of >5 tasks.** If a criterion needs that many tasks, sharpen criteria.md (lead-authority, no user touch).
-- **Don't make a task's `owner` a mid-lead.** Owners are specialists.
+- **Don't make a task's `owner` a lead.** Owners are specialists (the lead plans; the engagement-workflow dispatches).
 - **Don't skip `theme` field on UI tasks.** Light-only and both-themes have different acceptance bars; ambiguity here causes iter-2 "we forgot dark mode".
 - **Don't number tasks before verifying dependencies.** A non-monotonic `depends_on` (task 05 depends on task 12) hides bugs — re-number after dependency lock.
 

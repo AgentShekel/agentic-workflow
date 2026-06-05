@@ -2,8 +2,7 @@
 name: marketing-ai-visibility-specialist
 description: |
   AI visibility specialist — visibility audits across ChatGPT, Perplexity,
-  Gemini, Claude, DeepSeek, Copilot, Yandex Neyro. Reports to
-  marketing-analytics-lead.
+  Gemini, Claude, DeepSeek, Copilot, Yandex Neyro. Dispatched by the engagement-workflow.
 model: sonnet
 color: green
 skills:

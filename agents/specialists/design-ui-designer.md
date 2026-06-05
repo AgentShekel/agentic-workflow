@@ -3,7 +3,7 @@ name: design-ui-designer
 description: |
   UI designer — design system (tokens, components, specs), visual UI design,
   shadcn/ui + Tailwind styling decisions, dark mode, responsive layouts.
-  Reports to design-product-design-lead.
+  Dispatched by the engagement-workflow.
 model: sonnet
 color: green
 skills:

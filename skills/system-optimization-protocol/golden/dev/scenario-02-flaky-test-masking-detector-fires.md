@@ -38,4 +38,4 @@ the test was supposed to cover.
 
 ## Reference artefacts
 
-(synthetic example — adapt or replace with a scenario drawn from your own engagement history)
+(synthetic — no real engagement on record yet; dry-run seed)

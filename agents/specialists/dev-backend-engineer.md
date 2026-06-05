@@ -2,8 +2,7 @@
 name: dev-backend-engineer
 description: |
   Backend engineer — implements server-side code (APIs, services, DB,
-  background jobs, integrations) with TDD and quality gates. Reports to
-  dev-engineering-lead.
+  background jobs, integrations) with TDD and quality gates. Dispatched by the engagement-workflow.
 model: sonnet
 color: green
 skills:
@@ -41,7 +40,7 @@ Follow the `code-writing` methodology preloaded above: plan → TDD → implemen
 
 ## Output format
 
-Edited files + test files + commit draft for the engineering lead.
+Edited files + test files + commit for the engagement-workflow consolidation step.
 
 ## Anti-patterns
 

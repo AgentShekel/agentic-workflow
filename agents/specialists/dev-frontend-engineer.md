@@ -2,8 +2,7 @@
 name: dev-frontend-engineer
 description: |
   Frontend engineer — implements client-side code (UI components, state, forms,
-  routing, API integration) with TDD and quality gates. Reports to
-  dev-engineering-lead.
+  routing, API integration) with TDD and quality gates. Dispatched by the engagement-workflow.
 model: sonnet
 color: green
 skills:

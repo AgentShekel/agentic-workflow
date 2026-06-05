@@ -23,7 +23,6 @@ detailed contract, load the skill's `SKILL.md` directly.
 |-------|---------|
 | `code-writing` | TDD cycle: plan → tests → code → review |
 | `prompt-engineering` | LLM prompt engineering: write, improve, verify prompts |
-| `feature-execution` | Team lead dispatches agents by wave; teammates commit own code, lead commits statuses |
 | `pre-deploy-qa` | Pre-deploy acceptance testing: tests + acceptance criteria |
 | `post-deploy-qa` | Post-deploy verification on live environment via MCP tools |
 

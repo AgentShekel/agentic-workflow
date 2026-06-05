@@ -3,7 +3,7 @@ name: design-visual-designer
 description: |
   Visual designer — Codex/ChatGPT-directed logo generation, corporate identity program
   (CIP mockups), icon design (SVG), social photo compositions.
-  Reports to design-brand-lead.
+  Dispatched by the engagement-workflow.
 model: sonnet
 color: green
 skills:

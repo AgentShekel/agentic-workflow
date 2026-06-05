@@ -2,7 +2,7 @@
 name: marketing-keyword-researcher
 description: |
   Keyword researcher — Yandex Wordstat semantic core, missed-demand analysis,
-  keyword clustering, intent mapping. Reports to marketing-traffic-lead.
+  keyword clustering, intent mapping. Dispatched by the engagement-workflow.
 model: sonnet
 color: green
 skills:

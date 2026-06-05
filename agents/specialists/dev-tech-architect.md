@@ -3,8 +3,8 @@ name: dev-tech-architect
 description: |
   Tech architect — creates tech-spec from approved user-spec (architecture,
   decisions, testing strategy, implementation plan) and decomposes into
-  atomic task files with validation. Reports to dev-engineering-lead
-  (entry point for delivery track after product-lead hands off user-spec).
+  atomic task files with validation. Dispatched by the engagement-workflow
+  (entry point for the delivery track after the user-spec is approved).
 model: opus
 color: green
 skills:

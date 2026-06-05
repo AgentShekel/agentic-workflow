@@ -111,7 +111,7 @@ Analyze if additional information is needed based on user-spec and code research
    - **Security Audit** (skill: `security-auditing`) — OWASP Top 10 across all components
    - **Test Audit** (skill: `testing-methodology`) — test quality and coverage across all components
 
-   Auditors read all source files from the feature and write reports (analysis only). If issues found — feature-execution lead spawns a fixer agent, auditors become reviewers for the fix.
+   Auditors read all source files from the feature and write reports (analysis only). If issues found — the engagement-workflow deliver phase spawns a fixer agent, auditors become reviewers for the fix.
 
    **Final Wave:**
    - **QA** (skill: `pre-deploy-qa`) — always present. Acceptance testing: run all tests, verify acceptance criteria from user-spec and tech-spec.
