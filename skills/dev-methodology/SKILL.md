@@ -303,7 +303,12 @@ Long engagements run INSIDE the `engagement-workflow` Workflow, which executes o
 Track validator effectiveness and feature pipeline stats in `metrics.md` (template: `shared/work-templates/metrics.md.template`). Updated at Step 5 (Done). Tracks: validation round counts, false positive rates, common finding patterns. Used to tune validator sensitivity over time.
 
 ### Agent Model Optimization
-Template-compliance validators (task-validator, tech-spec-validator, skill-checker, documentation-reviewer, infrastructure-reviewer, deploy-reviewer) use `haiku` model — fast, cheap, sufficient for structural checks. Deep-reasoning validators (skeptic, completeness-validator, code-reviewer, security-auditor, performance-validator) use `sonnet`. Critical-path agents (dev-lead, dev-director, dev-tech-architect, pre-deploy-qa, post-deploy-qa, userspec-adequacy-validator, task-creator, reality-checker) use `opus`. Policy enforced by `~/.claude/scripts/assign-agent-models.py`.
+Each agent declares its model tier in its own `model:` frontmatter — the source of truth, travelling with the agent file. Policy by category:
+- **opus** — top-level leads, per-engagement acceptor managers, system-optimizer directors, `dev-tech-architect`, and verdict-bearing critical validators (`code-reviewer`, `security-auditor`, `skeptic`, `reality-checker`, `userspec-adequacy-validator`): a wrong call here corrupts everything downstream.
+- **haiku** — mechanical / template-compliance validators (`task-validator`, `tech-spec-validator`, `skill-checker`, `documentation-reviewer`, `infrastructure-reviewer`, `deploy-reviewer`, `accessibility-validator`, `prompt-reviewer`).
+- **sonnet** — everything else: engineers, designers, analysts, researchers, and non-critical deep-reasoning validators.
+
+Current distribution: 15 opus / 35 sonnet / 8 haiku (58 agents). Validate with `python ~/.claude/scripts/check-agent-models.py` — a roster-agnostic lint that fails if any agent is missing a `model:` line or declares an unknown tier (it hardcodes no agent names, so it never breaks on roster changes).
 
 ---
 
