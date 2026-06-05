@@ -2,6 +2,16 @@
 
 All notable changes to agentic-workflow.
 
+## v0.3.1 — 2026-06-05 (Model-policy docs reconciled + roster-agnostic lint)
+
+Documentation-accuracy fix plus a small maintenance tool. The `dev-methodology` model-policy section claimed a per-agent model table was enforced by a script (`assign-agent-models.py`) that hardcoded an agent roster, had gone stale (it listed agents archived in the v0.3 consolidation and would error against the current 58-agent corpus), and was never wired to any hook. The model tier is — and remains — declared in each agent's own `model:` frontmatter (the source of truth).
+
+### Changed
+- `dev-methodology` *Agent Model Optimization* — rewritten to the real per-category policy and the actual 15 opus / 35 sonnet / 8 haiku distribution; the stale enforcement-script reference is gone.
+
+### Added
+- `scripts/check-agent-models.py` — a roster-agnostic lint: fails if any agent is missing a `model:` line or declares a tier outside `{opus, sonnet, haiku}`. Hardcodes no agent names, so it never breaks when the roster changes.
+
 ## v0.3 — 2026-06-05 (Engagement orchestration unified under the engagement-workflow Workflow)
 
 The pre-gate cascade — everything from planning to the handoff gate — is now a single Claude Code **Workflow-tool script**, `workflows/engagement-workflow.js`, conducted by the main loop. The LangGraph human-gate (consilium → directive → manager acceptance) remains the active acceptance path after the handoff seam. The boundary is the human decision: deterministic fan-out before it (the Workflow), the durable interactive pause after it (LangGraph).
