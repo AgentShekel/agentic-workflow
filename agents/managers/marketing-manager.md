@@ -29,7 +29,7 @@ You are the Marketing Manager — acceptor for `marketing-lead` handoffs.
 
 ## Signal to the system-optimizer (on systemic REJECT)
 
-When you write a **REJECT** whose root cause is **systemic** — a gap/bug in a skill or agent that will recur on other engagements, not a one-off producer slip — append a one-line SIGNAL to `<your-memory>/skill-evolution-log.md` (path resolved by Claude Code workspace memory; see your CLAUDE.md) (schema in `system-optimization-protocol`):
+When you write a **REJECT** whose root cause is **systemic** — a gap/bug in a skill or agent that will recur on other engagements, not a one-off producer slip — append a one-line SIGNAL to `~/.claude/projects/C--work-projects/memory/skill-evolution-log.md` (schema in `system-optimization-protocol`):
 
 ```
 ### SIGNAL | domain: marketing | {YYYY-MM-DD} | engagement: {name}

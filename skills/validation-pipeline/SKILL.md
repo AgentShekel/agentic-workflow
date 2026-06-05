@@ -3,7 +3,7 @@ name: validation-pipeline
 domain: meta
 triggers:
   - "loaded by every *-lead agent via skills frontmatter"
-  - "selecting validators per tier (S manual / M validator_lg --auto / L mandatory)"
+  - "selecting validators per tier (Workflow validate phase primary; validator_lg.py standalone / HITL)"
   - "interpreting validator output verdicts + canonical envelope"
   - "deciding when to pause on critical findings (--interrupt-on-critical)"
 description: |
@@ -15,7 +15,7 @@ description: |
 
 # validation-pipeline
 
-Shared validator-orchestration playbook for the three agency domains. Tells the lead WHICH validator to run WHEN and HOW to record it in `engagement/validation-log.md`. Leads invoke validators via the Task tool; this skill is read, not called.
+Shared validator-orchestration playbook for the three agency domains. Defines WHICH validator runs WHEN and HOW it is recorded in `engagement/validation-log.md`. In the agency cascade the **`engagement-workflow` validate phase** runs the applicable validators (by agentType), adversarially verifies each finding, and writes the `validation-outputs/*.json` proof files; this skill is the reference that phase follows. (A lead run standalone, or a focused mid-engagement check, may invoke validators via the Task tool or `validator_lg.py` — see §"Execution patterns".) This skill is read, not called.
 
 ## Core principles
 
@@ -102,7 +102,7 @@ Anti-pattern: editing the JSON file by hand to "fix" it. Re-dispatch is the only
 |---|---|---|
 | ANY data claim (numbers, rankings, CTR, share) | `reality-checker` | always |
 | ANY campaign recommendation / assumption | `skeptic` | always |
-| Copy deliverable (landing, ad, email) | Implicit review by `marketing-content-lead`; log that it happened | always |
+| Copy deliverable (landing, ad, email) | per-task critique pass in the deliver loop; log that it happened | always |
 
 ### Dev
 
@@ -133,7 +133,7 @@ Anti-pattern: editing the JSON file by hand to "fix" it. Re-dispatch is the only
 | Brand claims / competitor claims | `reality-checker` | mandatory |
 | Multi-screen consistency | Token propagation audit by `design-lead` manually | mandatory |
 | `ux_heavy: true` (almost always for design) | `ux-review` on screens + traces + handoff §6 | mandatory |
-| Brand-lead and product-lead share tokens | Cross-validation note in handoff §4 | mandatory |
+| ≥2 design tasks share tokens | Cross-validation note in handoff §4 | mandatory |
 
 ### Cross-domain (≥2 domains contributing artefacts)
 
@@ -159,25 +159,25 @@ Researchers are SKIPPED for: S-tier single-asset work; new-project bootstrap (no
 
 ## Execution patterns
 
-### Parallel (default)
+### Primary path — the `engagement-workflow` validate phase
 
-Independent validators run via parallel Task dispatches to save wall-clock time. Examples:
-- dev: `code-reviewer` + `security-auditing` + `reality-checker` (different artefacts)
-- design: `/critique` + `accessibility-validator` (different surfaces)
+In the agency cascade, validation runs INSIDE the `engagement-workflow` Workflow. Its **validate phase** runs every validator in `plan.validators` (each as its agentType, in parallel), then **adversarially verifies** each non-info finding (an independent skeptic per finding; refuted findings dropped), and writes the per-validator `validation-outputs/{validator}-iter-{N}-{ts}.json` proof files with the **canonical envelope** — byte-identical to what `validator_lg.py` writes, so `handoff-precheck.py` and the manager consume them unchanged. This is the path for ALL tiers when the engagement runs through the Workflow; the lead only LISTS the applicable validators in the plan (per the domain matrix above).
 
-**Two execution paths supported — tier-keyed defaults:**
+### Standalone path — `validator_lg.py` (out-of-Workflow + HITL-in-validation)
 
-| Tier | Default path | Fallback |
+`validator_lg.py` is retained as the standalone tool for two cases: (a) a validation run OUTSIDE the Workflow (a lead/manager doing a focused mid-engagement check), and (b) **HITL-in-validation** — `--interrupt-on-critical` pauses on any critical finding for a human directive (the Workflow validate phase has no native mid-run interrupt). Same output contract + retry-on-parse-failure, crash-resume (`--resume`), and observability hooks.
+
+| Tier | In-cascade (default) | Standalone (out-of-Workflow / HITL wanted) |
 |---|---|---|
-| S | Lead's manual parallel dispatch | `validator_lg.py --validators <subset>` for single-validator runs |
-| M | **`validator_lg.py --auto`** (default) | Manual parallel for edge cases (custom prompts, partial coverage, demonstrably different per-validator inputs) |
-| L | **`validator_lg.py --auto` (mandatory)** | None — manual disallowed on L to keep debug surface consistent across the largest, longest engagements |
+| S | Workflow validate phase (or a lead's 1–2 manual Task dispatches) | `validator_lg.py --validators <subset>` |
+| M | **Workflow validate phase** | `validator_lg.py --auto` (+ `--interrupt-on-critical` for HITL) |
+| L | **Workflow validate phase** | `validator_lg.py --auto --interrupt-on-critical` for HITL-in-validation |
 
-Reason for the M/L promotion: identical output contract (same `validation-outputs/*.json` files), but LangGraph path adds retry-on-parse-failure, crash-resume (`--resume`), HITL pause on critical (`--interrupt-on-critical`), and observability hooks. Manual parallel still useful on S-tier where the engagement may invoke 1–2 validators (LangGraph overhead is wasted) or when lead is genuinely customizing per-validator behaviour. On M/L the consistency benefit dominates.
+The output contract is IDENTICAL across paths — the same `validation-outputs/{validator}-iter-{N}-{ts}.json` files with the canonical block — so downstream (`handoff-precheck.py`, manager acceptance) consume them the same way regardless of which path produced them.
 
-1. **Lead's manual parallel dispatch.** Top-lead or mid-lead invokes each validator via Task tool in a single message — Claude Code runs them in parallel. Use on S-tier or for legitimately custom partial coverage (document the reason in `validation-log.md`).
+1. **Standalone manual parallel dispatch.** A lead run outside the Workflow invokes each validator via the Task tool in a single message — Claude Code runs them in parallel. Use on S-tier or for legitimately custom partial coverage (document the reason in `validation-log.md`).
 
-2. **`validator_lg.py` LangGraph fan-out — default on M/L.** Single command runs all applicable validators in parallel via `Send` fan-out, writes per-validator JSON to `validation-outputs/`, appends to `validation-log.md`. Use when:
+2. **`validator_lg.py` LangGraph fan-out (standalone tool) — out-of-Workflow + HITL.** Single command runs all applicable validators in parallel via `Send` fan-out, writes per-validator JSON to `validation-outputs/`, appends to `validation-log.md`. Use when:
    - Engagement needs the FULL applicable validator set per `validation-pipeline` rules (use `--auto` to plan from criteria.md domain + predicates).
    - Lead wants crash-resume (`--resume` skips already-completed validators, re-runs missing + failed).
    - Lead wants retry-on-parse-failure (built into the graph as a retry edge).
@@ -194,7 +194,7 @@ Reason for the M/L promotion: identical output contract (same `validation-output
    # Crash-resume after partial failure:
    python ~/.claude/scripts/validator_lg.py engagement/ --auto --resume
 
-   # M/L tier — pause for human directive on any critical finding :
+   # M/L tier — pause for human directive on any critical finding (2026-05-28):
    python ~/.claude/scripts/validator_lg.py engagement/ --auto --interrupt-on-critical
    # Graph pauses at critical_check; prints thread_id + resume hint to stderr.
    # Manager / human inspects validation-outputs/ and resumes:
@@ -212,7 +212,7 @@ Reason for the M/L promotion: identical output contract (same `validation-output
 
    Output contract is IDENTICAL to manual dispatch — `handoff-precheck.py` and director acceptance consume the same `validation-outputs/{validator}-iter-{N}-{ts}.json` files unchanged.
 
-   **Canonical envelope:** every `validation-outputs/*.json` file written by `validator_lg.py` now carries a `canonical` block alongside the raw validator output. The canonical schema is the cross-validator stable shape that downstream consumers (manager, Langfuse, analytics) read:
+   **Canonical envelope (2026-05-28):** every `validation-outputs/*.json` file written by `validator_lg.py` now carries a `canonical` block alongside the raw validator output. The canonical schema is the cross-validator stable shape that downstream consumers (manager, Langfuse, analytics) read:
 
    ```json
    {

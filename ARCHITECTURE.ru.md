@@ -7,6 +7,15 @@
 сверху вниз: проблема → пять слоёв → ключевые механизмы → модель
 состояния → flow.
 
+> **v0.3 (2026-06-05):** pre-gate каскад (plan → deliver → validate
+> → handoff → gate) теперь оформлен как Workflow **engagement-workflow**,
+> проводимый основным циклом и останавливающийся на шве handoff;
+> LangGraph human-gate (consilium → directive → manager acceptance)
+> остаётся активным путём после шва. Domain-lead'ы теперь
+> planning-only (шаг `lead:plan`); координация специалистов структурна
+> — закодирована как waves в плане lead'а. См. §8.5 и
+> [`CHANGELOG.md`](CHANGELOG.md).
+>
 > **v0.2.4 (2026-05-28):** Windows-compat bugfix — `claude.CMD`
 > npm-wrapper обрезает multiline argv на первом переводе строки (CMD
 > line-parsing); `subprocess.run(text=True)` декодирует UTF-8 русский
@@ -43,7 +52,7 @@
 > дельта v0.2.2 — [`CHANGELOG.md`](CHANGELOG.md).
 >
 > **v0.2.1 (2026-05-28):** этот документ отражает полное состояние v0.2
-> + WAVE B+C. Основные сдвиги относительно v0.1: разделение acceptor /
+> + refinement. Основные сдвиги относительно v0.1: разделение acceptor /
 > system-optimizer (`*-manager` ≠ `*-director`), инвариант разрешения
 > конфликтов авторитета, слой per-engagement reflection, append-only
 > event ledger (`engagement/events.jsonl`), канонический envelope
@@ -93,28 +102,28 @@ flowchart TB
         H3[Commons-maintainer для SkillOpt promotions]
     end
 
-    subgraph Agents ["Agents layer · 66 агентов"]
+    subgraph Agents ["Agents layer · 58 агентов"]
         AM[Managers · 3]
         AD[Directors · 3]
-        AL[Leads · 11]
+        AL[Leads · 3 · plan-only]
         AS[Specialists · 20]
         AV[Validators · 29]
     end
 
-    subgraph Skills ["Skills layer · 48 skills"]
+    subgraph Skills ["Skills layer · 46 skills"]
         SK1[Agency protocol · 8]
-        SK2[Dev methodology · 18]
+        SK2[Dev methodology · 16]
         SK3[Design methodology · 8]
         SK4[Marketing methodology · 5]
         SK5[Yandex hub · 6]
         SK6[Skill development · 3]
     end
 
-    subgraph Orch ["Orchestration layer · 14 main + 3 optional Python-скрипта"]
+    subgraph Orch ["Orchestration · Workflow engines + 16 main + 3 optional scripts"]
         O1[Mechanical gates]
-        O2[Adversary bridge · LangGraph]
-        O3[Validator bridge · LangGraph]
-        O4[Engagement bridge · LangGraph]
+        O2[engagement-workflow · pre-gate Workflow]
+        O3[Adversary bridge · LangGraph]
+        O4[Validator bridge · LangGraph]
         O5[Consilium synth + present]
         O6[Director-verdict check]
         O7[Archival]
@@ -152,7 +161,7 @@ flowchart TB
 | Слой | Что делает | Что НЕ делает |
 |---|---|---|
 | **Human** | Триггерит intake, выносит supreme verdict на M/L, апрувит SkillOpt promotions | Не пишет markdown, не валидирует рутинно |
-| **Agents** | Планируют, исполняют, судят, запускают SkillOpt loop (out-of-band) | Не пишут скрипты, не определяют tier'ы, manager'ы не диспатчат |
+| **Agents** | Планируют, исполняют, судят, запускают SkillOpt loop (out-of-band) | Не пишут скрипты, не определяют tier'ы; lead'ы планируют, но не диспатчат (это делает engagement-workflow), manager'ы не диспатчат |
 | **Skills** | Загружаются в agent context — методология, протоколы, tool guides | Не invокируются напрямую из чата; PROTOCOL skills экспонируют `triggers:` для лоадера |
 | **Orchestration** | Mechanical gates, adversary bridge, consilium, event ledger | Не делает суждений о качестве контента |
 | **State** | Хранит всё состояние engagement'а на FS — каждый факт в файле | Никакой логики — только схемы, whitelist, mutability rules |
@@ -169,7 +178,7 @@ field, читаемый лоадером.
 | Категория | # | Назначение |
 |---|---|---|
 | **Agency protocol** | 8 | Контракт agency-работы: схемы, lifecycle, gates, acceptance, system-optimization |
-| **Dev methodology** | 18 | TDD, code review, spec planning, deploy, security |
+| **Dev methodology** | 16 | TDD, code review, spec planning, deploy, security |
 | **Design methodology** | 8 | Brand, design system, UI/UX, presentation |
 | **Marketing methodology** | 5 | SEO, semantic drift, AI visibility, task decomposition, benchmark research (standalone entry-point) |
 | **Regional SEO/PPC stack** | 6 | API-интеграции для Russian-market analytics platforms |
@@ -182,7 +191,7 @@ field, читаемый лоадером.
 name: code-writing
 domain: dev
 triggers:
-  - "загружается каждым lead / manager / mid-lead через skills frontmatter"
+  - "загружается каждым lead / manager через skills frontmatter"
 description: |
   [METHODOLOGY] Universal quality coding process (plan, TDD, reviews).
 ---
@@ -238,7 +247,7 @@ Net effect: −572 строк на каждую загрузку engagement'а, 
 
 ## 4. Agents layer
 
-66 Claude Code subagent'ов в `~/.claude/agents/`. У каждого frontmatter
+58 Claude Code subagent'ов в `~/.claude/agents/`. У каждого frontmatter
 с `name`, `description`, `model`, `skills:`, `allowed-tools:`. В
 зеркале агенты организованы в подкаталоги
 `agents/{directors,leads,managers,specialists,validators}/`.
@@ -287,29 +296,18 @@ SkillOpt-loop эволюции навыков по накопленным REJECT
 Директор **никогда не пишет правки сам** — Codex это proposer, директор
 это judge, человек — commons-maintainer для cross-domain промоушенов.
 
-### Leads (11)
+### Leads (3)
 
-**Top-leads (3):** `dev-lead`, `design-lead`, `marketing-lead` —
-основные планировщики для своих доменов. Получают intake от
-`agency-intake`, планируют фазовое исполнение, диспатчат mid-leads
-(когда применимо), запускают cross-cutting валидаторы, формируют
-handoff.
-
-**Mid-leads (8):**
-
-| Lead | Track |
-|---|---|
-| `dev-product-lead` | discovery — research, specs |
-| `dev-engineering-lead` | delivery — implementation |
-| `dev-quality-lead` | validation, security audit, pre/post-deploy QA |
-| `design-brand-lead` | brand voice, identity, guidelines |
-| `design-product-design-lead` | UX + UI tracks |
-| `marketing-traffic-lead` | SEO + PPC + keyword research |
-| `marketing-content-lead` | copy, ad creative, banners |
-| `marketing-analytics-lead` | Metrika, AI visibility, semantic drift |
-
-Mid-leads tier-aware: запрещены на S, опциональны на M (используются
-только когда ≥2 специалиста нужно координировать), обязательны на L.
+`dev-lead`, `design-lead`, `marketing-lead` — **planning-only**. Каждый
+является шагом `lead:plan` внутри `engagement-workflow`: читает
+`criteria.md` и возвращает план — специалистов, валидаторов и задачи,
+сгруппированные в **waves** с зависимостями. Lead НЕ диспатчит; Workflow-скрипт
+раскидывает специалистов по `task.owner`, wave за wave (задачи одного
+wave идут параллельно на непересекающихся файлах; более поздний wave
+может зависеть от более раннего). Координация, которую иначе обеспечивал
+бы отдельный координаторский слой, здесь **структурна** — закодирована
+как группировка по waves в плане, так что сложность tier'а масштабируется
+добавлением waves, а не добавлением routing-слоя.
 
 ### Specialists (20)
 
@@ -371,7 +369,7 @@ engagement-протокола) через frontmatter.
 
 ## 5. Orchestration layer
 
-14 main + 3 optional Python-скриптов в `~/.claude/scripts/`. Все скрипты
+16 main + 3 optional Python-скриптов в `~/.claude/scripts/`. Все скрипты
 — **exit-code gates**: ненулевой exit блокирует пайплайн, без
 промптов, без переговоров. **Без модельных суждений** — чистая
 детерминистическая логика.
@@ -382,7 +380,8 @@ engagement-протокола) через frontmatter.
 |---|---|
 | `adversary_lg.py` | LangGraph adversary bridge — 5 reviewer-ролей, two-pass curated-view изоляция, `Send` fan-out, SQLite-checkpointed `--resume`, native HITL через `interrupt()`, event ledger подключён (lifecycle + per-role + early-return guards) |
 | `validator_lg.py` | LangGraph atomic-validator fan-out через `Send`, retry edge, auto-plan из criteria.md predicates, `--resume`, native HITL через `--interrupt-on-critical`, канонический envelope, event ledger подключён (8 emit sites) |
-| `engagement_lg.py` | LangGraph engagement-level оркестратор (v0.2.2+), владеющий полным жизненным циклом intake → plan → dispatch → validate → consilium → accept → archive. 11 узлов, включая `_barrier_dispatch_node` (sync после Send fan-out на specialists) + 3 точки HITL-паузы (`criteria_lock`, `danger_gate`, `human_directive`). Три режима выполнения: `--dry-run` (default, плейсхолдеры), `--mock` (реальные пути графа + canned subprocess артефакты — полный end-to-end smoke без claude CLI), `--real` (полный subprocess через `claude -p --agent X`). Делегирует `validator_lg.py` и `adversary_lg.py` как subprocess'ы (process isolation; промоут в sub-graphs отложен до field-data о накладных расходах). 4 новых ledger payload type: `engagement_completed`, `phase_skipped`, `dryrun_marker`. Event ledger подключён. |
+| `ledger-emit.py` | CLI-эмиттер для append-only event ledger (`engagement/events.jsonl`) |
+| `skillopt-ready.py` | Харвестер due-сигналов SkillOpt — кластеризует manager-emitted сигналы + orphan reflections по `target × class` и репортит, когда цикл директора назрел |
 | `consilium-synth.py` | Агрегация adversary outputs, two-stage dedup |
 | `consilium-present.py` | Chat-ready format с decision menu для человека |
 | `director-verdict-check.py` | Mechanical adjudication completeness (legacy name; в v0.2 проверяет `*-manager` verdict) |
@@ -496,9 +495,9 @@ tools_required: [...]
 
 | Tier | Use case | Схема | Adversary | Manager | Validator dispatch | Mechanical checks |
 |---|---|---|---|---|---|---|
-| **S** | Hotfix, single deliverable | 4-section minimum | Нет | Нет | Manual parallel | 6 |
-| **M** | Multi-specialist, mid-stakes | Full 11-section | 1× peer-opus | Judge mode | `validator_lg.py --auto` default | 13 |
-| **L** | Cross-domain, high-stakes | Full + tasks INDEX | 5× consilium | Judge + adjudication | `validator_lg.py --auto` обязателен | 21 |
+| **S** | Hotfix, single deliverable | 4-section minimum | Нет | Нет | engagement-workflow validate phase | 6 |
+| **M** | Multi-specialist, mid-stakes | Full 11-section | 1× peer-opus | Judge mode | engagement-workflow validate phase | 13 |
+| **L** | Cross-domain, high-stakes | Full + tasks INDEX | 5× consilium | Judge + adjudication | engagement-workflow validate phase | 21 |
 
 Tier выбирается на intake эвристиками: число задействованных
 специалистов, cross-domain природа, ux-heavy flag, risk profile.
@@ -570,121 +569,86 @@ sequenceDiagram
 `satisfied → ACCEPT`, `rework_required` / `suspicious_too_clean` →
 `REJECT`, `fail` → `REJECT`).
 
-## 8.5 Engagement-level orchestration (engagement_lg.py)
+## 8.5 Pre-gate orchestration (engagement-workflow)
 
-Третий LangGraph-движок, добавлен в v0.2.2 и завершён в v0.2.3.
-Владеет **полным жизненным циклом
-engagement'а** от intake до archive — слой, который в v0.1 был
-имплицитным (lead-агенты координировали работу только через
-artefact-файлы). `engagement_lg.py` делает lifecycle explicit'ным как
-`StateGraph` с checkpointable state, HITL-паузами и subprocess-делегацией
-к двум phase-level engines (`validator_lg.py`, `adversary_lg.py`).
+**engagement-workflow** — это Claude Code **Workflow-tool скрипт**
+(`workflows/engagement-workflow.js`), который основной цикл проводит
+после того как `agency-intake` залочил `criteria.md`. Он владеет всем
+pre-gate каскадом — от планирования до handoff-гейта — затем
+ОСТАНАВЛИВАЕТСЯ на **шве handoff**, где LangGraph human-gate (consilium ->
+directive -> manager acceptance, секции 10-11) перехватывает управление.
+Граница — это человеческое решение: всё до него — Workflow; машинерия
+human-pause и acceptance остаётся LangGraph.
 
-### State и граф узлов
+### Фазы
 
 ```mermaid
 flowchart TB
-    START([START])
-    INT[intake_node<br/>читает criteria.md + size-detect --auto-promote]
-    CL{HITL: criteria_lock<br/>opt-in --interrupt-on-criteria}
-    PLAN[plan_node<br/>claude -p --agent {domain}-lead<br/>пишет plan.md w/ specialists]
-    DG{HITL: danger_gate<br/>условный на danger-scan findings}
-    DISP[dispatch_node<br/>Send fan-out per specialist]
-    SPEC[specialist_node<br/>parallel через Send<br/>claude -p --agent X]
-    BAR[barrier_dispatch_node<br/>sync после specialist fan-out]
-    VAL[validate_node<br/>subprocess validator_lg.py --auto]
-    CONS[consilium_node<br/>subprocess adversary_lg.py --consilium TIER]
-    HD{HITL: human_directive<br/>MANDATORY M/L после consilium}
-    MGR[manager_accept_node<br/>claude -p --agent {domain}-manager<br/>пишет acceptance-log.md]
-    ARCH[archive_node<br/>engagement-archive.py]
-    END([END])
+    START([main loop invokes])
+    PLAN[discovery · lead:plan<br/>reads criteria.md → tasks / waves / validators]
+    DEC[decompose · gated<br/>L, or M with ≥2 specialists → tasks/*.md + INDEX]
+    DEL[deliver · specialist waves<br/>isolated git worktrees · per-task review→rework · per-wave consolidate]
+    VAL[validate<br/>validators in parallel + adversarial-verify each finding]
+    HO[handoff · tier-aware sections]
+    GATE[gate · handoff-precheck.py]
+    SEAM([handoff seam → LangGraph human-gate])
+    STOP([hard-stop · readyForAcceptance = false])
 
-    START --> INT
-    INT --> CL
-    CL --> PLAN
-    PLAN --> DG
-    DG --> DISP
-    DISP -->|Send per specialist| SPEC
-    DISP -->|empty list| BAR
-    SPEC --> BAR
-    BAR --> VAL
-    VAL -->|REJECT + iter<max| PLAN
-    VAL -->|tier in {M,L}| CONS
-    VAL -->|tier S| MGR
-    CONS --> HD
-    HD -->|REJECT_NOW| END
-    HD --> MGR
-    MGR -->|REJECT + iter<max| PLAN
-    MGR -->|ACCEPT| ARCH
-    MGR -->|ABORTED| END
-    ARCH --> END
+    START --> PLAN --> DEC --> DEL --> VAL --> HO --> GATE --> SEAM
+    DEL -->|blocked / review-failed / malformed plan| STOP
 
     classDef node fill:#dbeafe,stroke:#2563eb,color:#000
-    classDef hitl fill:#fef3c7,stroke:#d97706,color:#000
     classDef term fill:#dcfce7,stroke:#16a34a,color:#000
-
-    class INT,PLAN,DISP,SPEC,BAR,VAL,CONS,MGR,ARCH node
-    class CL,DG,HD hitl
-    class START,END term
+    class PLAN,DEC,DEL,VAL,HO,GATE node
+    class START,SEAM,STOP term
 ```
 
-State — 20-полевой `EngagementState` TypedDict: tier, domain, ux_heavy,
-iter_n / iter_max, per-phase verdicts, specialist_results
-(annotated `list + operator.add` reducer для безопасных parallel Send
-branches), hitl_enabled, paused_at, human_directive, started_at,
-last_phase_at, error, mock (bool, проpagates `--mock` CLI флаг в
-subprocess wrappers).
+- **discovery (`lead:plan`)** — domain-lead отрабатывает как шаг
+  планирования: читает `criteria.md`, оценивает размер engagement'а и
+  возвращает задачи, валидаторы и группировку по waves (с зависимостями).
+  Lead не диспатчит.
+- **decompose** (gated: tier L, или M с >=2 специалистами) — пишет
+  атомарные `tasks/*.md` + `tasks/INDEX.md`.
+- **deliver** — последовательные waves; внутри wave — один специалист на
+  задачу параллельно, каждый в СВОЁМ git worktree, ответвлённом от
+  текущего integration HEAD (так что более поздний wave видит смерженную
+  работу ранних waves). Каждая задача несёт scoped review -> bounded-rework
+  loop (бюджет tier'а S=1 / M=2 / L=3). На барьере wave фаза консолидирует:
+  режим **code** octopus-мержит непересекающиеся ветки (overlap ->
+  sequential-merge + resolver) и гоняет тесты из корня репозитория; режим
+  **artefact** (design / marketing deliverables, не мержащиеся как код)
+  manifest-верифицирует, что каждый файл существует и непуст.
+- **validate** — каждый валидатор из плана идёт параллельно (по
+  agentType), затем каждый non-info finding **adversarially verified**
+  независимым skeptic'ом (опровергнутые findings отбрасываются). Фаза
+  пишет per-validator `validation-outputs/{validator}-iter-N-{ts}.json` с
+  каноническим envelope — byte-identical к тому, что пишет
+  `validator_lg.py`, так что `handoff-precheck.py` и manager потребляют их
+  без изменений.
+- **handoff** — собирает tier-aware `handoff.md`.
+- **gate** — гоняет `handoff-precheck.py --mode ready`; возвращает
+  `readyForAcceptance`.
 
-### Три режима выполнения
+### Robustness
 
-| Режим | Что запускается | Когда использовать |
-|---|---|---|
-| `--dry-run` (default) | Плейсхолдеры скипают реальную работу; граф завершается детерминированно с skeleton ACCEPT verdicts | Smoke-test структуры графа / checkpointer / HITL wiring без расхода токенов |
-| `--mock` | Реальные пути графа отрабатывают; subprocess wrappers пишут canned артефакты (plan.md, executor-reports, consilium-summary, acceptance-log) | End-to-end smoke на машине без `claude` CLI — валидирует полную state machine включая fan-out, barrier, rework loop, REJECT_NOW short-circuit |
-| `--real` | Полный subprocess к `claude -p --agent X` + sibling LG скриптам | Production engagement |
+Wave **hard-stop**'ает engagement (`readyForAcceptance = false`, без
+консолидации), если любая задача заблокирована, упала или не проходит
+по-настоящему свой scoped review, либо если план malformed (дублирующиеся /
+неизвестные / orphan task ids) — нет тихого прохода мимо сломанного wave.
+State — это run-journal Workflow: повторный вызов с `resumeFromRunId`
+реплеит завершённые шаги из кэша и перезапускает только изменившиеся или
+упавшие.
 
-`--real` и `--mock` взаимоисключающие (CLI parser error). Default
-остаётся `--dry-run` пока первый real M-tier field test не промоутнет
-`--real` в default.
+### Почему здесь Workflow, а на гейте LangGraph
 
-### Subprocess делегация vs sub-graphs
-
-`engagement_lg.py` вызывает `validator_lg.py` и `adversary_lg.py` как
-**отдельные процессы** (subprocess delegation), не как in-process
-sub-graphs. Обоснование:
-
-1. **Crash isolation** — зависание или memory blowup в adversary не
-   роняет engagement-level граф.
-2. **Independent checkpointers** — каждый движок имеет свой SQLite
-   файл; merge — отдельное design-решение.
-3. **Observability через unified ledger** — все три движка emit'ят в
-   тот же `engagement/events.jsonl` через shared `lib/ledger.py` shim.
-   Cross-engine timeline реконструируется через `cat events.jsonl |
-   jq`.
-4. **Promotion path открыт** — когда subprocess overhead станет
-   measurable bottleneck'ом (нужны field data), промоут в in-process
-   sub-graph инкрементальный: обернуть существующий движок в
-   `build_validator_subgraph()` factory и использовать
-   `builder.add_node("validate", validator_subgraph)`.
-
-### Точки HITL-паузы (3)
-
-| Пауза | Когда | Default | Resume payload |
-|---|---|---|---|
-| `criteria_lock` | После intake, перед plan | OFF (`--interrupt-on-criteria` для enable) | `{decision: PROCEED \| ABORT}` |
-| `danger_gate` | После plan, перед dispatch, только если danger-scan нашёл unauthorized ops | AUTO (только при findings) | `{decision: PROCEED, scope_sync_updated: true}` |
-| `human_directive` | После consilium, перед manager_accept (M/L only) | MANDATORY M/L | `{decision: PROCEED_TO_VERDICT \| REJECT_NOW \| DIRECTED_VERDICT, note, reasons}` |
-
-Все три используют `interrupt(payload)` primitive + `Command(resume=payload)`
-паттерн, identical к `adversary_lg.py` `_interrupt_apply_directive_node`.
-
-### Event ledger payload types добавлены
-
-Три новых payload type в v0.2.2: `engagement_completed` (final, с
-overall verdict + duration), `phase_skipped` (например consilium для
-S-tier short-circuits с phase_skipped событием), `dryrun_marker`
-(emit'ится на старте графа когда `--dry-run` чтобы skeleton runs
-были visible в ledger).
+Pre-gate каскад — это детерминистический fan-out — план, параллельные
+waves, worktree-изоляция, консолидация, validate — который Workflow-tool
+выражает напрямую (и гоняет out-of-band, переживая compaction основного
+цикла). Human-gate нуждается в durable интерактивной паузе; это вотчина
+`interrupt()` у LangGraph, поэтому consilium + acceptance остаются там.
+Шов — это ровно линия между двумя. Второй Workflow-движок,
+`skillopt-workflow.js`, гоняет SkillOpt-цикл директора out-of-band
+(секция 12).
 
 ## 9. Consilium synthesis (L-tier)
 
@@ -908,7 +872,7 @@ JSONL напрямую.
 | **Format-first validation** | Validator'ы проверяют root causes; формат вынесен в отдельный mechanical слой; canonical envelope enforces normalization verdict / severity |
 | **Vector-only communication** | Findings передаются полным текстом; dedup через textual similarity |
 | **Silent rule drift mid-engagement** | Authority invariant rule 7: engagement снапшотит loaded skills на старте |
-| **Mid-lead routing для 1-specialist работы** | Tier-aware политика: mid-leads запрещены на S, опциональны на M, обязательны на L |
+| **Координаторский слой для 1-specialist работы** | Нет отдельного координаторского слоя — lead планирует waves; engagement-workflow раскидывает специалистов напрямую по `task.owner` |
 | **Reflection bloat** | Per-engagement reflection strict constraint: `target = skill/agent rule`, `class ∈ {rule_missing, rule_wrong, rule_ignored}`. Zero reflections валидно. |
 
 ## 18. Точка входа и flow
@@ -940,36 +904,36 @@ Standalone-возможности имеют отдельные триггеры
 sequenceDiagram
     autonumber
     participant U as Human
-    participant SK as agency-intake (skill)
-    participant L as Domain Lead
+    participant ML as Main loop · agency-intake
+    participant WF as engagement-workflow · Workflow
     participant SP as Specialists
     participant V as Validators
-    participant SC as Scripts (orchestration)
+    participant SC as LangGraph + scripts
     participant ADV as Adversary subprocess
-    participant M as Manager (acceptor)
+    participant M as Manager · acceptor
     participant FS as engagement/
 
-    U->>SK: trigger phrase
-    SK->>FS: classify → criteria.md (S/M/L)
-    SK->>L: handoff to lead
+    U->>ML: trigger phrase
+    ML->>FS: classify → criteria.md (S/M/L)
+    ML->>WF: invoke engagement-workflow
 
     rect rgb(245, 245, 250)
-        Note over L,V: Producing phase
-        L->>FS: plan.md
-        L->>SP: dispatch tasks
-        SP->>FS: executor-reports/
-        L->>V: dispatch validators (validator_lg.py --auto на M/L)
+        Note over WF,V: Pre-gate cascade (Workflow) — stops at the seam
+        WF->>WF: discovery · lead:plan → plan.md (tasks / waves / validators)
+        WF->>SP: deliver — specialist waves in git worktrees (review→rework)
+        SP->>FS: executor-reports/ + consolidated work
+        WF->>V: validate — validators in parallel + adversarial-verify
         V->>FS: validation-outputs/*.json (raw + canonical envelope)
-        L->>FS: handoff.md
+        WF->>FS: handoff.md
+        WF->>SC: gate · handoff-precheck.py
+        SC-->>WF: exit 0 / fail
     end
-
-    L->>SC: handoff-precheck.py
-    SC-->>L: exit 0 / fail
+    WF-->>ML: readyForAcceptance — handoff seam
 
     alt M/L tier
         rect rgb(245, 250, 245)
-            Note over SC,ADV: Adversary phase
-            SC->>ADV: adversary_lg.py --consilium {M|L}
+            Note over SC,ADV: Adversary phase (LangGraph human-gate)
+            ML->>SC: adversary_lg.py --consilium {M|L} --interrupt
             Note over ADV,FS: events.jsonl: consilium_started / consilium_role_completed per role
             ADV->>FS: validation-outputs/{role}-*-preliminary.json
             ADV->>FS: validation-outputs/{role}-*-final.json
@@ -981,17 +945,16 @@ sequenceDiagram
             Note over U,M: Human + Manager phase
             U->>SC: PROCEED / REJECT / DIRECTED
             SC->>FS: human-directive.py → human-directive.md
-            SC->>M: invoke manager (judge mode)
+            ML->>M: invoke {domain}-manager (judge mode)
             M->>FS: acceptance-log.md per directive
             M->>FS: engagement-reflections.md (0–3 actionable)
             M->>SC: director-verdict-check.py
         end
     else S tier
-        Note over U: Human glance — accept / reject напрямую
+        Note over U: Human glance — accept / reject directly
     end
 
-    SC-->>U: ACCEPT
-    SC->>FS: engagement-archive.py — idempotent archival
+    ML->>FS: engagement-archive.py — idempotent archival (on ACCEPT)
 ```
 
 S-tier пропускает adversary, consilium и manager phase: producer

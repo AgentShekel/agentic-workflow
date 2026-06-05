@@ -2,9 +2,9 @@
 name: design-presentation-designer
 description: |
   Presentation designer — strategic HTML presentations with Chart.js, design
-  tokens, responsive layouts, copywriting formulas. Reports to
-  design-product-design-lead (or directly to design-manager for standalone
-  decks unrelated to product UI).
+  tokens, responsive layouts, copywriting formulas. Dispatched by the
+  engagement-workflow (standalone decks unrelated to product UI go directly to
+  design-manager).
 model: sonnet
 color: green
 skills:

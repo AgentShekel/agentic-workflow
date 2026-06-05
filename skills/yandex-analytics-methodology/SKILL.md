@@ -4,8 +4,7 @@ domain: marketing
 description: |
   [TOOL] Unified Yandex analytics hub configuration (shared
   tokens, cross-service workflows across Webmaster, Metrika, Wordstat, Direct,
-  Search, seo-auditing, semantic-drift). Preloaded by marketing-web-analyst and
-  marketing-traffic-lead agents.
+  Search, seo-auditing, semantic-drift). Preloaded by marketing-web-analyst agent.
 ---
 
 # yandex-analytics

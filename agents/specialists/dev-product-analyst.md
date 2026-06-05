@@ -3,7 +3,7 @@ name: dev-product-analyst
 description: |
   Product analyst — runs project-planning (new-project bootstrap), feature
   research (GO/NO-GO verdict), and user-spec creation via adaptive interview
-  with dual validation. Reports to dev-product-lead.
+  with dual validation. Dispatched by the engagement-workflow.
 model: sonnet
 color: green
 skills:

@@ -66,7 +66,7 @@ Pick one of three:
 | `dev` | фичи, баги, архитектура, рефакторинг, деплой, CI/CD, тесты, тех-спеки, инфраструктура |
 | `design` | бренд, лого, дизайн-система, UI, UX, иллюстрации, презентации, CIP, иконки |
 
-If signals cross two domains — proceed as **cross-domain**: primary lead + secondary lead. Rules in step 5.
+If signals cross two domains — proceed as **cross-domain**: a primary engagement and a sequenced secondary engagement. Rules in step 8.
 
 If still unclear after one read — ask ONE targeted question. Never dump a menu of three.
 
@@ -219,55 +219,60 @@ Output is advisory (always exit 0). Read the JSON: if `agreement: false`, reconc
 
 This is a sanity check, not a hard gate. Lead's Phase 2 has authority to promote (S→M, M→L) at runtime via `size-detect.py --mode runtime --auto-promote` when reality outgrows the intake guess. Demotion is forbidden either way.
 
-### 7. Handoff to the domain lead
+### 7. Handoff — run the engagement-workflow Workflow (all domains)
 
-Dispatch the matching lead via the Task tool:
+Every engagement (dev / design / marketing) runs through the `engagement-workflow` **Workflow** as the **default pre-gate path**. Each `{domain}-lead` is the Workflow's `lead:plan` planning step (leads PLAN, they do not Task-dispatch). You (the main loop) conduct the cascade. Invoking the Workflow here IS the opt-in — a skill instructing the Workflow call is a valid opt-in path, so no `ultracode` keyword is needed.
 
-| Domain | Lead agent |
-|---|---|
-| marketing | `marketing-lead` |
-| dev | `dev-lead` |
-| design | `design-lead` |
+**Operating limitation (honest — do not paper over it):** the Workflow tool is **harness-only** — it runs from the interactive main loop, NOT headless (`claude -p`) or cron. Agency work is interactive today, so this is the live path with no current gap. But there is **no warm automated non-Workflow fallback**: if the Workflow tool is unavailable (headless/cron context, or a tool outage), **fail closed** — tell the user the cascade needs an interactive session; do NOT improvise a degraded hand-dispatch (the leads are plan-only by design; an ad-hoc second orchestration would carry weaker guarantees than the gated path). A real headless fallback would mean finishing the archived `scripts/_archive/engagement_lg.py` skeleton (it never shipped — `--real` raises `NotImplementedError`; Waves B–F unbuilt) — future work, not a wired path.
 
-Pass the lead a **minimum-viable prompt** (per `engagement-protocol` §"Task-tool prompts: minimum viable content"):
+1. **Resolve args** (the script cannot call Date.now, so you stamp the time):
+   - `repoDir` = the project root holding `engagement/`. dev (code mode): the git root — `git -C <cwd> rev-parse --show-toplevel`. design/marketing (artefact mode): the project dir / CWD (a git repo is not required).
+   - `scriptsDir` = absolute `~/.claude/scripts`.
+   - `ts` = `(Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")` (bash: `date -u +%Y%m%dT%H%M%SZ`).
+2. **Invoke the Workflow** with the classified domain:
+   ```
+   Workflow{ name: 'engagement-workflow', args: { repoDir, scriptsDir, ts, domain: '<dev|design|marketing>' } }
+   ```
+   The `lead:plan` step runs as `{domain}-lead` and sets `deliverable_mode` (dev → code: worktree + octopus + repo tests; design/marketing → artefact: files written to engagement/ paths + manifest-verify). It runs discovery → decompose → deliver → validate → handoff → gate, then **STOPS at the handoff seam**, returning `{ readyForAcceptance, gate, engagementDir }`. It never touches the human-gate.
+3. **Gate failed / engine hard-stop** (`readyForAcceptance:false`): read **`error` first, then `gate.failures`** — a PRE-gate hard-stop (malformed plan, or a blocked / crashed / review-failed task in a wave) returns a human-readable `error` plus a stub `gate.failures` and performs NO consolidation; the handoff gate (when reached) returns `gate.failures`. Surface to the user. If the return carries `cleanupCommands`, run them ONLY on a fresh rerun (a `resumeFromRunId` resume reuses the worktrees, so don't clean before resuming). After the fix, re-invoke with `resumeFromRunId` so only changed steps re-run. Tooling-down is the one allowed user-touch — never push validation onto the user otherwise.
+4. **Gate passed** (`readyForAcceptance:true`): drive the **post-seam human-gate** — this STAYS LangGraph, the active acceptance path (NOT a fallback). Per `acceptance-protocol`:
+   - **S-tier:** no manager phase. Producer self-attest + the gate's mechanical pass + a human glance suffice → archive (step 5).
+   - **M/L-tier** — consilium → human gate → acceptor:
+     1. One pass — fan out the consilium, auto-synthesize the summary, and pause at the human supreme-judge gate (prints a thread id; writes `consilium-summary.md`). `--interrupt` requires `--consilium`, so they are ONE command — do NOT split them (a second bare `--interrupt` call re-runs the whole consilium and re-spends it):
+        ```bash
+        python ~/.claude/scripts/adversary_lg.py engagement/ --consilium {M|L} --interrupt
+        ```
+     2. The human reads `consilium-summary.md`, then resumes with the decision (the resume path writes `human-directive.md`):
+        ```bash
+        python ~/.claude/scripts/adversary_lg.py engagement/ --resume-interrupt <thread> --decision PROCEED|REJECT|DIRECTED [--reasons '...' on REJECT] [--note ...]
+        ```
+     3. Dispatch the acceptor via Task: **`{domain}-manager`** (`dev-manager` / `design-manager` / `marketing-manager`) with the `engagement/` path + iteration N. It reads handoff + consilium-summary + human-directive and writes the verdict in `acceptance-log.md` (does NOT sweep-rerun validators).
+5. **Resolve verdict:** ACCEPT → free the slot by archiving. `engagement-archive.py`'s positional arg is the PROJECT ROOT (default CWD) — it appends `/engagement` itself, so run it BARE from the project root; passing `engagement/` makes it a silent exit-0 no-op:
+   ```bash
+   python ~/.claude/scripts/engagement-archive.py
+   ```
+   REJECT (within budget S=1 / M=2 / L=3) → re-invoke the Workflow with `args.iterN = N+1` for the rework round; escalate to the user before the final allowed round.
 
-```
-Engagement: {engagement-name}
-Iteration: 1
-Criteria: {absolute path to engagement/criteria.md}
-Review mode: {lean | full | solo}
+Print one handoff line before invoking:
 
-Read criteria.md first. Engagement context, source paths, and constraints
-are inside it — do not re-paste here.
-
-Begin Phase 1. Heartbeat per phase per protocol.
-
-Return summary on completion (or escalation).
-```
-
-5-8 lines. Do NOT verbose-paste the user brief, source paths, or protocol reminders — the lead's skills (`engagement-protocol`, domain methodology) already contain those. Verbose prompts cause first-action delay that operators misread as "stalled".
-
-Then stop — do not follow, do not synthesize, do not touch the lead's artefacts.
-
-Print one handoff line to the user:
-
-> → Передаю {lead}: {reason}. Критерии: {criteria path}. UX-heavy: {true/false}. Pre-flight: {tools list} ✓.
+> → Запускаю {domain}-движок (engagement-workflow): {reason}. Критерии: {criteria path}. UX-heavy: {true/false}. Pre-flight: {tools list} ✓.
 
 ### 8. Cross-domain handoff
 
-If the task needs two domains (e.g. "сделай лендинг и запусти кампанию" = design + marketing):
+If the task needs two domains (e.g. "сделай лендинг и запусти кампанию" = design + marketing), follow the canonical topology in `engagement-protocol` §Cross-domain — primary in `engagement/`, secondary COEXISTING in `engagement-secondary/{domain}/`, both archived together at the end (the protocol is the single source of truth; if this section ever diverges, the protocol wins):
 
-1. Declare the primary domain (owns final delivery and scheduling).
-2. Declare the secondary domain (consumed artefact from primary).
-3. Hand off ONLY to the primary lead. Pass secondary domain as a downstream dependency in `criteria.md`.
-4. Primary lead will invoke secondary lead at the correct stage.
+1. Declare the primary domain (owns final delivery and scheduling) and the secondary (consumes the primary's artefact).
+2. Run the **primary** domain's `engagement-workflow` (step 7) to ACCEPT — but do NOT archive it yet (the secondary will read its artefacts).
+3. Run the **secondary** domain's `engagement-workflow` into the secondary slot by passing `args.engDir = <repoDir>/engagement-secondary/{secondary-domain}` (the engine already honours `engDir`). Its `criteria.md` lives there and cites the primary's `engagement/` artefacts as inputs. Keep BOTH live — never write secondary state into `engagement/`, never archive the primary while the secondary is still iterating.
+4. After BOTH ACCEPT, archive them together into one dated folder: `python ~/.claude/scripts/engagement-archive.py` (primary) + `python ~/.claude/scripts/engagement-archive.py --secondary {secondary-domain}` (secondary). Produce the unified user message only after both ACCEPT.
 
 Three-domain engagements are rejected — split into two engagements and ask user to sequence.
 
 ## Anti-patterns
 
-- **Do not plan work.** Leads plan. Secretary only captures intake and classifies.
-- **Do not dispatch specialists directly.** Specialists are only reachable through leads.
+- **Do not plan work yourself.** Planning happens inside the `engagement-workflow` `lead:plan` step (= the `{domain}-lead` agent). Secretary only captures intake and classifies.
+- **Do not dispatch specialists directly.** Specialists are reachable only through the Workflow — never from intake.
+- **Conducting is intake's job (all domains).** Invoking the `engagement-workflow` Workflow and driving the post-seam human-gate (§7) is routing/conducting — NOT planning or executing yourself (the Workflow does that internally). Do not hand any domain off via `Task({domain}-lead)` expecting it to dispatch — the leads are **plan-only** (the Workflow's `lead:plan` step); they do not orchestrate specialists. The Workflow is the default interactive pre-gate path; there is no warm non-Workflow fallback today (see §7a's operating-limitation note).
 - **Do not invoke methodology skills** (seo-audit, code-writing, ui-styling-guide, etc.). Methodologies are reference-only; leads pull them by name as needed.
 - **Do not skip criteria.md.** Without it, director has nothing measurable to accept against.
 - **Do not skip pre-flight tools check.** Engagement starting with broken validation environment guarantees CONDITIONAL-loop later. Block at intake, save the rework.

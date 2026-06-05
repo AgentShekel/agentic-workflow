@@ -33,7 +33,7 @@ to guard.}
 inspired the scenario, if any.}
 ```
 
-## Example scenarios (synthetic — adapt or replace)
+## Initial set (2026-05-28, dry-run seed)
 
 | # | Slug | Class | What it guards |
 |---|---|---|---|
@@ -41,14 +41,11 @@ inspired the scenario, if any.}
 | 02 | flaky-test-masking-detector-fires | rule_missing | anti-pattern-detector still catches `assert True` / skipped tests under wave dispatch |
 | 03 | security-gap-rate-limit-missing | rule_wrong | security-auditor still flags new auth endpoint without rate-limit (OWASP API4) |
 
-These three scenarios are **synthetic starter examples** illustrating the
-format. They cover the three SkillOpt failure classes (rule_ignored /
-rule_missing / rule_wrong) against agents/skills that ship in the public
-repo. They are **not your golden set** — they are templates. Replace or
-extend them with scenarios drawn from your own engagement history. A
-real SkillOpt cycle skips any scenario whose accompanying signal in
-`skill-evolution-log.md` carries the marker `dryrun: true`, so synthetic
-examples never drive real edits.
+These three are the dry-run set — synthetic, exercised once on the cycle to
+characterize failure modes before a real cycle runs against real signals.
+Marker `dryrun: true` is set in their accompanying signals (in
+`skill-evolution-log.md`) so the director's reflect step skips them when a
+real cycle runs.
 
 ## Adding new scenarios
 

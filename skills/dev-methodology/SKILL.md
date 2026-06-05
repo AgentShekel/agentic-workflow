@@ -4,7 +4,7 @@ domain: dev
 description: |
   [METHODOLOGY] AI-First development methodology (spec-driven pipeline,
   project structure, skills/agents ecosystem, quality gates). Preloaded by
-  dev-lead and dev-* lead agents.
+  dev-lead.
 ---
 
 # AI-First Development Methodology
@@ -21,7 +21,7 @@ Core problems it solves:
 - **Scope creep** — specs approved before coding starts
 - **Outdated agent knowledge** — Context7 MCP fetches current library docs
 
-**How work enters this methodology:** via `agency-intake` skill → `dev-lead` agent. The lead classifies engagement (research / spec / decomposition / execution / ship / done), sizes it, dispatches specialists, and hands off to `dev-director` for acceptance. No direct slash-command entry.
+**How work enters this methodology:** via `agency-intake` skill → the `engagement-workflow` Workflow (see `agency-intake` §7a). `dev-lead` is the Workflow's `lead:plan` step — it reads `criteria.md`, sizes the engagement, and plans it (specialists / waves / validators); it does NOT dispatch. The Workflow script then fans out specialists and validators, assembles the handoff, and stops at the seam; the human-gate (consilium → directive → `dev-manager` acceptance) is downstream. No direct slash-command entry.
 
 ---
 
@@ -45,7 +45,7 @@ The full path from idea to production. Each step maps to a skill (methodology) a
 **Output:** `work/{feature}/research-verdict.md` + `work/{feature}/code-research.md`
 
 **Skill:** `feature-research`
-**Dispatched by:** `dev-product-lead` → `dev-product-analyst`
+**Owner:** `dev-product-analyst` (dispatched by the engagement-workflow)
 **Note:** Recommended for M/L features and unclear scope. Optional for obvious S features (bug fixes, small enhancements).
 
 ### Step 1: User Spec
@@ -67,7 +67,7 @@ The full path from idea to production. Each step maps to a skill (methodology) a
 **Output:** `work/{feature}/user-spec.md` (status: approved)
 
 **Skill:** `user-spec-planning`
-**Dispatched by:** `dev-product-lead` → `dev-product-analyst`
+**Owner:** `dev-product-analyst` (dispatched by the engagement-workflow)
 
 ### Step 2: Tech Spec
 
@@ -92,7 +92,7 @@ The full path from idea to production. Each step maps to a skill (methodology) a
 **Output:** `work/{feature}/tech-spec.md` (status: approved)
 
 **Skill:** `tech-spec-planning`
-**Dispatched by:** `dev-engineering-lead` → `dev-tech-architect`
+**Owner:** `dev-tech-architect` (dispatched by the engagement-workflow)
 
 ### Step 3: Task Decomposition
 
@@ -111,55 +111,44 @@ The full path from idea to production. Each step maps to a skill (methodology) a
 **Output:** `work/{feature}/tasks/*.md` (validated)
 
 **Skill:** `task-decomposition`
-**Dispatched by:** `dev-engineering-lead` → `dev-tech-architect`
+**Owner:** `dev-tech-architect` (dispatched by the engagement-workflow)
 
 ### Step 4: Implementation
 
-Two modes, chosen by the lead based on engagement size:
+Two plan shapes, set by the lead's plan and run by the **engagement-workflow deliver phase** — the lead PLANS, it does not orchestrate; the Workflow script fans specialists out:
 
-**Single task** — manual control, debugging, iterating on one piece. Dispatches one engineer (`dev-backend-engineer`, `dev-frontend-engineer`, or `dev-fullstack-engineer`) against one task file.
+**Single task** — one engineer (`dev-backend-engineer`, `dev-frontend-engineer`, or `dev-fullstack-engineer`) against one task. The plan has one task in one wave.
 
-**Full feature** — multiple tasks ready, parallel execution. Team lead orchestrates waves.
+**Full feature** — multiple tasks across ordered waves with dependencies. The plan groups tasks into waves (same-wave tasks disjoint, run in parallel; a later wave may depend on an earlier one).
 
 #### Mode A: Single Task
 
-One task per session.
+One task, one specialist, inside the deliver phase.
 
 **Process:**
-- Reads task file and all its Context Files
-- Loads skills specified in task (e.g. `code-writing`, `pre-deploy-qa`, `infrastructure-setup`)
-- Follows loaded skill workflow (TDD for code tasks, verification for QA tasks, etc.)
-- Git commit implementation (code + tests pass)
-- Runs reviewers specified in task (if any), up to 3 review iterations
-- Git commit after each round of review fixes (tests pass)
-- Writes entry to `decisions.md`, updates task status → done
-- Git commit status + decisions
+- The specialist reads the task + `criteria.md`, loads its skill (e.g. `code-writing`, `pre-deploy-qa`), follows the workflow (TDD for code), implements in its OWN git worktree off the integration HEAD
+- Runs its own tests; commits (code + tests pass)
+- A scoped `code-reviewer` judges the task against its cited criteria (passing tests is not sufficient — the contract must be met literally); review→rework up to the tier budget (S=1 / M=2 / L=3)
+- Writes its executor-report, opening with `## Criteria acknowledgement`
 
-**Skill:** Loaded from task file (typically `code-writing` for code tasks)
+**Skill:** Loaded from the task (typically `code-writing` for code tasks)
 
 #### Mode B: Full Feature
 
-All tasks via agent teams. Team lead orchestrates waves of parallel work.
+Multiple tasks across waves — orchestrated by the engagement-workflow deliver phase. NOT a `TeamCreate` team, NOT a "team lead": the Workflow script owns fan-out.
 
 **Process:**
-- Team lead reads tech-spec and all task files, builds execution plan
-- Checks `checkpoint.yml` — if resuming after context compaction, skips completed waves (uses decisions.md as source of truth for what actually completed)
-- Creates team via TeamCreate
-- Executes tasks wave by wave:
-  - Spawns one agent per task (parallel within wave)
-  - Each teammate: follows loaded skill workflow, runs smoke verification if task has Verify-smoke (before reviews), commits code (tests pass), sends diff to reviewers, fixes findings with commits per round (max 3 rounds), commits review reports
-  - Each teammate writes `decisions.md` entry
-  - Lead commits status updates (task frontmatter + decisions.md) after wave completes, updates `checkpoint.yml`
-- **Audit Wave** (always present): 3 auditors run in parallel (code-reviewer, security-auditor, test-reviewer) — review all feature code holistically. Issues found → lead spawns fixer agent, auditors become reviewers (max 3 fix rounds)
-- **Ad-hoc agents**: when lead needs work outside planned tasks (fixing audit findings, escalations), assigns matching skill + reviewers based on work type
-- **Final Wave**: QA (always), deploy + post-deploy (if applicable)
-- **Escalation**: after 3 failed fix rounds — stop, report to user, write decisions.md entry, wait for decision
-- User reviews results, team shuts down, `checkpoint.yml` deleted
+- The `lead:plan` step defines tasks, waves, and dependencies; the Workflow script — not a lead — dispatches them
+- Each wave: one specialist per task in parallel, each in its own worktree off the CURRENT integration HEAD (so a later wave sees earlier waves' merged work), each with per-task scoped review→rework (tier budget)
+- **Wave barrier:** the deliver phase consolidates the wave (code: octopus-merge the disjoint branches, overlap → sequential-merge + resolver; artefact: manifest-verify each file exists & is non-empty), runs repo-root tests, and **HARD-STOPS** the engagement if any task is blocked, crashed, or did not pass review — no silent proceed past a broken wave
+- **Validation:** the engagement-workflow **validate phase** runs the plan's validators (parallel, by agentType) then adversarially verifies each finding, writing the canonical `validation-outputs/*.json` — this replaces the old "audit wave"
+- **Resume:** state is the Workflow run journal — re-invoke with `resumeFromRunId` to replay completed steps from cache and re-run only changed/failed ones (NOT `checkpoint.yml` — that was the retired `feature-execution` model)
+- **Escalation:** rework budget exhausted, or a blocked/crashed task → deliver-phase hard-stop → surfaced to the user via `readyForAcceptance:false`
 
-Tasks can be code, user-action, deploy, config, or verification. Task nature is determined by its skill + description, not a separate type field.
+Tasks can be code, user-action, deploy, config, or verification — task nature follows its skill + description, not a type field.
 
-**Skill:** `feature-execution`
-**Dispatched by:** `dev-engineering-lead`
+**Skill:** `code-writing` (per task); wave orchestration = the engagement-workflow deliver phase (`feature-execution` archived 2026-06-05)
+**Owner:** the engagement-workflow deliver phase
 
 ### Step 5: Done
 
@@ -173,7 +162,7 @@ Tasks can be code, user-action, deploy, config, or verification. Task nature is 
 - Commits changes
 
 **Skill:** `documentation-writing` (for PK update rules)
-**Dispatched by:** `dev-product-lead` → `dev-technical-writer`
+**Owner:** `dev-technical-writer` (dispatched by the engagement-workflow)
 
 ### Step 6: Ship (when deploy applies)
 
@@ -187,7 +176,7 @@ Tasks can be code, user-action, deploy, config, or verification. Task nature is 
 - `post-deploy-qa` verifies live environment via MCP tools (Playwright, Claude_Preview) against AVP
 
 **Skills:** `pre-deploy-qa`, `deploy-pipeline`, `post-deploy-qa`
-**Dispatched by:** `dev-quality-lead` + `dev-devops-engineer`
+**Owner:** `dev-devops-engineer` + `pre-deploy-qa` / `post-deploy-qa` (dispatched by the engagement-workflow)
 
 ---
 
@@ -237,8 +226,8 @@ Completed features are archived to `work/completed/{feature}/`.
 engagement/
 ├── criteria.md           # Captured by agency-intake (non-mutable after lock)
 ├── plan.md               # Written by dev-lead
-├── acceptance-log.md     # Written by dev-director (acceptor)
-└── handoff.md            # Package dev-lead hands to dev-director
+├── acceptance-log.md     # Written by dev-manager (acceptor, post-seam human-gate)
+└── handoff.md            # Assembled by the Workflow handoff step → human-gate → dev-manager
 ```
 
 See `engagement-protocol` skill for the canonical contract.
@@ -285,16 +274,16 @@ Max 3 fix iterations at each stage. See `validation-pipeline` skill for cross-cu
 Project documentation = `.claude/skills/project-knowledge/references/`. CLAUDE.md stays minimal — just a pointer. Step 5 (Done) updates PK after every feature. The `documentation-writing` skill audits PK for bloat and quality.
 
 ### Design Hierarchy
-`brand-methodology` (source of truth) → `ui-ux-methodology` (recommendations) → `design-system-methodology` (tokens/specs) → `ui-styling-guide` (implementation). AI-generated assets (logo, CIP, icons, social photos) handled by `design-assets-guide`. Banners by `banner-design-guide`. Presentations by `presentation-design`. Design engagements enter via `agency-intake` → `design-lead`; `design-brand-lead` and `design-product-design-lead` dispatch specialists.
+`brand-methodology` (source of truth) → `ui-ux-methodology` (recommendations) → `design-system-methodology` (tokens/specs) → `ui-styling-guide` (implementation). AI-generated assets (logo, CIP, icons, social photos) handled by `design-assets-guide`. Banners by `banner-design-guide`. Presentations by `presentation-design`. Design engagements enter via `agency-intake` → `design-lead`; the engagement-workflow dispatches specialists (planned by design-lead).
 
 ### Marketing & Visibility
-`seo-auditing` orchestrates all Yandex skills (webmaster, metrika, wordstat, search, direct). `ai-visibility-methodology` audits AI platforms. `semantic-drift-methodology` analyzes topic coherence. Marketing engagements enter via `agency-intake` → `marketing-lead`; `marketing-traffic-lead`, `marketing-analytics-lead`, `marketing-content-lead` dispatch specialists.
+`seo-auditing` orchestrates all Yandex skills (webmaster, metrika, wordstat, search, direct). `ai-visibility-methodology` audits AI platforms. `semantic-drift-methodology` analyzes topic coherence. Marketing engagements enter via `agency-intake` → `marketing-lead`; the engagement-workflow dispatches specialists (planned by marketing-lead).
 
 ### Complexity Guard
 Features are classified as **Platform** (complex orchestration justified) or **Product** (simplicity enforced). Product features with unnecessary complexity are critical findings in completeness-validator, not minor. Principle: Adopt existing code > Adapt existing patterns > Invent new.
 
 ### Reversibility
-Code changes should be reversible. For M/L features: consider feature flags. For DB migrations: ensure rollback works. For integrations: adapter pattern. Feature-execution adds human validation gates between implementation waves for M/L features. Tech-spec template includes mandatory Rollback Strategy section for M/L features (deployment rollback, data rollback, feature flags, rollback verification).
+Code changes should be reversible. For M/L features: consider feature flags. For DB migrations: ensure rollback works. For integrations: adapter pattern. The engagement-workflow deliver phase adds review→rework gates between implementation waves for M/L features. Tech-spec template includes mandatory Rollback Strategy section for M/L features (deployment rollback, data rollback, feature flags, rollback verification).
 
 ### Just-In-Time Context
 Agent reads only what's needed for current task, not everything. Task files list their Context Files explicitly.
@@ -302,11 +291,11 @@ Agent reads only what's needed for current task, not everything. Task files list
 ### Context7 for Library Docs
 Agent uses Context7 MCP to fetch current library documentation instead of relying on training data. Used during tech-spec research and code implementation.
 
-### Checkpoint Recovery
-Feature execution persists state to `checkpoint.yml` after each wave. A `SessionStart(compact)` hook detects context compaction during long feature executions and injects recovery context — the lead resumes from the next pending wave using checkpoint + decisions.md as source of truth.
+### Resume & compaction recovery
+Long engagements run INSIDE the `engagement-workflow` Workflow, which executes out-of-band — a main-loop compaction does NOT interrupt it — and resumes via `resumeFromRunId` (completed steps replay from cache; only changed/failed ones re-run). On a `SessionStart(compact)` the `post-compact-restore.sh` hook re-points the conductor at the live engagement artefacts (`criteria.md`, `plan.md`, `validation-log.md`, `handoff.md`, `acceptance-log.md`). The retired `feature-execution` `checkpoint.yml` / `work/` model is gone.
 
 ### Automation Hooks
-- `SessionStart(compact)` — restores feature-execution context after compaction
+- `SessionStart(compact)` — restores in-flight engagement context after compaction
 - `SessionStart` — auto-loads project-knowledge files and lists active features
 - `PreCommit` — scans staged files for secret patterns (API keys, private keys, credentials)
 
@@ -320,15 +309,15 @@ Template-compliance validators (task-validator, tech-spec-validator, skill-check
 
 ## Skills Ecosystem
 
-Per-category skill catalog (Planning / Execution / Quality & Review / Meta / Agency Cross-Cutting — ~22 skills, ~50 lines of one-liners) moved to **`references/skills-ecosystem.md`** (now in `references/`). Load that file when picking a specific skill to load for a sub-task.
+Per-category skill catalog (Planning / Execution / Quality & Review / Meta / Agency Cross-Cutting — ~22 skills, ~50 lines of one-liners) moved to **`references/skills-ecosystem.md`** in v0.2. Load that file when picking a specific skill to load for a sub-task.
 
 → Full per-category catalog: `references/skills-ecosystem.md`.
 
 ## Agents
 
-Per-role agent catalog (Dev Track Leadership / Validators / Reviewers / Engineers / Research / QA / Meta — ~33 agents, ~55 lines of one-liners) moved to **`references/agents.md`** (now in `references/`). Load that file when identifying which sibling agent to dispatch for a sub-task.
+Per-role agent catalog (Dev Track Leadership / Validators / Reviewers / Engineers / Research / QA / Meta — ~33 agents, ~55 lines of one-liners) moved to **`references/agents.md`** in v0.2. Load that file when identifying which sibling agent to dispatch for a sub-task.
 
-Agents are isolated subprocesses with fresh context: receive input, do one job, return structured output. The dev domain currently has 3 leadership roles (top-lead + mid-leads + tech architect), 10 validators, 10 reviewers, 6 engineers, 1 researcher, 2 QA roles, and 1 meta validator.
+Agents are isolated subprocesses with fresh context: receive input, do one job, return structured output. The dev domain currently has 2 leadership roles (dev-lead planning + dev-tech-architect), 10 validators, 10 reviewers, 6 engineers, 1 researcher, 2 QA roles, and 1 meta validator.
 
 → Full per-role catalog with one-line purpose: `references/agents.md`.
 
@@ -336,9 +325,9 @@ Agents are isolated subprocesses with fresh context: receive input, do one job, 
 
 ## Workflow Entry Points
 
-All work enters via `agency-intake` (user says "мне надо агенси задачу" or similar trigger). Intake captures `engagement/criteria.md`, then routes to `dev-lead`. The lead reads criteria, sizes the engagement, and picks which steps to run:
+All work enters via `agency-intake` (user says "мне надо агенси задачу" or similar trigger). Intake captures `engagement/criteria.md`, then (for dev) invokes the `engagement-workflow` Workflow. `dev-lead` is its `lead:plan` step — it reads criteria, sizes the engagement, and plans which steps run; the Workflow then orchestrates them:
 
-| Engagement kind | Steps the lead runs |
+| Engagement kind | Steps the plan runs |
 |---|---|
 | **New project bootstrap** | infrastructure-setup → project-planning → (features follow) |
 | **New feature (M/L)** | Step 0 (research) → Step 1 (user-spec) → Step 2 (tech-spec) → Step 3 (tasks) → Step 4 (execute) → Step 5 (done) → Step 6 (ship, if applicable) |
@@ -346,6 +335,6 @@ All work enters via `agency-intake` (user says "мне надо агенси з�
 | **Bug fix** | Direct `code-writing` single-task against the bug, skip Steps 0-3 |
 | **Quality audit** | `code-reviewing` + `security-auditing` + `testing-methodology` sweep, no code changes |
 
-`dev-director` accepts or rejects the handoff package against `engagement/criteria.md`. Iteration budget: 2 rework rounds; escalate to user before round 3.
+After the Workflow stops at the handoff seam, the human-gate runs and `dev-manager` accepts or rejects the handoff package against `engagement/criteria.md` (per `acceptance-protocol`). Iteration budget: 2 rework rounds; escalate to user before round 3.
 
 To understand how a specific skill works internally, read its SKILL.md directly.

@@ -90,7 +90,7 @@ failures are noise; patching them overfits). This is SkillOpt's
 
 **Dry-run signals are skipped.** Before reading signals, filter
 `skill-evolution-log.md` entries with the line `dryrun: true` — those are
-synthetic exercises (dry-run seed) and must not drive real edits. A real
+synthetic exercises (seed) and must not drive real edits. A real
 cycle reflect step considers only signals without that marker.
 
 **Resolved signals are skipped.** Signals closed by a direct fix outside a
@@ -110,13 +110,12 @@ recurring finding and attributes it to a specific `agents/X.md` or `skills/Y/SKI
   text to an ignored rule just grows the file without changing behaviour.
 - Plus the domain's own failure types (see the per-domain director file).
 
-**Cross-check the target before authoring.** A signal's `Traced to` (and a
-reflection's `target`) names a best-guess file; it is load-bearing but fallible — a wrong
-trace yields a right-pattern / wrong-file edit that the gate then rejects (pure waste).
-Codex MUST verify the target points at the agent/skill whose CONTENT enforces the catch —
-the validator/rule that would PRODUCE the catching artefact — not the producer of the
-buggy output, by cross-reading the relevant golden scenario's pass-criteria before
-emitting a patch.
+**Cross-check the target before authoring (finding F2).** A signal's `Traced to` (and a
+reflection's `target`) names a best-guess file; it is load-bearing but fallible — a wrong trace
+yields a right-pattern / wrong-file edit that the gate then rejects (pure waste, the most common
+dry-run failure). Codex MUST verify the target points at the agent/skill whose CONTENT enforces
+the catch — the validator/rule that would PRODUCE the catching artefact — not the producer of the
+buggy output, by cross-reading the relevant golden scenario's pass-criteria before emitting a patch.
 
 Codex output = a JSON patch list (see edit format). Director reads the shared process-meta
 + its domain content-meta BEFORE judging, and the rejection buffer (step 2).
@@ -134,9 +133,9 @@ Codex output = a JSON patch list (see edit format). Director reads the shared pr
 Before any edit reaches the blessed mirror it must pass the **golden-scenario gate** — a
 rubric judgment over the relevant scenarios (Codex proposes a pass/fail read, the director
 adjudicates; the `skill-testing` harness is optional, reserved for high-blast edits whose
-scenarios are executable). The gate runs as a judgment with NO patch applied: the director
-reasons whether the edit satisfies each scenario's pass-criteria without regressing. Tier
-the gate by **blast radius** (anti-overhead):
+scenarios are executable). confirmed the gate runs as a judgment with NO patch applied:
+the director reasons whether the edit satisfies each scenario's pass-criteria without
+regressing. Tier the gate by **blast radius** (anti-overhead):
 
 | Blast radius | Examples | Gate |
 |---|---|---|
@@ -194,7 +193,7 @@ At most `edit_budget` edits. Empty list is a valid output (nothing warranted).
 
 ## Rejection buffer (`skill-evolution-meta.md` is meta; this is separate)
 
-`<your-memory>/skill-rejected-edits.md` (path resolved by Claude Code workspace memory; see your CLAUDE.md), append-only.
+`~/.claude/projects/C--work-projects/memory/skill-rejected-edits.md`, append-only.
 MUST be read before proposing edits. Schema:
 
 ```markdown

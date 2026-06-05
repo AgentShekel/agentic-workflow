@@ -2,12 +2,21 @@
 
 # agentic-workflow
 
-> Multi-agent framework for Claude Code: 66 specialized agents, 48
-> methodology skills, 15 + 3 Python orchestration scripts, 3 LangGraph
-> engines, tier-aware acceptance (S/M/L), filesystem-isolated adversary
-> review, cross-family second opinion via Codex MCP, human as supreme
-> judge at critical transitions.
+> Multi-agent framework for Claude Code: 58 agents, 46 methodology
+> skills, 16 + 3 Python orchestration scripts, 2 Workflow orchestration
+> engines + 2 LangGraph human-gate engines, tier-aware acceptance
+> (S/M/L), filesystem-isolated adversary review, cross-family second
+> opinion via Codex MCP, human as supreme judge at critical transitions.
 
+> **v0.3 (2026-06-05):** engagement orchestration unified under the
+> **engagement-workflow** Workflow — the main loop conducts a single
+> pre-gate cascade (plan → deliver in isolated git-worktree waves →
+> validate → handoff → gate) and stops at the handoff seam; the LangGraph
+> human-gate (consilium → directive → manager) remains the acceptance
+> path after the seam. Domain leads are planning-only; specialist
+> coordination is structural — waves in the lead's plan. See
+> [`CHANGELOG.md`](CHANGELOG.md).
+>
 > **v0.2.4 (2026-05-28):** Windows compatibility — three latent issues
 > surfaced on Max-subscription
 > claude CLI: `claude.CMD` npm-wrapper truncates multiline argv at the
@@ -69,8 +78,8 @@ systemic failure modes:
 ```mermaid
 flowchart TB
     H["Human layer<br/>Trigger phrase + supreme judge on M/L acceptance + SkillOpt commons-maintainer"]
-    A["Agents layer · 66 agents<br/>managers / directors / leads / specialists / validators"]
-    S["Skills layer · 48 skills<br/>methodologies, protocols, tool guides"]
+    A["Agents layer · 58 agents<br/>managers / directors / leads / specialists / validators"]
+    S["Skills layer · 46 skills<br/>methodologies, protocols, tool guides"]
     O["Orchestration layer · 14 + 3 Python scripts<br/>mechanical gates, adversary, consilium, archival, event ledger"]
     St["State layer<br/>engagement/ directory · whitelist · append-only logs"]
 
@@ -187,32 +196,34 @@ completely.
 sequenceDiagram
     autonumber
     participant U as Human
-    participant SK as agency-intake (skill)
-    participant L as Domain Lead
-    participant SP as Specialists
+    participant ML as Main loop · agency-intake
+    participant WF as engagement-workflow · Workflow
+    participant SP as Specialists · waves
     participant V as Validators
-    participant SC as Scripts (orchestration)
-    participant M as Manager (acceptor)
+    participant SC as LangGraph + scripts
+    participant M as Manager · acceptor
 
-    U->>SK: trigger phrase
-    SK->>SK: classify → criteria.md (S/M/L)
-    SK->>L: handoff to lead
-    L->>SP: dispatch tasks
-    SP->>L: executor-reports/
-    L->>V: dispatch validators (validator_lg.py --auto on M/L)
-    V->>L: validation-outputs/*.json (canonical envelope)
-    L->>SC: handoff-precheck.py
-    SC-->>L: exit 0 / fail
-    SC->>SC: adversary_lg.py --consilium {M|L}
-    SC->>SC: consilium-synth.py
-    SC->>U: consilium-present.py (chat summary)
-    U->>SC: PROCEED / REJECT / DIRECTED
-    SC->>SC: human-directive.py
-    SC->>M: invoke manager (judge mode)
-    M->>M: write acceptance-log.md per directive
-    M->>M: write 0-3 reflections to engagement-reflections.md
-    M->>SC: director-verdict-check.py (legacy name)
-    SC-->>U: ACCEPT — engagement-archive.py
+    U->>ML: trigger phrase
+    ML->>ML: classify → criteria.md (S/M/L)
+    ML->>WF: invoke engagement-workflow
+    WF->>WF: discovery · lead:plan → tasks / waves / validators
+    WF->>SP: deliver — specialist waves in git worktrees (per-task review→rework)
+    SP-->>WF: executor-reports/ + consolidated work
+    WF->>V: validate — validators in parallel + adversarial-verify
+    V-->>WF: validation-outputs/*.json (canonical envelope)
+    WF->>WF: handoff.md + handoff-precheck (gate)
+    WF-->>ML: readyForAcceptance — handoff seam
+    Note over ML,SC: seam · pre-gate = Workflow | human-gate = LangGraph
+    alt M/L tier
+        ML->>SC: adversary_lg.py --consilium {M|L} --interrupt
+        SC->>U: consilium summary (chat, ≤2 min)
+        U->>SC: PROCEED / REJECT / DIRECTED → human-directive.md
+        ML->>M: invoke {domain}-manager (judge mode)
+        M->>M: acceptance-log.md + 0–3 reflections
+    else S tier
+        Note over U: human glance — accept directly
+    end
+    ML->>SC: engagement-archive.py (on ACCEPT)
 ```
 
 S-tier skips adversary, consilium and manager phase: producer
@@ -220,22 +231,22 @@ self-attests, mechanical checks gate, human accepts directly.
 
 ## What's inside
 
-### Agents (66)
+### Agents (58)
 
 | Category | Count | Roles |
 |---|---|---|
 | **Managers** | 3 | `dev-manager`, `design-manager`, `marketing-manager` — per-engagement acceptor (judge between producer + adversary) |
 | **Directors** | 3 | `dev-director`, `design-director`, `marketing-director` — out-of-band system-optimizer (SkillOpt loop) |
-| **Leads** | 11 | 3 top-leads (dev/design/marketing) + 8 mid-leads (product, engineering, quality, brand, product-design, traffic, content, analytics) |
+| **Leads** | 3 | `dev-lead`, `design-lead`, `marketing-lead` — planning-only (the engagement-workflow's `lead:plan` step; they plan waves, the Workflow dispatches specialists) |
 | **Specialists** | 20 | backend, frontend, fullstack, devops, qa, tech-architect, product-analyst, technical-writer; ux, ui, visual, brand-strategist, presentation; copywriter, banner-designer, seo, ppc, keyword-researcher, web-analyst, ai-visibility |
 | **Validators** | 29 | code-reviewer, security-auditor, accessibility, performance, migration, test-reviewer, reality-checker, skeptic, completeness, task/tech-spec/user-spec validators, infra/deploy reviewers, pre/post-deploy QA, anti-pattern detector, ux-review, skill-checker, 3 researchers (code/brand/design-system), product-context-validator, etc. |
 
-### Skills (48)
+### Skills (46)
 
 | Category | Count | What's in it |
 |---|---|---|
 | **Agency protocol** | 8 | agency-intake, engagement-protocol, engagement-contract (specialist subset), acceptance-protocol (per-engagement acceptor methodology), system-optimization-protocol (SkillOpt loop), validation-pipeline, docs-pipeline, codex-bridge |
-| **Dev methodology** | 18 | TDD, code review, spec planning (user/tech), task decomposition, deploy, security, infrastructure, prompt engineering, persistent tasks, pre/post-deploy QA |
+| **Dev methodology** | 16 | TDD, code review, spec planning (user/tech), task decomposition, deploy, security, infrastructure, prompt engineering, persistent tasks, pre/post-deploy QA |
 | **Design methodology** | 8 | brand, design system, UI/UX, presentation, banner, design tokens |
 | **Marketing methodology** | 5 | SEO auditing, semantic drift, AI visibility, task decomposition, benchmark research (industry reverse-engineering, standalone entry-point) |
 | **Regional SEO/PPC stack** | 6 | API integrations for Russian-market analytics platforms (Webmaster, Metrika, Direct, Wordstat, Search) |
@@ -243,12 +254,15 @@ self-attests, mechanical checks gate, human accepts directly.
 
 Frontmatter tags for the router: `[PROTOCOL]`, `[METHODOLOGY]`, `[TOOL]`.
 
-### Scripts (14 main + 3 optional)
+### Scripts (16 main + 3 optional)
 
-Three LangGraph engines:
+Two Workflow orchestration engines (`workflows/`):
+- `engagement-workflow.js` — the **pre-gate cascade** the main loop conducts: discovery (`lead:plan`) → decompose (gated) → deliver (specialist waves in isolated git worktrees, per-task review→rework, per-wave consolidation: code = octopus-merge / artefact = manifest-verify) → validate (validators in parallel + adversarial-verify each finding) → handoff → gate. Stops at the handoff seam; a wave hard-stops if a task is blocked / fails review / the plan is malformed (no silent proceed). Resumes via the Workflow run journal (`resumeFromRunId`).
+- `skillopt-workflow.js` — the director SkillOpt cycle as a Workflow (harvest due signals → Codex proposes bounded edits → golden-set gate → promote / reject).
+
+Two LangGraph engines (the human-gate, after the seam):
 - `adversary_lg.py` — LangGraph adversary bridge: 5 reviewer roles, two-pass curated-view isolation, `Send`-based parallel fan-out, SQLite-checkpointed `--resume`, native HITL via `interrupt()`, event ledger wired
 - `validator_lg.py` — LangGraph atomic-validator fan-out via `Send`; retry edge, auto-plan from criteria.md predicates, `--resume`, native HITL via `--interrupt-on-critical`, canonical validator envelope, event ledger wired
-- `engagement_lg.py` — LangGraph engagement-level orchestrator owning the full lifecycle intake → plan → dispatch → validate → consilium → accept → archive. 11 nodes + 3 HITL pause points (criteria_lock / danger_gate / human_directive). Three execution modes: `--dry-run` (default, placeholders), `--mock` (real graph paths + canned subprocess artefacts — full end-to-end smoke without claude CLI), `--real` (full subprocess with `claude -p --agent X`). Delegates to `validator_lg.py` and `adversary_lg.py` as subprocesses (process isolation; promotion to sub-graphs deferred until field data shows overhead matters). Event ledger wired.
 
 Mechanical gates and synthesis:
 - `consilium-synth.py` — adversary output aggregation, two-stage dedup

@@ -2,8 +2,7 @@
 name: marketing-web-analyst
 description: |
   Web analyst — Yandex Metrika deep-dives, semantic drift analysis, traffic
-  source attribution, behaviour analysis, conversion funnels. Reports to
-  marketing-analytics-lead.
+  source attribution, behaviour analysis, conversion funnels. Dispatched by the engagement-workflow.
 model: sonnet
 color: green
 skills:

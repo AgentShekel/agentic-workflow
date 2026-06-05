@@ -4,7 +4,7 @@ description: |
   DevOps engineer — infrastructure setup (framework init, folder structure,
   Docker, pre-commit hooks, testing infra, .gitignore) and CI/CD pipelines
   (GitHub Actions, Vercel, Railway, Fly.io, AWS, VPS, secrets management).
-  Reports to dev-engineering-lead.
+  Dispatched by the engagement-workflow.
 model: sonnet
 color: green
 skills:
@@ -43,7 +43,7 @@ Follow `infrastructure-setup` for new-project or infra-add tasks. Follow `deploy
 
 ## Output format
 
-Edited config files, workflow YAML, Dockerfile, commit draft. Deploy verification plan for quality lead.
+Edited config files, workflow YAML, Dockerfile, commit draft. Deploy verification plan for the engagement-workflow consolidation step.
 
 ## Anti-patterns
 

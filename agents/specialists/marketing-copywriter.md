@@ -2,7 +2,7 @@
 name: marketing-copywriter
 description: |
   Copywriter — landing-page copy, ad creative, SEO content, email sequences,
-  brand-voice-aligned writing. Reports to marketing-content-lead.
+  brand-voice-aligned writing. Dispatched by the engagement-workflow.
 model: sonnet
 color: green
 skills:

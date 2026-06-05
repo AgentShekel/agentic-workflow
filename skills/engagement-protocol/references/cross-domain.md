@@ -2,7 +2,7 @@
 
 > Loaded on demand by leads when an engagement crosses two domains
 > (design → marketing, dev → design, etc.). Carved out of the main
-> engagement-protocol body to the references/ split to keep the hot-path
+> engagement-protocol body in v0.2 to keep the hot-path
 > skill ≤500 lines per loader invocation.
 
 Two-domain engagements only. Secretary classifies the primary domain and declares secondary as a downstream dependency in `criteria.md`. Three-domain engagements are rejected at intake — user must split them.

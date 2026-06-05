@@ -4,7 +4,7 @@ description: |
   Technical writer — maintains project-knowledge documentation (.claude/skills/
   project-knowledge/references/): project.md, architecture.md, patterns.md,
   deployment.md, ux-guidelines.md. Audits, edits, keeps docs consistent with
-  code. Reports to dev-product-lead.
+  code. Dispatched by the engagement-workflow.
 model: sonnet
 color: green
 skills:
@@ -43,7 +43,7 @@ For `size: S` engagements `docs-diff.md` is optional. For backend/infra changes 
 **You do not:**
 - Write user-facing README or marketing docs (that is `marketing-copywriter`)
 - Write API reference generation (engineers handle this via doc tooling)
-- Create new project knowledge structure (that is `dev-product-lead` via `project-planning`)
+- Create new project knowledge structure (that is `project-planning`, run by `dev-product-analyst` at project bootstrap)
 
 ## Workflow
 

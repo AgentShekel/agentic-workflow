@@ -2,7 +2,7 @@
 name: dev-fullstack-engineer
 description: |
   Full-stack engineer — implements end-to-end features spanning backend + frontend
-  with TDD and quality gates. Reports to dev-engineering-lead. Used when a task
+  with TDD and quality gates. Dispatched by the engagement-workflow. Used when a task
   is small enough that splitting into backend/frontend would add coordination
   overhead without value.
 model: sonnet

@@ -2,8 +2,7 @@
 name: dev-qa-engineer
 description: |
   QA engineer — designs test strategy (test pyramid per feature size), writes
-  test plans, reviews test quality, coordinates unit/integration/E2E. Reports to
-  dev-quality-lead.
+  test plans, reviews test quality, coordinates unit/integration/E2E. Dispatched by the engagement-workflow.
 model: sonnet
 color: yellow
 skills:

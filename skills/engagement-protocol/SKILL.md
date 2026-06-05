@@ -2,7 +2,7 @@
 name: engagement-protocol
 domain: meta
 triggers:
-  - "loaded by every lead / manager / mid-lead via skills frontmatter"
+  - "loaded by every lead / manager via skills frontmatter"
   - "writing or updating engagement/ artefacts (criteria, plan, handoff, acceptance-log, etc.)"
   - "tier dispatch decisions (S/M/L acceptance shape)"
   - "authority precedence question (skill vs agent vs criteria)"
@@ -20,6 +20,8 @@ description: |
 This is the shared contract every agency role follows. The secretary captures intake, the lead orchestrates, the manager accepts. All of them read from and write to the artefacts defined here.
 
 > **Naming note (2026-05-28 refactor):** the per-engagement **acceptor** role is the `*-manager` agent. Throughout this document, legacy mentions of "director" / "the director" denote that **manager/acceptor** role — read them as "manager". The `*-director` agents are now a *separate* role — system-optimizers that improve the skill/agent corpus (see `system-optimization-protocol`); they never accept engagements. Script names (e.g. `director-verdict-check.py`) and the `acceptance-log.md` owner column are unchanged.
+
+> **Workflow-migration note (2026-06-05):** engagement DISPATCH is now the `engagement-workflow` Workflow, not Task-tool routing. The `*-lead` is a planning agent (`lead:plan`) that returns a plan (tier / specialists / waves / tasks / validators); the Workflow SCRIPT then fans out specialists by `task.owner` in waves, consolidates each wave, runs validators, assembles the handoff, and stops at the human-gate seam. **There is no mid-lead routing layer** — the 8 `*-engineering/product/quality/brand/product-design/traffic/analytics/content-lead` agents were retired (archived under `_archive/agents/`). Legacy mentions of "mid-lead", "top-lead → mid-lead → specialists", or "dispatch via the Task tool" below describe the retired topology; read them as the Workflow's **wave dispatch** — waves replace the mid-lead coordination layer (see §"Specialist dispatch — the workflow wave model" and §"Criteria propagation — workflow dispatch"). The human-gate (consilium → human directive → `*-manager` acceptance) is UNCHANGED.
 
 ## Engagement = a directory
 
@@ -178,8 +180,8 @@ Pre-flight failure → secretary records the blocking tool in `criteria.md` "out
 ## Shape
 {engagement-type classification + rationale}
 
-## Phases
-1. Phase name — owner (mid-lead / specialist) — deliverable — dependencies
+## Phases / waves
+1. Wave / phase — owner (specialist agentType) — deliverable — dependencies
 2. ...
 
 ## Validators planned
@@ -421,7 +423,7 @@ If the engagement crosses thresholds during execution, lead promotes the size in
 | Handoff §10 Iteration counter | optional (informational) | optional | optional |
 | Handoff §11 Known deferrals | optional | required (or "None") | required (or "None") |
 | Director scope sync | optional | optional | mandatory if `ux_heavy: true` or weak criteria |
-| Mid-lead routing layer | **NONE** (top-lead → specialist direct) | optional (top-lead bypasses mid-lead when phase has 1 specialist; uses mid-lead only when ≥2 specialists need coordination) | required (top-lead → mid-lead → specialists; mid-lead coordinates ≥2 specialists per track) |
+| Specialist dispatch (engagement-workflow) | single task's owner, 1 wave | wave(s) of parallel specialists by `task.owner` (disjoint files) | multi-wave dispatch with dependencies (decompose mandatory) |
 | Director phase | **NONE** (producer self-attest + mechanical + human) | lightweight (judge between producer + 1 adversary) | full (judge between producer + 5-reviewer consilium) |
 | Adversary pass | none | Opus adversary in fresh subprocess (`adversary_lg.py --consilium M`) | Consilium: peer-Opus + 2× Codex + Sonnet + Haiku (`adversary_lg.py --consilium L`) |
 | Iteration budget | 1 (one shot expected) | 2 | 3 |
@@ -453,33 +455,25 @@ That's it. No §3 table when 2-3 criteria fit inline. No §4 separate reports se
 
 Tier-relaxations are the ONLY allowed deviation from the canonical schema. Any other deviation = whitelist violation = REJECT. The point: small engagements feel small, large engagements stay rigorous, and corner-cutting goes from individual lead choice to protocol-recognised path.
 
-### Mid-lead dispatch policy (anti-overengineering rule)
+### Specialist dispatch — the workflow wave model
 
-Mid-leads exist to coordinate ≥2 specialists working on related deliverables. They are NOT a mandatory routing layer.
+The `engagement-workflow` Workflow dispatches specialists **directly by `task.owner`** — there is no mid-lead routing layer at any tier. The coordination a mid-lead used to provide is now **structural**, encoded in the lead's plan as WAVES:
 
-**Hard rules:**
+- A **wave** is a group of tasks whose `files` are strictly **disjoint**; the Workflow runs them in PARALLEL (each as its `task.owner` agentType) and consolidates at the wave barrier (code mode: octopus merge of the parallel worktrees, overlap → sequential-resolve; artefact mode: manifest-verify of the written files).
+- **Cross-task coordination** that needed a coordinating lead is expressed as wave ORDER + dependencies: a shared/foundational module (API contract, type/schema, design tokens, brand voice) goes ALONE in an earlier wave; the specialists that consume it go in a LATER wave (which sees the earlier wave's merged work). Two specialists on a shared contract therefore never need a live coordinator — they are serialized through the shared module's wave.
+- **Per-task review→rework** runs inside each task (code mode: `code-reviewer` as criteria-guardian; artefact mode: a critique pass), bounded by tier (S=1, M=2, L=3 attempts).
 
-| Tier | Mid-lead use | Top-lead must... |
-|---|---|---|
-| **S** | **FORBIDDEN** | Dispatch the single specialist directly via Task tool. No mid-lead. Period. |
-| **M** | **Optional, default-off** | Dispatch specialists DIRECTLY when phase has 1 specialist. Invoke mid-lead ONLY when phase has ≥2 specialists that need coordination (e.g. backend+frontend on shared API contract; copywriter+banner-designer on shared brand voice; ux-designer+ui-designer on shared component decisions). |
-| **L** | **Required** | Always route through mid-lead. L-tier means ≥4 specialists / cross-track work — mid-lead coordination is the point. |
+**Tier shapes the plan, not a routing layer:**
 
-**Examples (when mid-lead is REQUIRED vs SKIPPED on M-tier):**
+| Tier | Plan shape |
+|---|---|
+| **S** | 1 task, 1 wave, single owner. |
+| **M** | 1–few tasks; **≥2 specialists** → split by surface into disjoint-file tasks, the shared contract in an earlier wave alone, consumers in a later wave. |
+| **L** | multi-wave: foundational wave → parallel feature waves → integration. `decompose` mandatory. |
 
-| M-tier scenario | Mid-lead? | Reason |
-|---|---|---|
-| Dev: copy fix in 1 file by `dev-fullstack-engineer` | **SKIP** `dev-engineering-lead` — direct dispatch | 1 specialist, no coordination overhead |
-| Dev: backend (`dev-backend-engineer`) + frontend (`dev-frontend-engineer`) on new API + UI | **USE** `dev-engineering-lead` | 2 specialists, shared contract |
-| Dev: only `code-reviewer` + `security-auditor` (validators) | **SKIP** `dev-quality-lead` — direct validator dispatch | Validators run on rules, no leader judgement needed |
-| Design: only `design-ui-designer` updating 1 component | **SKIP** `design-product-design-lead` | 1 specialist |
-| Design: full redesign with `design-ux-designer` + `design-ui-designer` | **USE** `design-product-design-lead` | 2 specialists, shared design decisions |
-| Marketing: landing copy by `marketing-copywriter` only | **SKIP** `marketing-content-lead` | 1 specialist |
-| Marketing: campaign with `marketing-copywriter` + `marketing-banner-designer` + `marketing-seo-specialist` | **USE** mid-leads | 3 specialists across 2 tracks |
+**Anti-pattern:** planning two same-wave tasks that touch the same file. The octopus/manifest consolidation assumes disjoint files; overlap forces the slow conflict-resolve fallback. Merge them into one task or split into sequential waves.
 
-**Anti-pattern:** invoking mid-lead "for consistency" or "because the role exists" when you have 1 specialist. Direct dispatch is preferred — saves 1 hop, 1 prompt round-trip, 1 layer of message-passing.
-
-**Why this rule:** mid-leads are coordination layer, not routing layer. If there's nothing to coordinate (1 specialist), the routing is pure overhead.
+**Why:** waves are the coordination unit. What used to be "invoke a mid-lead to coordinate ≥2 specialists" is now "put the shared dependency in an earlier wave" — the dependency graph does the coordinating, deterministically, with no extra agent hop.
 
 ### Task decomposition rule (cross-domain)
 
@@ -575,7 +569,7 @@ The only acceptable form of "deferral" is something already listed in `criteria.
 
 ## UX-heavy engagements
 
-Detail moved to **`references/ux-heavy.md`** (now in `references/`) — load that file when `criteria.md` frontmatter has `ux_heavy ∈ {minor, true}` OR the engagement plan introduces a UI surface. Hot-path summary:
+Detail moved to **`references/ux-heavy.md`** in v0.2 — load that file when `criteria.md` frontmatter has `ux_heavy ∈ {minor, true}` OR the engagement plan introduces a UI surface. Hot-path summary:
 
 - `ux_heavy` is a 3-level gradient: `false` (no UI artefacts), `minor` (one screenshot per touched surface, single theme, traces optional), `true` (Playwright screens both themes + structured trace JSON per flow).
 - Set by secretary at intake from visual / layout / typography / color signals. Lead may promote `false → minor → true` via `scope-sync.md`; never demote.
@@ -586,7 +580,7 @@ Detail moved to **`references/ux-heavy.md`** (now in `references/`) — load tha
 
 ## Dangerous operations registry
 
-Detail moved to **`references/dangerous-ops.md`** (now in `references/`) — load that file when `danger-scan.py` produces a non-empty finding OR when the engagement diff touches schema / migrations / production deploy / secret rotation. Hot-path summary:
+Detail moved to **`references/dangerous-ops.md`** in v0.2 — load that file when `danger-scan.py` produces a non-empty finding OR when the engagement diff touches schema / migrations / production deploy / secret rotation. Hot-path summary:
 
 - 9 operation classes always require explicit user OK (DROP TABLE, force-push, prod deploy, secret rotation, public publish, recursive delete on parents, bulk DELETE without WHERE, migration without rollback, infra teardown).
 - Lead runs `danger-scan.py` before handoff; `handoff-precheck.py` calls it as a sub-check.
@@ -597,7 +591,7 @@ Detail moved to **`references/dangerous-ops.md`** (now in `references/`) — loa
 
 ## Engagement abort (user pulls the plug mid-engagement)
 
-Detail moved to **`references/abort.md`** (now in `references/`) — load that file when the user issues an explicit abort directive. Hot-path summary:
+Detail moved to **`references/abort.md`** in v0.2 — load that file when the user issues an explicit abort directive. Hot-path summary:
 
 - Trigger: explicit "стоп / забей / закрой / отменяю / не делай это". NOT triggered by "не уверен / подожди / давай по-другому" (those are scope clarification → loop-to-intake or lead-redispatch).
 - Floor-holder writes stub `acceptance-log.md` with `### Verdict: ABORTED` + verbatim user quote + state snapshot.
@@ -608,7 +602,7 @@ Detail moved to **`references/abort.md`** (now in `references/`) — load that f
 
 ## Engagement archival (after ACCEPT)
 
-Detail moved to **`references/archival.md`** (now in `references/`) — load that file when writing ACCEPT verdict OR retrying a previously-failed archival. Hot-path summary:
+Detail moved to **`references/archival.md`** in v0.2 — load that file when writing ACCEPT verdict OR retrying a previously-failed archival. Hot-path summary:
 
 - Order is strict: **verdict → user-facing summary → archival LAST**.
 - Run `python ~/.claude/scripts/engagement-archive.py` (idempotent). Never hand-roll `mv`.
@@ -664,7 +658,7 @@ In the actual `landing-hybrid-header-hero` test we ran: a 200-line dispatch prom
 
 ## Resume policy (interrupted iterations)
 
-Detail moved to **`references/resume.md`** (now in `references/`) — load that file when resuming an iteration that was interrupted (Task tool cancelled, context compaction, manual user stop). Hot-path summary:
+Detail moved to **`references/resume.md`** in v0.2 — load that file when resuming an iteration that was interrupted (Task tool cancelled, context compaction, manual user stop). Hot-path summary:
 
 - Inspect existing engagement state first; prior-session artefacts are neither automatically valid nor automatically invalid.
 - Heartbeat at resume point MUST list which artefacts you reuse vs regenerate vs delete.
@@ -675,7 +669,7 @@ Detail moved to **`references/resume.md`** (now in `references/`) — load that 
 
 ## Lead heartbeat (mandatory — every lead, every phase)
 
-Long-running orchestrator-agents (top-leads, mid-leads) dispatched via Task tool can stop streaming tokens for many minutes while doing internal planning, file edits, or sub-dispatches. The user/operator has no signal whether the agent is alive or stuck.
+Long-running orchestrator-agents (a lead run standalone, or the `engagement-workflow` itself) can stop streaming tokens for many minutes while doing internal planning, file edits, or sub-dispatches. The user/operator has no signal whether the agent is alive or stuck. (Inside the Workflow path, the script's own `log()` progress + the `/workflows` live view are the primary heartbeat; the validation-log lines below remain the heartbeat for a lead run standalone.)
 
 To prevent silent stalls: **every lead appends one heartbeat line to `engagement/validation-log.md` after each completed phase**. The presence + recency of these lines is the heartbeat.
 
@@ -692,9 +686,8 @@ Inserted at the top of validation-log.md (newest first), so observers `tail vali
 
 ### Cadence
 
-- **Top-lead phases:** intake-understanding, plan, dispatch (per mid-lead), cross-cutting validation, docs-pipeline, self-acceptance, handoff. → 6-8 heartbeats per iteration.
-- **Mid-lead phases:** intake-from-top, plan, dispatch (per specialist), aggregate, return-up. → 4-5 heartbeats per dispatch.
-- **Specialists** do NOT heartbeat — they are short-lived and return synchronously to mid-lead.
+- **Lead (planning) phase:** the lead returns a plan; the Workflow then logs discovery / decompose / deliver / validate / handoff / gate boundaries (one `log()` per wave + per validator).
+- **Specialists** do NOT heartbeat — they are short-lived and return synchronously to the Workflow's wave step.
 
 Heartbeats are append-only, never modified. They are NOT validation findings — `validation-log.md` retains its existing role as validator output index, the Heartbeat sections live alongside the per-validator sections.
 
@@ -703,7 +696,7 @@ Heartbeats are append-only, never modified. They are NOT validation findings —
 If `validation-log.md`'s most recent Heartbeat is older than:
 - 5 minutes for an `S` engagement
 - 15 minutes for `M`
-- 30 minutes for `L` (mid-lead may legitimately spend ≥30min in a single complex phase)
+- 30 minutes for `L` (the engagement-workflow may legitimately spend ≥30min in a single complex wave)
 
 → engagement is presumed stalled. Recommended action: open the engagement directory, check git status / file mtimes for any artefact created since last heartbeat. If lead made progress without writing heartbeat — that's a protocol violation (REJECT trigger). If no progress visible — abort and re-dispatch from last completed phase.
 
@@ -731,7 +724,7 @@ python ~/.claude/scripts/ledger-emit.py engagement/ --agent dev-lead --tier M \
 | First action (Phase 1, criteria locked) | `engagement_started` | — |
 | Entering a phase | `phase_started` | `--phase {name}` |
 | Phase done (pair with the prose heartbeat) | `phase_completed` | `--phase {name} --note "..."` |
-| Dispatching a specialist / mid-lead | `specialist_dispatched` | `--specialist {agent}` |
+| Dispatching a specialist (Workflow wave step) | `specialist_dispatched` | `--specialist {agent}` |
 | Writing handoff.md | `handoff_submitted` | `--verdict ACCEPT` |
 | Optional tick inside a long phase | `heartbeat` | `--phase {name}` |
 
@@ -750,7 +743,7 @@ Omit `--resolution` for a **blocking** conflict — it emits `verdict=REJECT`; y
 
 ### Token budget guard + size auto-promote (Tier 14)
 
-Detail moved to **`references/budget.md`** (now in `references/`) — load that file when entering Phase 4 (costly subagent waves) or running a heartbeat thereafter. Hot-path summary:
+Detail moved to **`references/budget.md`** in v0.2 — load that file when entering Phase 4 (costly subagent waves) or running a heartbeat thereafter. Hot-path summary:
 
 - Per-tier per-iter budget: S=100k, M=500k, L=1.5M tokens (lead + director combined).
 - Run `python ~/.claude/scripts/token-budget.py engagement/ --json` after each Phase-4+ heartbeat. Exit 1 = over budget; lead chooses auto-promote / scope-sync escalation / accept-partial.
@@ -846,7 +839,7 @@ The individual sub-scripts (`preflight.py`, `handoff-paths-check.py`) can also b
 
 ## Cross-domain handoff
 
-Two-domain engagements (primary + secondary). Detail moved to **`references/cross-domain.md`** (now in `references/`) — load that file when an engagement crosses domains. Hot-path summary:
+Two-domain engagements (primary + secondary). Detail moved to **`references/cross-domain.md`** in v0.2 — load that file when an engagement crosses domains. Hot-path summary:
 
 - Primary in `engagement/`; secondary in `engagement-secondary/{domain}/` to avoid state collision.
 - Workflow: primary lead → primary director ACCEPT → primary lead initiates secondary (manual) → secondary runs its own full cycle → unified user message after both ACCEPT.
@@ -904,7 +897,7 @@ When two sources of behavior disagree (e.g., agent body says X, loaded skill say
 
 **Cross-references:** §"Dangerous operations registry" for protocol-gate waivers. CLAUDE.md §"Anti-patterns" for top-level overrides.
 
-**Producers:**
+**Producers (wiring landed 2026-05-28):**
 
 ```python
 from lib.ledger import EventLedger
@@ -931,7 +924,7 @@ led.emit_authority_conflict(
 
 If `resolution=None`, the event is blocking: caller MUST halt dispatch and escalate to the human judge before continuing. The manager picks up the event during acceptance sweep and records adjudication in `acceptance-log.md`.
 
-> **Markdown agents (leads) vs Python orchestrators.** The `emit_skill_snapshot` / `emit_authority_conflict` helpers above are the Python API used by orchestrators (`engagement_lg.py`, the LG engines). A lead invoked via `claude -p --agent` is a markdown agent and cannot run them inline — it uses the thin `ledger-emit.py` CLI instead: *lifecycle* events (phase / dispatch / handoff) plus, now, the two Authority modes `--snapshot-skills` (rule 7) and `--authority-conflict` (rule 6) — see §"Event emission" under Lead heartbeat. A blocking rule-6 conflict (omit `--resolution`) emits `verdict=REJECT`; the lead still halts dispatch and escalates to the human judge.
+> **Markdown agents (leads) vs Python orchestrators.** The `emit_skill_snapshot` / `emit_authority_conflict` helpers above are the Python API used by orchestrators (`engagement_lg.py`, the LG engines). A lead invoked via `claude -p --agent` is a markdown agent and cannot run them inline — it emits *lifecycle* events (phase / dispatch / handoff) via `ledger-emit.py` (see §"Event emission" under Lead heartbeat). Both are now also exposed to markdown leads via `ledger-emit.py --snapshot-skills` (rule 7) and `ledger-emit.py --authority-conflict` (rule 6) — see §"Event emission" under Lead heartbeat. A blocking rule-6 conflict (omit `--resolution`) emits `verdict=REJECT`; the lead still halts dispatch and escalates to the human judge.
 
 ## Engagement-mode contract (when dispatched inside an engagement)
 
@@ -944,45 +937,34 @@ Every lead and dispatched specialist follows this contract — it keeps engageme
 - Disclose anti-patterns explicitly: skipped tests, hidden elements, mocks for real fns, try-except swallow.
 - State cross-contract claims verbatim — top-lead reconciles in handoff §4 / §4a.
 
-## Criteria propagation (mid-lead duty)
+## Criteria propagation — workflow dispatch
 
-Mid-leads sit between the top-lead (engagement-aware) and specialists (variably engagement-aware). The mid-lead is the conduit that prevents criteria from being lost mid-flight.
+Criteria must reach each specialist intact and come back as verifiable coverage. In the Workflow model this is done by the SCRIPT, not a mid-lead conduit.
 
-### Dispatching DOWN
+### Dispatching DOWN (the Workflow's per-task prompt)
 
-Every Task a mid-lead spawns for a specialist MUST include in its prompt:
+Each task the Workflow dispatches carries, in the specialist's prompt:
 
-- Absolute path to `engagement/criteria.md`.
-- The 1–3 criteria-bullets this specialist's work directly addresses (verbatim from criteria.md, not paraphrased).
-- The `ux_heavy` flag value and `tools_required` list.
-- Where the specialist must write their executor report (`engagement/executor-reports/{their-name}.md`).
+- The engagement dir + `engagement/criteria.md` path.
+- The task's `crit_refs` — the criteria-bullets this task addresses (the lead's plan binds each task to its `crit_refs` verbatim; the specialist opens its executor-report with a "Criteria acknowledgement" citing them, per §"Engagement-mode contract").
+- The `ux_heavy` flag and the disjoint `files` the task owns.
+- The canonical executor-report path (`engagement/executor-reports/{owner}.md`).
 
-If a specialist returns without addressing the assigned criteria → mid-lead re-dispatches with explicit reminder. Mid-lead does NOT escalate up to top-lead with "specialist didn't follow criteria" — enforcement is the mid-lead's job one level down.
+If a specialist's deliverable doesn't satisfy its cited criteria, the per-task review returns `rework` and the SAME specialist is re-dispatched (bounded by the tier attempt cap) — enforcement is inside the task loop, not escalated up.
 
-### Returning UP
+### Coming back UP (plan crit_refs + handoff trace)
 
-Mid-lead's return-to-top-lead summary MUST contain:
+What the mid-lead's "coverage matrix / return-up" used to assert is now structural:
 
-1. **Criteria coverage matrix** — table mapping each `criteria.md` bullet the mid-lead owned to:
-   - Specialist who addressed it
-   - Their executor-report path + relevant section anchor
-   - Status: covered / partial / blocked
+1. **Coverage** = the plan's task→`crit_refs` mapping (every criterion is owned by ≥1 task) plus the handoff **§3 Criteria trace** (each criterion → status → evidence path). A criterion with no owning task is a planning gap the lead must close before dispatch.
+2. **Cross-contract claims** = specialists state cross-contract claims verbatim in their executor-reports (per §"Engagement-mode contract"); the Workflow's wave consolidation + the handoff **§4a Cross-validation table** reconcile them (DIVERGE = blocker).
+3. **Blockers** surface in the executor-report and the per-task review verdict; the handoff carries them in §11.
 
-   Example:
-   | Criterion | Specialist | Evidence | Status |
-   |---|---|---|---|
-   | Done-when item 2: API returns 201 | dev-backend-engineer | executor-reports/dev-backend-engineer.md §"POST /items" | covered |
-   | Done-when item 4: dark theme | (none assigned in my scope) | — | n/a — handled by other mid-lead |
+### Anti-patterns
 
-2. **Cross-contract claims passed up** — verbatim claims from specialists that touch contracts other mid-leads' specialists may also touch. Top-lead reconciles these into handoff §4a cross-validation table.
-
-3. **Blockers raised by specialists** — passed up as-is, not buried.
-
-### Anti-patterns (mid-lead duty)
-
-- Don't paraphrase criteria when dispatching. Specialists need verbatim text or they drift.
-- Don't return "all done ✓" without the coverage matrix. Top-lead cannot verify your assertion without the table.
-- Don't filter specialists' cross-contract claims thinking "those don't conflict" — pass them up; reconciliation is the top-lead's job.
+- Don't let the plan leave a criterion with no owning task — that's the gap the coverage mapping exists to prevent.
+- Don't accept a handoff whose §4a cross-validation is "all match" without the verbatim claim list (§4a rules apply).
+- Don't paraphrase criteria into task prompts — `crit_refs` bind verbatim; paraphrase causes specialist drift.
 
 ## Anti-patterns
 
