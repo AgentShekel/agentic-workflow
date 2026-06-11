@@ -40,7 +40,7 @@ All feature flags default OFF and are opt-in per engagement via the `args.A` obj
 
 ### Counts
 
-59 agents (Managers 3 · Directors 3 · Leads 3 · Specialists 20 · Validators 30) · 46 skills · 16 main + 3 optional Python scripts · 2 Workflow engines + 2 LangGraph engines.
+59 agents (Managers 3 · Directors 3 · Leads 3 · Specialists 20 · Validators 30) · 46 skills · 17 main + 3 optional Python scripts · 2 Workflow engines + 2 LangGraph engines.
 
 ## v0.3.1 — 2026-06-05 (Model-policy docs reconciled + roster-agnostic lint)
 
@@ -66,7 +66,7 @@ The pre-gate cascade — everything from planning to the handoff gate — is now
 
 ### Counts
 
-58 agents (Managers 3 · Directors 3 · Leads 3 · Specialists 20 · Validators 29) · 46 skills · 16 main + 3 optional Python scripts · 2 Workflow engines + 2 LangGraph engines.
+58 agents (Managers 3 · Directors 3 · Leads 3 · Specialists 20 · Validators 29) · 46 skills · 17 main + 3 optional Python scripts · 2 Workflow engines + 2 LangGraph engines.
 
 ### Docs
 
