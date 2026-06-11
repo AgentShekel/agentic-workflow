@@ -127,8 +127,8 @@ Anti-pattern: editing the JSON file by hand to "fix" it. Re-dispatch is the only
 
 | Condition | Validator | Owner |
 |---|---|---|
-| Any UI deliverable | `/critique` (from `ui-ux-methodology`) | mandatory |
-| Full UI flow (landing, multi-screen) | `/design-review` | mandatory |
+| Any UI deliverable | per-task critique pass in the deliver loop (ui-ux-methodology lens); log that it happened | always |
+| Full UI flow (landing, multi-screen) | per-task design-review pass in the deliver loop (ui-ux-methodology lens); log that it happened | always |
 | Any interactive surface (form, nav, CTA, modal) | `accessibility-validator` | mandatory |
 | Brand claims / competitor claims | `reality-checker` | mandatory |
 | Multi-screen consistency | Token propagation audit by `design-lead` manually | mandatory |

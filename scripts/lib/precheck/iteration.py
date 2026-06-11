@@ -17,6 +17,16 @@ import re
 from pathlib import Path
 
 
+def _read_iter_count(counter: Path) -> int:
+    """Parse the engagement/iteration counter tolerantly. The file is sometimes written
+    UTF-8-WITH-BOM; reading it as plain "utf-8" leaves a leading U+FEFF that str.strip()
+    does NOT remove (it is not whitespace) → int() on the BOM-prefixed "1" raised ValueError
+    and false-failed the precheck (an earlier field signal). utf-8-sig
+    drops a leading BOM on decode; the extra lstrip is belt-and-suspenders for a stray one."""
+    raw = counter.read_text(encoding="utf-8-sig").strip().lstrip("﻿").strip()
+    return int(raw)
+
+
 def check_iteration_counter(eng: Path) -> dict:
     """The iteration counter file must agree with acceptance-log.md sections."""
     counter = eng / "iteration"
@@ -33,7 +43,7 @@ def check_iteration_counter(eng: Path) -> dict:
         }
 
     try:
-        n = int(counter.read_text(encoding="utf-8").strip())
+        n = _read_iter_count(counter)
     except Exception as e:
         return {"name": "iteration-counter", "status": "fail", "detail": f"engagement/iteration not parseable as int: {e}"}
 
@@ -59,7 +69,7 @@ def check_executor_iteration_structure(eng: Path) -> dict:
     if not counter_path.exists():
         return {"name": "executor-iteration-structure", "status": "skip", "detail": "iter counter missing — first iteration"}
     try:
-        n = int(counter_path.read_text(encoding="utf-8").strip())
+        n = _read_iter_count(counter_path)
     except Exception:
         return {"name": "executor-iteration-structure", "status": "skip", "detail": "iter counter unparseable"}
     if n < 2:
@@ -82,7 +92,9 @@ def check_executor_iteration_structure(eng: Path) -> dict:
     if missing:
         # Per-wave / per-iteration FILE convention satisfies the no-silent-overwrite
         # intent WITHOUT `## Iteration N` headings: distinct files per wave PLUS a
-        # clearly iter-N / rework-named file prove nothing was overwritten in place.
+        # clearly iter-N / rework-named file prove nothing was overwritten in place
+        # (a field engagement used wave1..5 + iter2-consilium-fixes.md + *-fix.md and
+        # was false-failed by the heading regex).
         names = [f.name for f in reports_dir.glob("*.md")]
         iter_named = [nm for nm in names if re.search(
             rf"iter[-_]?{n}\b|iteration[-_]?{n}\b|consilium-fix|[-_]fix(?:es)?\b|[-_]cut\b", nm, re.IGNORECASE)]
@@ -92,7 +104,7 @@ def check_executor_iteration_structure(eng: Path) -> dict:
                 "name": "executor-iteration-structure",
                 "status": "pass",
                 "detail": f"per-wave/per-iteration file convention: {len(wave_named)} wave reports + "
-                          f"iter-{n} file(s) {iter_named[:3]} -- audit trail via distinct files, no silent overwrite",
+                          f"iter-{n} file(s) {iter_named[:3]} — audit trail via distinct files, no silent overwrite",
             }
         return {
             "name": "executor-iteration-structure",
@@ -112,7 +124,7 @@ def check_validator_output_freshness(eng: Path) -> dict:
     if not counter_path.exists():
         return {"name": "validator-output-freshness", "status": "skip", "detail": "iter counter missing — first iteration"}
     try:
-        n = int(counter_path.read_text(encoding="utf-8").strip())
+        n = _read_iter_count(counter_path)
     except Exception:
         return {"name": "validator-output-freshness", "status": "skip", "detail": "iter counter unparseable"}
     if n < 2:
@@ -138,19 +150,21 @@ def check_validator_output_freshness(eng: Path) -> dict:
             stale_only.append(f.name)
 
     if not has_current_iter:
-        # Advisory, NOT a hard gate. acceptance-protocol section "Role boundary" forbids
-        # the ACCEPTOR from re-running validators in the sweep ("same brain = no new info").
+        # Advisory, NOT a hard gate. acceptance-protocol §"Role boundary" forbids the
+        # ACCEPTOR from re-running validators in the sweep ("same brain = no new info").
         # Re-validation after rework is the LEAD's duty before re-submit, and on M/L the
         # iter-N consilium roles are the fresh independent signal. So a missing iter-N
-        # standard-validator output is a WARN the acceptor adjudicates -- never a FAIL
-        # that would demand the forbidden acceptor re-sweep.
+        # standard-validator output is a WARN the acceptor adjudicates — never a FAIL
+        # that would demand the forbidden acceptor re-sweep (a field engagement flagged
+        # this freshness-vs-no-resweep contradiction; the no-resweep rule wins on
+        # precedence).
         return {
             "name": "validator-output-freshness",
             "status": "warn",
             "detail": f"iter={n}: no iter-{n} standard-validator output (latest: {[f.name for f in files][:5]}). "
-                      f"Advisory -- on M/L the iter-{n} consilium roles are the fresh signal; re-validation is the lead's duty.",
+                      f"Advisory — on M/L the iter-{n} consilium roles are the fresh signal; re-validation is the lead's duty.",
             "fix": "Lead re-runs validators on reworked code before re-submit ({validator}-iter-{N}-{ts}.json). "
-                   "Acceptor does NOT re-run (no-resweep) -- adjudicates on consilium iter-N + lead's re-validation.",
+                   "Acceptor does NOT re-run (no-resweep) — adjudicates on consilium iter-N + lead's re-validation.",
         }
 
     return {"name": "validator-output-freshness", "status": "pass", "detail": f"validator outputs include iter-{n} files"}
@@ -164,8 +178,10 @@ def check_specialist_criteria_ack(eng: Path) -> dict:
         return {"name": "specialist-criteria-ack", "status": "skip", "detail": "no executor-reports yet"}
 
     # Rework / fix follow-up reports address prior consilium/audit findings, not fresh
-    # criteria coverage -- exempt them from the criteria-ack SECTION requirement. Primary
-    # specialist reports (e.g. a wave/feature report) are NOT exempt and still must carry it.
+    # criteria coverage — exempt them from the criteria-ack SECTION requirement (a
+    # field engagement: iter2b-fixes.md / *-consilium-fixes.md / audit-fix.md
+    # false-failed). Primary specialist reports (e.g. wave1-fullstack.md) are NOT
+    # exempt and still must carry the acknowledgement.
     rework_re = re.compile(r"(?:[-_]fix(?:es)?|consilium-fix|audit-fix|[-_]cut)\b", re.IGNORECASE)
     missing = []
     for report in reports_dir.glob("*.md"):
@@ -182,8 +198,9 @@ def check_specialist_criteria_ack(eng: Path) -> dict:
             missing.append(report.name)
             continue
         # At least one bullet that references a criterion. Accept the engagement's
-        # actual ID scheme, not only crit-N: deliverable-style IDs like D1..D7 / FB-1
-        # are legitimate and must not false-fail.
+        # actual ID scheme, not only crit-N: deliverable IDs like D1..D7 / FB-1
+        # (a field engagement legitimately used D1..D7 and was false-failed by the
+        # crit-N-only regex, forcing a waiver).
         bullets = re.findall(r"^\s*(?:[-*]|\d+\.)\s+(.+)$", text, re.MULTILINE)
         has_crit_ref = any(re.search(r"\b(?:crit-?\d+|[A-Za-z]{1,3}-?\d+|criterion\s*\d+|done[- ]when|criteria\.md)", b, re.IGNORECASE) for b in bullets)
         if not has_crit_ref:

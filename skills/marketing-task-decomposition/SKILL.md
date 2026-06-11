@@ -59,6 +59,10 @@ adjacent work. Marketing atoms by domain:
 
 If you can't write a measurable acceptance bullet for the task, it's not atomic — split further.
 
+## Per-task contract (when `A.contracts` is enabled)
+
+On M/L engagements run with `A.contracts` on, each `tasks/{NN}.md` ALSO carries a `## Contract (co-signed)` section (the per-task acceptance rubric). You do NOT author it — leave it for the engine's contract handshake (owner proposes assertions in-band → reviewer co-signs and writes the section). Schema: `engagement-protocol` §"`tasks/{id}.md` → `## Contract (co-signed)`". It binds the per-task review only and never waives `criteria.md`.
+
 ## Task file template
 
 ```markdown

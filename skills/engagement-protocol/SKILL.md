@@ -57,15 +57,17 @@ engagement/
 ├── iteration                   # plain-text counter file (lead inc on handoff, director inc on reject)
 ├── screens/                    # MANDATORY for ux_heavy=true — Playwright captures
 │   └── {iteration}/{theme}/    # e.g. iter-1/dark/dashboard.png
-├── traces/                     # MANDATORY for ux_heavy=true — exercised flow logs
-│   └── {iteration}/{flow}.json # network/console/dom snapshots
+├── traces/                     # MANDATORY for ux_heavy=true — exercised flow logs (+ ux-review drive-mode evidence)
+│   └── {iteration}/{flow}.json # producer flow traces; ALSO {iteration}/ux-review-{flow}.json (ux-review-authored in drive mode)
 ├── deploy-log.md               # dev only when deploy boundary crossed
 ├── docs-diff.md                # docs pipeline only
 ├── handoff.md                  # lead, REPLACED per iteration
 ├── acceptance-log.md           # director, append-only
 ├── engagement-reflections.md   # manager, append-only on M/L verdict — ≤3 actionable lessons targeting skill/agent rules (see acceptance-protocol §"Per-engagement reflection")
-└── events.jsonl                # append-only event ledger — lifecycle facts emitted by lib/ledger.py: phase transitions, validator runs, interrupts, verdicts, reflections. Schema in scripts/lib/ledger.py. Forward-only; pre-ledger engagements get a synthetic legacy_import event at first write.
+└── events.jsonl                # append-only event ledger — lifecycle facts emitted by lib/ledger.py: phase transitions, validator runs, interrupts, verdicts, reflections, replan. Schema in scripts/lib/ledger.py. Forward-only; pre-ledger engagements get a synthetic legacy_import event at first write.
 ```
+
+**Per-task contract (gated `A.contracts`, M/L only):** `tasks/{id}.md` MAY additionally carry a `## Contract (co-signed)` section (the per-task acceptance contract). On M/L the engine MAY create a contract-only `tasks/{id}.md` even when `decompose=false` — it is a whitelisted path, not a new artefact type, so this is not a whitelist violation. S-tier never creates contracts. Full schema below (§"`tasks/{id}.md` → `## Contract (co-signed)`").
 
 ### Forbidden (do NOT create)
 
@@ -192,6 +194,18 @@ Pre-flight failure → secretary records the blocking tool in `criteria.md` "out
 - Secondary lead: {lead-agent-name}
 - Artefact passed: {path}
 ```
+
+### `plan.md` replan appendix (gated `A.replan`)
+
+`plan.md` is "mutable until first dispatch, then frozen". ONE exception: when `A.replan` is enabled and a wave hard-stops, the engine appends a `## Replan N — {reason}` section describing the re-planned remaining-waves graph, and emits one `replan` event to `events.jsonl`. This is the only permitted post-first-dispatch mutation of `plan.md` — append-only and audit-logged. Completed waves are locked and never re-scheduled; replanned task ids are suffixed `-r{n}` and must not collide with any prior id. Max one replan per run; a second hard-stop returns the existing error contract.
+
+### `tasks/{id}.md` → `## Contract (co-signed)` (per-task contract, M/L only)
+
+When `A.contracts` is enabled, before a task is implemented the owner proposes ≥1 checkable assertion per cited `crit_ref` (IN-BAND — writes no engagement file), a neutral reviewer amends/accepts AND writes the converged contract into `tasks/{id}.md`, and the owner may contest. Format — one line per assertion: `- {id} [{crit_ref}] ({status}): {assertion} — check_how: {check_how}`.
+
+**Binds the per-task review rubric ONLY. A contract NEVER waives criteria.md or any PROTOCOL gate.** If a deliverable satisfies every co-signed assertion yet violates a cited criterion, the per-task review verdict is STILL `rework`. The validate phase, consilium, and manager keep judging against `criteria.md`, not the contract. Every assertion MUST cite a `crit-N` parent; a parentless assertion is a scope-creep flag.
+
+**Reviewer's rubric-co-author role** (analogous to the acceptor's scope-sync freeze): the co-signing reviewer has last word on the rubric; the owner has last word on contest. The per-task review JUDGE is `code-reviewer` (code mode) / `reality-checker` (artefact mode); the contract WRITER is `reality-checker` in both modes (it has Write — code-reviewer is read-only, so in code mode the writer and the later judge are deliberately different parties). Contested assertion ids are recorded in the per-task review verdict (and the owner's executor-report) and judged against `criteria.md` text DIRECTLY.
 
 ### `validation-log.md` (lead, append-only)
 
@@ -774,8 +788,8 @@ Purpose: ensure the *engagement state itself* is ready for review — whitelist 
 
 **Hard-gate tier dispatch (tiered acceptance refactor):**
 - S-tier: 6 critical checks (criteria-frontmatter, whitelist, preflight, handoff-paths, danger-scan, verdict-canonical)
-- M-tier: 11 checks (S + handoff-sections, self-acceptance-thinness, iteration-counter, validator-outputs, size-drift)
-- L-tier: 19 checks (all)
+- M-tier: 13 checks (S + handoff-sections, self-acceptance-thinness, iteration-counter, validator-outputs, size-drift, human-directive, director-verdict)
+- L-tier: 21 checks (all)
 
 The script reads `size:` from `criteria.md` frontmatter and runs only the tier-applicable checks (no soft-skip overhead). Use `--all-checks` for debug or `--override-checks NAME1,NAME2` for ad-hoc additional checks.
 
@@ -888,7 +902,7 @@ When two sources of behavior disagree (e.g., agent body says X, loaded skill say
 
 1. **Normative precedence (highest → lowest):**
    `CLAUDE.md` > explicit judge decision > `criteria.md` > PROTOCOL skills > METHODOLOGY skills > agent body > frontmatter.
-2. **criteria.md may add scope / quality bars / preferences, but may not waive mandatory PROTOCOL gates** unless an explicit judge decision records the waiver (logged via §"Dangerous operations registry" or human-directive.md).
+2. **criteria.md may add scope / quality bars / preferences, but may not waive mandatory PROTOCOL gates** unless an explicit judge decision records the waiver (logged via §"Dangerous operations registry" or human-directive.md). Likewise a co-signed per-task contract may TIGHTEN the per-task review rubric but may NOT waive a `criteria.md` bar or a PROTOCOL gate — the validate phase / consilium / manager always judge against `criteria.md`, not the contract.
 3. **Frontmatter has zero behavioral authority** — it only declares what must be loaded. Skill `description:` text is not enforceable behavior.
 4. **Agent body may specialize role behavior only where loaded skills are silent.** It never overrides a loaded skill on the same topic; if it appears to, the skill wins.
 5. **Between same-tier skills (two PROTOCOLs, two METHODOLOGYs), the narrower scope wins** unless it weakens a mandatory check; then the stricter rule wins.
@@ -924,7 +938,7 @@ led.emit_authority_conflict(
 
 If `resolution=None`, the event is blocking: caller MUST halt dispatch and escalate to the human judge before continuing. The manager picks up the event during acceptance sweep and records adjudication in `acceptance-log.md`.
 
-> **Markdown agents (leads) vs Python orchestrators.** The `emit_skill_snapshot` / `emit_authority_conflict` helpers above are the Python API used by orchestrators (`engagement_lg.py`, the LG engines). A lead invoked via `claude -p --agent` is a markdown agent and cannot run them inline — it emits *lifecycle* events (phase / dispatch / handoff) via `ledger-emit.py` (see §"Event emission" under Lead heartbeat). Both are now also exposed to markdown leads via `ledger-emit.py --snapshot-skills` (rule 7) and `ledger-emit.py --authority-conflict` (rule 6) — see §"Event emission" under Lead heartbeat. A blocking rule-6 conflict (omit `--resolution`) emits `verdict=REJECT`; the lead still halts dispatch and escalates to the human judge.
+> **Markdown agents (leads) vs Python orchestrators.** The `emit_skill_snapshot` / `emit_authority_conflict` helpers above are the Python API used by the Python LG orchestrators (`adversary_lg.py` / `validator_lg.py`). A lead invoked via `claude -p --agent` is a markdown agent and cannot run them inline — it emits *lifecycle* events (phase / dispatch / handoff) via `ledger-emit.py` (see §"Event emission" under Lead heartbeat). Both are now also exposed to markdown leads via `ledger-emit.py --snapshot-skills` (rule 7) and `ledger-emit.py --authority-conflict` (rule 6) — see §"Event emission" under Lead heartbeat. A blocking rule-6 conflict (omit `--resolution`) emits `verdict=REJECT`; the lead still halts dispatch and escalates to the human judge.
 
 ## Engagement-mode contract (when dispatched inside an engagement)
 

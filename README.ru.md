@@ -2,13 +2,25 @@
 
 # agentic-workflow
 
-> Многоагентная система-фреймворк для Claude Code: 58 агентов, 46
+> Многоагентная система-фреймворк для Claude Code: 59 агентов, 46
 > методологических skills, 16 + 3 Python-скриптов оркестрации, 2 Workflow
 > движка оркестрации + 2 LangGraph движка human-gate, tier-aware
 > acceptance (S/M/L), filesystem-isolated adversary review, cross-family
 > второе мнение через Codex MCP, человек как supreme judge на критических
 > переходах.
 
+> **v0.4 (2026-06-11):** движок pre-gate **engagement-workflow**
+> получает opt-in **activation-флаги** (`args.A`), каждый default-OFF
+> и byte-inert при выключении: `consGuard` (guard консолидации волны),
+> `repoPortable` (детект integration-ветки + тест-раннера), `contracts`
+> (per-task contract handshake), `replan` (bounded replan hatch),
+> `renderEval` (artefact render-eval), `cheapTiers` (cheap-model
+> tiering). Плюс skill `acceptance-protocol` разделён на хаб + 6
+> references, hardening precheck'ов, conductor-side эмиссия
+> `events.jsonl` для pre-gate каскада и новый валидатор `render-eval`
+> (59 агентов). См. [Engine activation flags](#engine-activation-flags)
+> и [`CHANGELOG.md`](CHANGELOG.md).
+>
 > **v0.3 (2026-06-05):** оркестрация engagement унифицирована под
 > Workflow **engagement-workflow** — главный цикл проводит единый
 > pre-gate каскад (plan → deliver волнами в изолированных
@@ -80,7 +92,7 @@
 ```mermaid
 flowchart TB
     H["Human layer<br/>Trigger phrase + supreme judge на M/L + SkillOpt commons-maintainer"]
-    A["Agents layer · 58 агентов<br/>managers / directors / leads / specialists / validators"]
+    A["Agents layer · 59 агентов<br/>managers / directors / leads / specialists / validators"]
     S["Skills layer · 46 skills<br/>методологии, протоколы, tool guides"]
     O["Orchestration layer · 14 + 3 Python-скрипта<br/>mechanical gates, adversary, consilium, archival, event ledger"]
     St["State layer<br/>engagement/ directory · whitelist · append-only логи"]
@@ -233,9 +245,31 @@ sequenceDiagram
 S-tier пропускает adversary, consilium и manager phase: producer
 self-attests, mechanical checks гейтят, человек принимает напрямую.
 
+## Engine activation flags
+
+Движок pre-gate `engagement-workflow` несёт набор **opt-in
+activation-флагов**, передаваемых в объекте `args.A` у Workflow. Каждый
+флаг по умолчанию **OFF**, и при всех выключенных флагах движок
+рендерится byte-for-byte идентично безфлаговому пути — так что флаг
+включается per engagement, а не глобально. Они позволяют поднять строгость
+каскада под конкретный engagement, не меняя поведение по умолчанию для
+остальных.
+
+| Флаг (`args.A.*`) | Default | Что добавляет |
+|---|---|---|
+| `consGuard` | off (guard-class) | Жёстко стопорит волну, чья консолидация не приземлилась — null-консолидатор, `merge_ok:false` или code-mode merge, который сел, но провалил тесты репозитория — с тем же error-контрактом, что и pre-consolidation hard-stop, так что зависимые волны не ответвляются от отсутствующего/сломанного integration HEAD. Асимметрия: merge, который никогда не приземлился, replan-совместим; merge, который сел но провалил тесты, hard-stop'ает без auto-replan. Bug-fix, поэтому может включаться раньше feature-флагов. |
+| `repoPortable` | off | Добавляет один discovery-агент `detect:repo`, который детектит integration-ветку + тест-раннер репозитория вместо хардкода `main` / `python -m unittest`; non-git `repoDir` рано hard-stop'ает в code mode. |
+| `contracts` | off (M/L) | Per-task contract handshake: owner предлагает ≥1 проверяемое assertion на каждый цитируемый критерий in-band, нейтральный reviewer co-sign'ит и пишет `tasks/{id}.md` → `## Contract (co-signed)`, owner может contest'ить. Связывает **только** rubric per-task review — никогда не отменяет `criteria.md`. |
+| `replan` | off | Один bounded replan за прогон при hard-stop волны: completed-волны заблокированы, оставшаяся работа перепланируется (id с суффиксом `-r{n}`), ре-валидация, продолжение. |
+| `renderEval` | off (artefact) | После manifest-verify рендерит HTML-артефакты волны в реальном браузере и сверяет OBSERVED-значения с co-signed assertions / критериями — не просто «файл существует». |
+| `cheapTiers` | off | Роутит механические шаги движка (manifest-verify + gate-runner → haiku; adversarial-verify → sonnet) на дешёвые модели; judgement-шаги остаются на унаследованной модели. |
+
+Guard на backslash-`repoDir` (validation-only, без флага) отклоняет
+Windows-пути, которые вложили бы worktree внутрь репозитория.
+
 ## Что внутри
 
-### Agents (58)
+### Agents (59)
 
 | Категория | Количество | Роли |
 |---|---|---|
@@ -243,7 +277,7 @@ self-attests, mechanical checks гейтят, человек принимает 
 | **Directors** | 3 | `dev-director`, `design-director`, `marketing-director` — out-of-band system-optimizer (SkillOpt loop) |
 | **Leads** | 3 | `dev-lead`, `design-lead`, `marketing-lead` — только планирование (шаг `lead:plan` в engagement-workflow; они планируют волны, специалистов диспатчит Workflow) |
 | **Specialists** | 20 | backend, frontend, fullstack, devops, qa, tech-architect, product-analyst, technical-writer; ux, ui, visual, brand-strategist, presentation; copywriter, banner-designer, seo, ppc, keyword-researcher, web-analyst, ai-visibility |
-| **Validators** | 29 | code-reviewer, security-auditor, accessibility, performance, migration, test-reviewer, reality-checker, skeptic, completeness, task/tech-spec/user-spec validators, infra/deploy reviewers, pre/post-deploy QA, anti-pattern detector, ux-review, skill-checker, 3 researchers (code/brand/design-system), product-context-validator, и т.д. |
+| **Validators** | 30 | code-reviewer, security-auditor, accessibility, performance, migration, test-reviewer, reality-checker, skeptic, completeness, task/tech-spec/user-spec validators, infra/deploy reviewers, pre/post-deploy QA, anti-pattern detector, ux-review, render-eval, skill-checker, 3 researchers (code/brand/design-system), product-context-validator, и т.д. |
 
 ### Skills (46)
 
@@ -266,7 +300,7 @@ Frontmatter-теги для router'а: `[PROTOCOL]`, `[METHODOLOGY]`, `[TOOL]`.
 ### Scripts (16 main + 3 optional)
 
 Два Workflow-движка оркестрации (`workflows/`):
-- `engagement-workflow.js` — **pre-gate каскад**, который проводит главный цикл: discovery (`lead:plan`) → decompose (gated) → deliver (волны специалистов в изолированных git-worktree, per-task review→rework, консолидация по волне: код = octopus-merge / артефакт = manifest-verify) → validate (валидаторы параллельно + adversarial-verify каждого finding) → handoff → gate. Останавливается на шве handoff; волна жёстко стопорится, если задача заблокирована / провалила review / план некорректен (без молчаливого продолжения). Возобновляется через journal прогонов Workflow (`resumeFromRunId`).
+- `engagement-workflow.js` — **pre-gate каскад**, который проводит главный цикл: discovery (`lead:plan`) → decompose (gated) → deliver (волны специалистов в изолированных git-worktree, per-task review→rework, консолидация по волне: код = octopus-merge / артефакт = manifest-verify) → validate (валидаторы параллельно + adversarial-verify каждого finding) → handoff → gate. Останавливается на шве handoff; волна жёстко стопорится, если задача заблокирована / провалила review / план некорректен (без молчаливого продолжения). Возобновляется через journal прогонов Workflow (`resumeFromRunId`). Opt-in activation-флаги (`args.A`, все default-OFF) добавляют per-task contract handshake, bounded replan, детект репозитория, guard консолидации, artefact render-eval и cheap-model tiering — см. [Engine activation flags](#engine-activation-flags).
 - `skillopt-workflow.js` — SkillOpt-цикл директора как Workflow (harvest накопленных сигналов → Codex предлагает bounded edits → golden-set gate → promote / reject).
 
 Два LangGraph-движка (human-gate, после шва):

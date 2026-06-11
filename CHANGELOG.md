@@ -2,6 +2,46 @@
 
 All notable changes to agentic-workflow.
 
+## v0.4.0 — 2026-06-11 (Engine activation flags + acceptance-protocol split + precheck hardening + conductor ledger)
+
+The pre-gate `engagement-workflow` engine gains a set of **opt-in activation flags** (passed in `args.A`), each default-OFF and byte-inert when off — the engine renders identically unless a flag is set, so they roll out per engagement without disturbing the default path. This release also splits the `acceptance-protocol` skill into a hub + references, hardens the mechanical prechecks, and adds conductor-side ledger emission so the pre-gate cascade is visible in `events.jsonl`.
+
+### Engine — activation flags (`workflows/engagement-workflow.js`)
+
+- **`consGuard` — wave-consolidation guard.** Guards the consolidation RESULT (previously only logged): a null consolidator, `merge_ok:false`, or a code-mode merge that landed but failed repo tests now hard-stops the run with the same error-contract shape as the pre-consolidation hard-stop, so dependent waves never branch off a missing or broken integration HEAD. Asymmetric recovery — a merge that never landed is replan-compatible (routed through the bounded replan hatch when `replan` is on); a merge that landed but failed tests always hard-stops without auto-replan (unwinding a merge commit is manual). Bug-fix class: behaviour differs only on a failed consolidation, so it may be enabled earlier than the feature-class flags.
+- **`repoPortable` — repo detection.** Adds one discovery-phase `detect:repo` agent that detects the repo's integration branch + test runner (instead of hardcoding `main` / `python -m unittest`); a non-git `repoDir` hard-stops early in code mode with a clear error. Off by default keeps the historical hardcodes. A backslash-`repoDir` guard (validation-only) rejects Windows-style paths that would nest worktrees inside the repo.
+- **`contracts` — per-task contract handshake (M/L).** Before a task is implemented, the owner proposes ≥1 concrete checkable assertion per cited criterion (in-band, writes no file), a neutral reviewer co-signs and writes `tasks/{id}.md` → `## Contract (co-signed)`, and the owner may contest. The contract binds the per-task review rubric only — it never waives `criteria.md` or any PROTOCOL gate; the validate phase, consilium, and manager keep judging against `criteria.md`.
+- **`replan` — bounded replan hatch.** One replan per run when a wave hard-stops: completed waves are locked, the remaining work is re-planned (new task ids suffixed `-r{n}`), re-validated, and the cascade continues. A second hard-stop returns the existing error contract.
+- **`renderEval` — artefact render-eval.** After manifest-verify, renders the wave's HTML artefacts in a real browser and checks the OBSERVED rendered values against the co-signed assertions (or criteria) — not just that the file exists. Pairs with the `ux-review` validator's new drive mode.
+- **`cheapTiers` — cheap-model tiering.** Routes mechanical engine steps (manifest-verify + gate-runner → haiku; adversarial-verify → sonnet) to cheaper models; judgement steps (plan / impl / review / consolidate / handoff) stay on the inherited model.
+
+All feature flags default OFF and are opt-in per engagement via the `args.A` object; the engine is byte-identical to the flag-off path when none are set.
+
+### Skills
+
+- **`acceptance-protocol` split** — the per-engagement acceptance methodology is now a compact hub + 6 `references/` files (`s-tier`, `m-tier`, `l-tier`, `cross-tier-rules`, `process-rules`, `verdict-format`), loaded on demand. Same methodology, lighter hot path.
+- **`engagement-protocol`** — documents the new per-task `## Contract (co-signed)` section and the `plan.md` replan appendix (both gated, append-only, audit-logged); precheck check-counts corrected to S=6 / M=13 / L=21.
+- **`agency-intake`** — emits one `phase_completed` ledger event per pre-gate phase (deliver / validate / gate) from the engine's return, so the pre-gate cascade is visible in `events.jsonl` (observability parity with the post-seam LangGraph engines).
+- **`tech-spec-planning`** — adds an AVP executability counter-review: the agent that will run the verification plan co-signs it for runnability before user approval.
+- **`validation-pipeline`, the task-decomposition skills, `engagement-contract`** — aligned with the contract handshake (the engine writes the co-signed file; specialists propose assertions in-band, never authoring `tasks/{id}.md` themselves).
+
+### Scripts — precheck hardening
+
+- `size-detect.py` — collapses design variants/viewports/themes of one screen (`hero-v1-desktop`, `hero-v2-mobile`, …) to a single logical surface before counting, so a multi-variant screen no longer false-inflates the surface count into an M→L drift.
+- `lib/precheck/iteration.py` — BOM-tolerant iteration-counter read (a UTF-8-with-BOM counter no longer false-fails `int()`); per-wave / per-iteration file conventions satisfy the no-silent-overwrite intent without `## Iteration N` headings.
+- `lib/precheck/validators.py` — slash-command tokens (`/critique`, `/design-review`) are no longer mis-counted as required validators (they never produce a `{name}-iter-N.json` output).
+- `handoff-paths-check.py` — `--build-target-root` (and an in-artefact `build_target_root:` declaration) lets a cross-repo (donor→host) engagement resolve build-target paths against the host repo, so a legitimate cross-repo path is not flagged as phantom.
+
+### Agents
+
+- **NEW `render-eval`** validator — renders artefact-mode HTML in a real browser and checks the rendered result against the task's contract assertions / criteria (in-loop verification for the artefact half of the cascade).
+- **`ux-review`** — gains a **drive mode**: when a preview URL is supplied it exercises a live preview via Playwright MCP and reports OBSERVED values, persisting a trace per flow; forensic mode (inspecting producer captures) remains the fallback when no URL is supplied.
+- **`tech-spec-validator`** — mechanically checks the AVP `### Executability review` co-sign on M/L specs.
+
+### Counts
+
+59 agents (Managers 3 · Directors 3 · Leads 3 · Specialists 20 · Validators 30) · 46 skills · 16 main + 3 optional Python scripts · 2 Workflow engines + 2 LangGraph engines.
+
 ## v0.3.1 — 2026-06-05 (Model-policy docs reconciled + roster-agnostic lint)
 
 Documentation-accuracy fix plus a small maintenance tool. The `dev-methodology` model-policy section claimed a per-agent model table was enforced by a script (`assign-agent-models.py`) that hardcoded an agent roster, had gone stale (it listed agents archived in the v0.3 consolidation and would error against the current 58-agent corpus), and was never wired to any hook. The model tier is — and remains — declared in each agent's own `model:` frontmatter (the source of truth).
@@ -302,11 +342,11 @@ The v0.2 reflection + ledger additions `engagement-reflections.md` (per-engageme
 
 - Modular refactor notes.
 - engagement_lg design notes.py design doc + multi-week wave plan (skeleton done, bodies deferred).
-- Updates to `MEMORY.md` Wave-A/Wave-B sections.
+- Updated project memory.
 
 ---
 
-## v0.2.1 — 2026-05-28 (WAVE B+C — hot-path optimization, ledger coverage, golden parity)
+## v0.2.1 — 2026-05-28 (Hot-path optimization, ledger coverage, golden parity)
 
 Incremental refinement of v0.2 — closes 5 follow-up items deferred at the v0.2 cut. All changes additive, no behavior breakage, lint 0 errors.
 

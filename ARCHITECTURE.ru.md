@@ -7,6 +7,15 @@
 сверху вниз: проблема → пять слоёв → ключевые механизмы → модель
 состояния → flow.
 
+> **v0.4 (2026-06-11):** движок pre-gate **engagement-workflow** получает
+> opt-in **activation-флаги** (`args.A`), каждый default-OFF и byte-inert
+> при выключении — `consGuard`, `repoPortable`, `contracts`, `replan`,
+> `renderEval`, `cheapTiers` (см. §8.5). Плюс skill `acceptance-protocol`
+> разделён на хаб + 6 references, счётчики precheck скорректированы
+> (S=6 / M=13 / L=21), conductor-side эмиссия `events.jsonl` для pre-gate
+> каскада и новый валидатор `render-eval` (59 агентов · 30 валидаторов).
+> См. [`CHANGELOG.md`](CHANGELOG.md).
+>
 > **v0.3 (2026-06-05):** pre-gate каскад (plan → deliver → validate
 > → handoff → gate) теперь оформлен как Workflow **engagement-workflow**,
 > проводимый основным циклом и останавливающийся на шве handoff;
@@ -102,12 +111,12 @@ flowchart TB
         H3[Commons-maintainer для SkillOpt promotions]
     end
 
-    subgraph Agents ["Agents layer · 58 агентов"]
+    subgraph Agents ["Agents layer · 59 агентов"]
         AM[Managers · 3]
         AD[Directors · 3]
         AL[Leads · 3 · plan-only]
         AS[Specialists · 20]
-        AV[Validators · 29]
+        AV[Validators · 30]
     end
 
     subgraph Skills ["Skills layer · 46 skills"]
@@ -247,7 +256,7 @@ Net effect: −572 строк на каждую загрузку engagement'а, 
 
 ## 4. Agents layer
 
-58 Claude Code subagent'ов в `~/.claude/agents/`. У каждого frontmatter
+59 Claude Code subagent'ов в `~/.claude/agents/`. У каждого frontmatter
 с `name`, `description`, `model`, `skills:`, `allowed-tools:`. В
 зеркале агенты организованы в подкаталоги
 `agents/{directors,leads,managers,specialists,validators}/`.
@@ -327,7 +336,7 @@ engagement-протокола) через frontmatter.
   `marketing-keyword-researcher`, `marketing-web-analyst`,
   `marketing-ai-visibility-specialist`
 
-### Validators (29)
+### Validators (30)
 
 Узкоспециализированные reviewers, которых lead вызывает с конкретной
 целью. У каждого skill-binding с review-методологией и возвращают
@@ -359,7 +368,8 @@ engagement-протокола) через frontmatter.
 | `documentation-reviewer` | Качество project-knowledge документации |
 | `prompt-reviewer` | Качество LLM-промптов |
 | `anti-pattern-detector` | Скрытые failure modes в diff'ах |
-| `ux-review` | Exercised narrative на ux-heavy engagement'ах |
+| `ux-review` | Exercised narrative на ux-heavy engagement'ах (drive mode: ре-прогоняет живой preview через Playwright, когда передан URL) |
+| `render-eval` | Рендерит artefact-mode HTML в реальном браузере, сверяет результат с contract assertions / критериями |
 | `code-researcher` | Codebase research для фичи (Layer 5) |
 | `design-system-researcher` | Аудит существующего design-system перед редизайном (Layer 5) |
 | `brand-context-researcher` | Аудит существующей brand-истории перед brand-работой (Layer 5) |
@@ -595,7 +605,7 @@ flowchart TB
     STOP([hard-stop · readyForAcceptance = false])
 
     START --> PLAN --> DEC --> DEL --> VAL --> HO --> GATE --> SEAM
-    DEL -->|blocked / review-failed / malformed plan| STOP
+    DEL -->|blocked / review-failed / malformed plan / consolidation-failed (consGuard)| STOP
 
     classDef node fill:#dbeafe,stroke:#2563eb,color:#000
     classDef term fill:#dcfce7,stroke:#16a34a,color:#000
@@ -617,7 +627,11 @@ flowchart TB
   режим **code** octopus-мержит непересекающиеся ветки (overlap ->
   sequential-merge + resolver) и гоняет тесты из корня репозитория; режим
   **artefact** (design / marketing deliverables, не мержащиеся как код)
-  manifest-верифицирует, что каждый файл существует и непуст.
+  manifest-верифицирует, что каждый файл существует и непуст. При включённом
+  флаге `consGuard` гардится и РЕЗУЛЬТАТ консолидации — null-консолидатор,
+  `merge_ok:false` или code-mode merge, который сел но провалил тесты,
+  hard-stop'ает прогон, так что зависимые waves не ответвляются от
+  отсутствующего/сломанного integration HEAD.
 - **validate** — каждый валидатор из плана идёт параллельно (по
   agentType), затем каждый non-info finding **adversarially verified**
   независимым skeptic'ом (опровергнутые findings отбрасываются). Фаза
@@ -635,9 +649,30 @@ Wave **hard-stop**'ает engagement (`readyForAcceptance = false`, без
 консолидации), если любая задача заблокирована, упала или не проходит
 по-настоящему свой scoped review, либо если план malformed (дублирующиеся /
 неизвестные / orphan task ids) — нет тихого прохода мимо сломанного wave.
-State — это run-journal Workflow: повторный вызов с `resumeFromRunId`
-реплеит завершённые шаги из кэша и перезапускает только изменившиеся или
-упавшие.
+При включённом флаге `consGuard` hard-stop'ает и провалившаяся
+*консолидация* (не только провалившаяся задача). State — это run-journal
+Workflow: повторный вызов с `resumeFromRunId` реплеит завершённые шаги из
+кэша и перезапускает только изменившиеся или упавшие.
+
+### Activation flags (`args.A`)
+
+Движок несёт набор **opt-in флагов**, передаваемых в объекте `args.A` у
+Workflow. Каждый по умолчанию **OFF**, и при всех выключенных флагах движок
+рендерится byte-for-byte идентично безфлаговому пути — так что флаг это
+per-engagement opt-in, а не глобальная смена режима. Они позволяют поднять
+строгость каскада (или поторговать стоимостью) под конкретный engagement.
+
+| Флаг | Фаза | Эффект при включении |
+|---|---|---|
+| `consGuard` | deliver | Гардит РЕЗУЛЬТАТ консолидации (выше): провалившийся merge / провалившиеся тесты hard-stop'ают вместо того чтобы быть просто залогированными. Merge, который никогда не приземлился, replan-совместим; merge, который сел но провалил тесты, hard-stop'ает без auto-replan. Bug-fix class. |
+| `repoPortable` | discovery | Один агент `detect:repo` детектит integration-ветку + тест-раннер вместо хардкода `main` / `python -m unittest`; non-git `repoDir` рано hard-stop'ает в code mode. |
+| `contracts` | deliver (M/L) | Per-task contract handshake: owner предлагает проверяемые assertions in-band → нейтральный reviewer co-sign'ит и пишет `tasks/{id}.md` → `## Contract (co-signed)` → owner может contest'ить. Связывает только rubric per-task review; никогда не отменяет `criteria.md`. |
+| `replan` | deliver | Один bounded replan за прогон при hard-stop волны: completed-волны заблокированы, оставшаяся работа перепланирована (id с суффиксом `-r{n}`), ре-валидация, продолжение. |
+| `renderEval` | deliver (artefact) | После manifest-verify рендерит HTML-артефакты волны и сверяет OBSERVED-значения с co-signed assertions / критериями (через агента `render-eval`). |
+| `cheapTiers` | engine-wide | Механические шаги (manifest-verify + gate-runner → haiku; adversarial-verify → sonnet) идут на дешёвых моделях; judgement-шаги остаются на унаследованной модели. |
+
+Guard на backslash-`repoDir` (validation-only, без флага) отклоняет
+Windows-пути, которые вложили бы worktree внутрь репозитория.
 
 ### Почему здесь Workflow, а на гейте LangGraph
 
