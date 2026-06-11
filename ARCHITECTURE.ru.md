@@ -128,7 +128,7 @@ flowchart TB
         SK6[Skill development · 3]
     end
 
-    subgraph Orch ["Orchestration · Workflow engines + 16 main + 3 optional scripts"]
+    subgraph Orch ["Orchestration · Workflow engines + 17 main + 3 optional scripts"]
         O1[Mechanical gates]
         O2[engagement-workflow · pre-gate Workflow]
         O3[Adversary bridge · LangGraph]
@@ -379,12 +379,12 @@ engagement-протокола) через frontmatter.
 
 ## 5. Orchestration layer
 
-16 main + 3 optional Python-скриптов в `~/.claude/scripts/`. Все скрипты
+17 main + 3 optional Python-скриптов в `~/.claude/scripts/`. Все скрипты
 — **exit-code gates**: ненулевой exit блокирует пайплайн, без
 промптов, без переговоров. **Без модельных суждений** — чистая
 детерминистическая логика.
 
-### Main (14)
+### Main (17)
 
 | Скрипт | Назначение |
 |---|---|
@@ -392,6 +392,7 @@ engagement-протокола) через frontmatter.
 | `validator_lg.py` | LangGraph atomic-validator fan-out через `Send`, retry edge, auto-plan из criteria.md predicates, `--resume`, native HITL через `--interrupt-on-critical`, канонический envelope, event ledger подключён (8 emit sites) |
 | `ledger-emit.py` | CLI-эмиттер для append-only event ledger (`engagement/events.jsonl`) |
 | `skillopt-ready.py` | Харвестер due-сигналов SkillOpt — кластеризует manager-emitted сигналы + orphan reflections по `target × class` и репортит, когда цикл директора назрел |
+| `check-agent-models.py` | Roster-agnostic lint — фейлит, если у агента нет строки `model:` или объявлен tier вне `{opus, sonnet, haiku}`; не хардкодит имена агентов |
 | `consilium-synth.py` | Агрегация adversary outputs, two-stage dedup |
 | `consilium-present.py` | Chat-ready format с decision menu для человека |
 | `director-verdict-check.py` | Mechanical adjudication completeness (legacy name; в v0.2 проверяет `*-manager` verdict) |
@@ -805,7 +806,7 @@ flowchart LR
 
 | Домен | Сценарии | Failure classes покрыты |
 |---|---|---|
-| `golden/dev/` | 3 (spec-code-drift / flaky-test-masking / security-gap) | rule_ignored / rule_missing / rule_wrong |
+| `golden/dev/` | 4 (spec-code-drift / flaky-test-masking / security-gap + manager-catches-mis-rendered-consilium) | rule_ignored / rule_missing / rule_wrong |
 | `golden/design/` | 3 (token-drift / aria-missing / dark-contrast-fail) | rule_ignored / rule_missing / rule_wrong |
 | `golden/marketing/` | 3 (keyword-undercount / SEO-claim-uncited / brand-voice-pronoun) | rule_ignored / rule_missing / rule_wrong |
 

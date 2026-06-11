@@ -3,7 +3,7 @@
 # agentic-workflow
 
 > Многоагентная система-фреймворк для Claude Code: 59 агентов, 46
-> методологических skills, 16 + 3 Python-скриптов оркестрации, 2 Workflow
+> методологических skills, 17 + 3 Python-скриптов оркестрации, 2 Workflow
 > движка оркестрации + 2 LangGraph движка human-gate, tier-aware
 > acceptance (S/M/L), filesystem-isolated adversary review, cross-family
 > второе мнение через Codex MCP, человек как supreme judge на критических
@@ -94,7 +94,7 @@ flowchart TB
     H["Human layer<br/>Trigger phrase + supreme judge на M/L + SkillOpt commons-maintainer"]
     A["Agents layer · 59 агентов<br/>managers / directors / leads / specialists / validators"]
     S["Skills layer · 46 skills<br/>методологии, протоколы, tool guides"]
-    O["Orchestration layer · 14 + 3 Python-скрипта<br/>mechanical gates, adversary, consilium, archival, event ledger"]
+    O["Orchestration layer · 17 + 3 Python-скрипта<br/>mechanical gates, adversary, consilium, archival, event ledger"]
     St["State layer<br/>engagement/ directory · whitelist · append-only логи"]
 
     H <--> A
@@ -297,7 +297,7 @@ Frontmatter-теги для router'а: `[PROTOCOL]`, `[METHODOLOGY]`, `[TOOL]`.
 `references/{topic}.md` — последние подгружаются on-demand. См. v0.2.1
 в CHANGELOG.
 
-### Scripts (16 main + 3 optional)
+### Scripts (17 main + 3 optional)
 
 Два Workflow-движка оркестрации (`workflows/`):
 - `engagement-workflow.js` — **pre-gate каскад**, который проводит главный цикл: discovery (`lead:plan`) → decompose (gated) → deliver (волны специалистов в изолированных git-worktree, per-task review→rework, консолидация по волне: код = octopus-merge / артефакт = manifest-verify) → validate (валидаторы параллельно + adversarial-verify каждого finding) → handoff → gate. Останавливается на шве handoff; волна жёстко стопорится, если задача заблокирована / провалила review / план некорректен (без молчаливого продолжения). Возобновляется через journal прогонов Workflow (`resumeFromRunId`). Opt-in activation-флаги (`args.A`, все default-OFF) добавляют per-task contract handshake, bounded replan, детект репозитория, guard консолидации, artefact render-eval и cheap-model tiering — см. [Engine activation flags](#engine-activation-flags).
@@ -333,11 +333,12 @@ Shared библиотеки:
 
 Директор-оптимизатор использует golden-сценарии как регрессионный шлюз
 перед промоутом любой Codex-предложенной правки. По одному набору на
-домен, 3 сценария в каждом покрывают три класса провалов:
+домен, ≥3 сценария в каждом покрывают три класса провалов (в dev есть
+4-й — manager-fidelity catch):
 
 | Домен | Сценарий | Failure class |
 |---|---|---|
-| `golden/dev/` | spec-code-drift / flaky-test-masking / security-gap | rule_ignored / rule_missing / rule_wrong |
+| `golden/dev/` | spec-code-drift / flaky-test-masking / security-gap (+ manager-catches-mis-rendered-consilium) | rule_ignored / rule_missing / rule_wrong |
 | `golden/design/` | design-token-drift / accessibility-aria-missing / dark-mode-contrast-fail | rule_ignored / rule_missing / rule_wrong |
 | `golden/marketing/` | keyword-count-underdelivery / seo-claim-unsupported / brand-voice-pronoun-violation | rule_ignored / rule_missing / rule_wrong |
 

@@ -3,7 +3,7 @@
 # agentic-workflow
 
 > Multi-agent framework for Claude Code: 59 agents, 46 methodology
-> skills, 16 + 3 Python orchestration scripts, 2 Workflow orchestration
+> skills, 17 + 3 Python orchestration scripts, 2 Workflow orchestration
 > engines + 2 LangGraph human-gate engines, tier-aware acceptance
 > (S/M/L), filesystem-isolated adversary review, cross-family second
 > opinion via Codex MCP, human as supreme judge at critical transitions.
@@ -92,7 +92,7 @@ flowchart TB
     H["Human layer<br/>Trigger phrase + supreme judge on M/L acceptance + SkillOpt commons-maintainer"]
     A["Agents layer · 59 agents<br/>managers / directors / leads / specialists / validators"]
     S["Skills layer · 46 skills<br/>methodologies, protocols, tool guides"]
-    O["Orchestration layer · 14 + 3 Python scripts<br/>mechanical gates, adversary, consilium, archival, event ledger"]
+    O["Orchestration layer · 17 + 3 Python scripts<br/>mechanical gates, adversary, consilium, archival, event ledger"]
     St["State layer<br/>engagement/ directory · whitelist · append-only logs"]
 
     H <--> A
@@ -288,7 +288,7 @@ Windows-style paths that would nest worktrees inside the repo.
 
 Frontmatter tags for the router: `[PROTOCOL]`, `[METHODOLOGY]`, `[TOOL]`.
 
-### Scripts (16 main + 3 optional)
+### Scripts (17 main + 3 optional)
 
 Two Workflow orchestration engines (`workflows/`):
 - `engagement-workflow.js` — the **pre-gate cascade** the main loop conducts: discovery (`lead:plan`) → decompose (gated) → deliver (specialist waves in isolated git worktrees, per-task review→rework, per-wave consolidation: code = octopus-merge / artefact = manifest-verify) → validate (validators in parallel + adversarial-verify each finding) → handoff → gate. Stops at the handoff seam; a wave hard-stops if a task is blocked / fails review / the plan is malformed (no silent proceed). Resumes via the Workflow run journal (`resumeFromRunId`). Opt-in activation flags (`args.A`, all default-OFF) add the per-task contract handshake, bounded replan, repo detection, consolidation guard, artefact render-eval, and cheap-model tiering — see [Engine activation flags](#engine-activation-flags).
@@ -323,12 +323,13 @@ see [`scripts/optional/README.md`](scripts/optional/README.md)).
 ## SkillOpt golden sets
 
 The director-optimizer uses golden scenarios as a regression gate before
-promoting any Codex-proposed edit. One set per domain, 3 scenarios each
-covering the three failure classes:
+promoting any Codex-proposed edit. One set per domain, ≥3 scenarios each
+covering the three failure classes (dev adds a 4th — a manager-fidelity
+catch):
 
 | Domain | Scenarios | Failure classes |
 |---|---|---|
-| `golden/dev/` | spec-code-drift / flaky-test-masking / security-gap | rule_ignored / rule_missing / rule_wrong |
+| `golden/dev/` | spec-code-drift / flaky-test-masking / security-gap (+ manager-catches-mis-rendered-consilium) | rule_ignored / rule_missing / rule_wrong |
 | `golden/design/` | design-token-drift / accessibility-aria-missing / dark-mode-contrast-fail | rule_ignored / rule_missing / rule_wrong |
 | `golden/marketing/` | keyword-count-underdelivery / seo-claim-unsupported / brand-voice-pronoun-violation | rule_ignored / rule_missing / rule_wrong |
 
