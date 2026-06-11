@@ -147,6 +147,16 @@ Launch all as subagents, each writes JSON report to `logs/techspec/{name}-review
 
 Pass to each validator: `work/{feature}/tech-spec.md` + `work/{feature}/user-spec.md`.
 
+### AVP executability counter-review (M/L specs)
+
+Two-party co-sign on the Agent Verification Plan: the architect authored it; the agent that will actually EXECUTE it counter-reviews it for runnability **before user approval**. This catches AVPs that read fine but can't be run (unreachable tool, hand-wavy step, no concrete expected value) — the same class of gap the per-task contract handshake closes for implementation tasks.
+
+- **Who:** the Final-Wave `pre-deploy-qa` task owner is the AVP-scoped reviewer; if the Final Wave includes a `post-deploy-qa` task, that owner co-reviews the live-environment portion.
+- **Scope:** the AVP section + every task's `Verify-smoke` / `Verify-user` field — NOT the whole tech-spec (the 5 validators above own the rest).
+- **What they assert:** every tool in `### Tools required` is reachable; every verification step is machine-runnable (no "verify it works"); every expected value is concrete.
+- **Output:** the verdict is written into the tech-spec `## Agent Verification Plan` → `### Executability review` subsection as `Executability review: {agent} — {approved | changes_required} — {one line}`. `changes_required` → fix the AVP (concretize steps / swap unreachable tools) and re-run this counter-review before Phase 6 approval.
+- **Tier:** M/L only. S may omit (single-shot, lightweight).
+
 ### Process findings
 
 Read all 5 reports. For each finding:
@@ -166,6 +176,7 @@ If problems remain after 3 iterations — show user: "Validation didn't pass in 
 
 **Checkpoint:**
 - [ ] All 5 validators ran
+- [ ] (M/L) AVP executability counter-review ran; `## Agent Verification Plan` → `### Executability review` subsection filled with the executor's verdict
 - [ ] Findings processed (fixed / rejected / discussed)
 - [ ] Final tech-spec.md placed in work/{feature}/
 

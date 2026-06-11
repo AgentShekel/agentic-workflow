@@ -2,12 +2,24 @@
 
 # agentic-workflow
 
-> Multi-agent framework for Claude Code: 58 agents, 46 methodology
+> Multi-agent framework for Claude Code: 59 agents, 46 methodology
 > skills, 16 + 3 Python orchestration scripts, 2 Workflow orchestration
 > engines + 2 LangGraph human-gate engines, tier-aware acceptance
 > (S/M/L), filesystem-isolated adversary review, cross-family second
 > opinion via Codex MCP, human as supreme judge at critical transitions.
 
+> **v0.4 (2026-06-11):** the pre-gate **engagement-workflow** engine
+> gains opt-in **activation flags** (`args.A`), each default-OFF and
+> byte-inert when off: `consGuard` (wave-consolidation guard),
+> `repoPortable` (integration-branch + test-runner detection),
+> `contracts` (per-task contract handshake), `replan` (bounded replan
+> hatch), `renderEval` (artefact render-eval), `cheapTiers` (cheap-model
+> tiering). Plus the `acceptance-protocol` skill split into a hub + 6
+> references, precheck hardening, conductor-side `events.jsonl` emission
+> for the pre-gate cascade, and a new `render-eval` validator (59 agents).
+> See [Engine activation flags](#engine-activation-flags) and
+> [`CHANGELOG.md`](CHANGELOG.md).
+>
 > **v0.3 (2026-06-05):** engagement orchestration unified under the
 > **engagement-workflow** Workflow — the main loop conducts a single
 > pre-gate cascade (plan → deliver in isolated git-worktree waves →
@@ -78,7 +90,7 @@ systemic failure modes:
 ```mermaid
 flowchart TB
     H["Human layer<br/>Trigger phrase + supreme judge on M/L acceptance + SkillOpt commons-maintainer"]
-    A["Agents layer · 58 agents<br/>managers / directors / leads / specialists / validators"]
+    A["Agents layer · 59 agents<br/>managers / directors / leads / specialists / validators"]
     S["Skills layer · 46 skills<br/>methodologies, protocols, tool guides"]
     O["Orchestration layer · 14 + 3 Python scripts<br/>mechanical gates, adversary, consilium, archival, event ledger"]
     St["State layer<br/>engagement/ directory · whitelist · append-only logs"]
@@ -229,9 +241,31 @@ sequenceDiagram
 S-tier skips adversary, consilium and manager phase: producer
 self-attests, mechanical checks gate, human accepts directly.
 
+## Engine activation flags
+
+The pre-gate `engagement-workflow` engine ships a set of **opt-in
+activation flags**, passed in the Workflow's `args.A` object. Every flag
+defaults **OFF**, and with all flags off the engine renders byte-for-byte
+identically to the unflagged path — so a flag is adopted per engagement,
+not globally. They let an operator dial the cascade's rigour up to match
+a specific engagement without changing the default behaviour for everyone
+else.
+
+| Flag (`args.A.*`) | Default | What it adds |
+|---|---|---|
+| `consGuard` | off (guard-class) | Hard-stops a wave whose consolidation didn't land — a null consolidator, `merge_ok:false`, or a code-mode merge that landed but failed repo tests — with the same error contract as the pre-consolidation hard-stop, so dependent waves never branch off a missing/broken integration HEAD. Asymmetric: a merge that never landed is replan-compatible; a merge that landed but failed tests hard-stops without auto-replan. A bug-fix, so it may be enabled earlier than the feature flags. |
+| `repoPortable` | off | Adds one discovery-phase `detect:repo` agent that detects the repo's integration branch + test runner instead of hardcoding `main` / `python -m unittest`; a non-git `repoDir` hard-stops early in code mode. |
+| `contracts` | off (M/L) | Per-task contract handshake: the owner proposes ≥1 checkable assertion per cited criterion in-band, a neutral reviewer co-signs and writes `tasks/{id}.md` → `## Contract (co-signed)`, the owner may contest. Binds the per-task review rubric **only** — never waives `criteria.md`. |
+| `replan` | off | One bounded replan per run when a wave hard-stops: lock completed waves, re-plan the remaining work (ids suffixed `-r{n}`), re-validate, continue. |
+| `renderEval` | off (artefact) | After manifest-verify, renders the wave's HTML artefacts in a real browser and checks the OBSERVED values against the co-signed assertions / criteria — not just that the file exists. |
+| `cheapTiers` | off | Routes mechanical engine steps (manifest-verify + gate-runner → haiku; adversarial-verify → sonnet) to cheaper models; judgement steps stay on the inherited model. |
+
+A backslash-`repoDir` guard (validation-only, no flag) rejects
+Windows-style paths that would nest worktrees inside the repo.
+
 ## What's inside
 
-### Agents (58)
+### Agents (59)
 
 | Category | Count | Roles |
 |---|---|---|
@@ -239,7 +273,7 @@ self-attests, mechanical checks gate, human accepts directly.
 | **Directors** | 3 | `dev-director`, `design-director`, `marketing-director` — out-of-band system-optimizer (SkillOpt loop) |
 | **Leads** | 3 | `dev-lead`, `design-lead`, `marketing-lead` — planning-only (the engagement-workflow's `lead:plan` step; they plan waves, the Workflow dispatches specialists) |
 | **Specialists** | 20 | backend, frontend, fullstack, devops, qa, tech-architect, product-analyst, technical-writer; ux, ui, visual, brand-strategist, presentation; copywriter, banner-designer, seo, ppc, keyword-researcher, web-analyst, ai-visibility |
-| **Validators** | 29 | code-reviewer, security-auditor, accessibility, performance, migration, test-reviewer, reality-checker, skeptic, completeness, task/tech-spec/user-spec validators, infra/deploy reviewers, pre/post-deploy QA, anti-pattern detector, ux-review, skill-checker, 3 researchers (code/brand/design-system), product-context-validator, etc. |
+| **Validators** | 30 | code-reviewer, security-auditor, accessibility, performance, migration, test-reviewer, reality-checker, skeptic, completeness, task/tech-spec/user-spec validators, infra/deploy reviewers, pre/post-deploy QA, anti-pattern detector, ux-review, render-eval, skill-checker, 3 researchers (code/brand/design-system), product-context-validator, etc. |
 
 ### Skills (46)
 
@@ -257,7 +291,7 @@ Frontmatter tags for the router: `[PROTOCOL]`, `[METHODOLOGY]`, `[TOOL]`.
 ### Scripts (16 main + 3 optional)
 
 Two Workflow orchestration engines (`workflows/`):
-- `engagement-workflow.js` — the **pre-gate cascade** the main loop conducts: discovery (`lead:plan`) → decompose (gated) → deliver (specialist waves in isolated git worktrees, per-task review→rework, per-wave consolidation: code = octopus-merge / artefact = manifest-verify) → validate (validators in parallel + adversarial-verify each finding) → handoff → gate. Stops at the handoff seam; a wave hard-stops if a task is blocked / fails review / the plan is malformed (no silent proceed). Resumes via the Workflow run journal (`resumeFromRunId`).
+- `engagement-workflow.js` — the **pre-gate cascade** the main loop conducts: discovery (`lead:plan`) → decompose (gated) → deliver (specialist waves in isolated git worktrees, per-task review→rework, per-wave consolidation: code = octopus-merge / artefact = manifest-verify) → validate (validators in parallel + adversarial-verify each finding) → handoff → gate. Stops at the handoff seam; a wave hard-stops if a task is blocked / fails review / the plan is malformed (no silent proceed). Resumes via the Workflow run journal (`resumeFromRunId`). Opt-in activation flags (`args.A`, all default-OFF) add the per-task contract handshake, bounded replan, repo detection, consolidation guard, artefact render-eval, and cheap-model tiering — see [Engine activation flags](#engine-activation-flags).
 - `skillopt-workflow.js` — the director SkillOpt cycle as a Workflow (harvest due signals → Codex proposes bounded edits → golden-set gate → promote / reject).
 
 Two LangGraph engines (the human-gate, after the seam):

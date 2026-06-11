@@ -56,7 +56,7 @@ const REFLECT_SCHEMA = {
       target: { type: 'string', description: 'skills/X/SKILL.md or agents/Y.md, with ::<exact anchor> for insert_after/replace/delete' },
       content: { type: 'string', description: 'edit body (empty for delete)' },
       failure_class: { type: 'string' },
-      cross_check: { type: 'string', description: 'QW-5 F2: which golden scenario / rule confirms the target CONTENT enforces the catch' },
+      cross_check: { type: 'string', description: 'which golden scenario / rule confirms the target CONTENT enforces the catch' },
     } } },
   },
 }
@@ -153,7 +153,7 @@ const reflect = await agent(
 Call mcp__codex__codex (load it via tool search if its schema is not loaded) with: approval-policy:"never", sandbox:"read-only", cwd:"${CLAUDE}". Give Codex a prompt containing:
 - The due failure signals below (each with its Traced-to target + Evidence).
 - The task: classify each recurring pattern and attribute it to a SPECIFIC skills/X/SKILL.md or agents/Y.md under ${CLAUDE}. Op by taxonomy: rule_missing -> append / insert_after; rule_wrong -> replace; rule_ignored -> a STRUCTURAL fix (raise it / make it a gate / tighten emphasis), NEVER just more text. Plus the ${DOMAIN} domain failure types from the ${DIRECTOR} taxonomy.
-- CROSS-CHECK rule (QW-5 finding F2): before emitting each edit, Codex MUST verify the target file's CONTENT is what would ENFORCE the catch (the rule/validator that PRODUCES the catching artefact) by reading the relevant golden scenario(s) under ${GOLDEN}/ — NOT the producer of the buggy output. A wrong trace yields a right-pattern / wrong-file edit the gate will reject.
+- CROSS-CHECK rule (load-bearing): before emitting each edit, Codex MUST verify the target file's CONTENT is what would ENFORCE the catch (the rule/validator that PRODUCES the catching artefact) by reading the relevant golden scenario(s) under ${GOLDEN}/ — NOT the producer of the buggy output. A wrong trace yields a right-pattern / wrong-file edit the gate will reject.
 - Edit format: {"reasoning": "...", "edits": [{"op": "append|insert_after|replace|delete", "target": "skills/..|agents/.. (with ::<exact anchor> for insert_after/replace/delete)", "content": "..."}]}. At most ${EDIT_BUDGET} edits. An EMPTY edits list is a valid output (nothing warranted).
 
 Due signals:

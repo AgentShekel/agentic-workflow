@@ -46,7 +46,7 @@ Every section from the tech-spec template must exist and have content:
 - `## Data Models` (or explicit "N/A")
 - `## Dependencies` with subsections `### New packages` and `### Using existing`
 - `## Testing Strategy` with `Feature size: S/M/L` specified
-- `## Agent Verification Plan` with subsections `### Verification approach`, `### Tools required`
+- `## Agent Verification Plan` with subsections `### Verification approach`, `### Tools required` (and `### Executability review` when `size` is M/L — checked mechanically in §5a)
 - `## Risks` — table format (Risk + Mitigation)
 - `## Acceptance Criteria` — present and non-empty
 - `## Implementation Tasks` — organized by waves
@@ -71,8 +71,27 @@ Skip if Project Knowledge files are absent — create a suggestion finding.
 - Section exists and is not empty
 - `### Verification approach` describes how smoke and post-deploy verification work
 - `### Tools required` lists MCP tools / curl / bash needed for verification
+### 5a. Executability review co-sign — MANDATORY M/L gate (mechanical string check, NOT judgment)
+
+> **This check is about ONE thing only: does the literal heading `### Executability review` exist inside `## Agent Verification Plan`?** It has NOTHING to do with per-task `Verify-smoke:` fields (those are §5b, a different check). Do not look at tasks here. Do not count Verify-smoke markers here. The ONLY artefact this gate looks for is the `### Executability review` heading and its verdict line.
+
+This subsection is a REQUIRED part of the template on M/L specs. It is NOT meta-commentary — never suggest removing it. It records the two-party AVP co-sign: the agent that will EXECUTE the AVP (`pre-deploy-qa`, plus `post-deploy-qa` when present) counter-signs that the plan is runnable before user approval. Detection is a literal string-presence check — do EXACTLY this, every run:
+
+1. Read `size` from the tech-spec.md frontmatter.
+2. If `size` is `S` → this subsection is optional. State `Executability review (size S): n/a` in your summary. Skip the rest.
+3. If `size` is `M` or `L`:
+   a. **Use the Grep tool** on `{feature_path}/tech-spec.md` with the exact pattern `### Executability review` (this is deterministic — do not eyeball it, and do NOT grep for `Verify-smoke` — that is the wrong string for this gate).
+   b. **Zero matches** → emit a **critical** finding (category `verification`):
+      - issue: "AVP missing `### Executability review` subsection — on M/L the AVP-executor (pre-deploy-qa / post-deploy-qa) must counter-sign that the verification plan is runnable before user approval."
+      - fix: "Add `### Executability review` under `## Agent Verification Plan` with a line `Executability review: pre-deploy-qa — approved — <one line>`."
+   c. **One+ matches** → read that subsection's verdict line. It MUST name an executor agent (`pre-deploy-qa` or `post-deploy-qa`) AND a verdict token (`approved` or `changes_required`). Missing either → **major** (category `verification`): "Executability review present but incomplete — needs `{agent} — {approved|changes_required}`." Token is `changes_required` → **major** (category `verification`): AVP not executable yet; resolve before approval.
+4. State the outcome in your summary verbatim: `Executability review (size {M|L}): present | absent`.
+
+On M/L the AVP has THREE required subsections (Verification approach, Tools required, Executability review) — never report a 2-subsection AVP as complete on M/L.
 
 ## 5b. Per-task Smoke Verification
+
+> This is a SEPARATE check from §5a. §5a is about the single `### Executability review` heading in the AVP; §5b below is about per-task `Verify-smoke:` / `Verify-user:` fields. Do not merge their findings.
 
 - Tasks with external API integration, library initialization, Docker, LLM/prompt work, or UI should have `Verify-smoke:` or `Verify-user:` fields
 - `Verify-smoke:` contains concrete executable commands (not abstract "verify it works")

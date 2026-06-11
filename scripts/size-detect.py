@@ -266,15 +266,49 @@ def count_tasks(eng: Path) -> int:
     return len([f for f in d.glob("*.md") if f.is_file() and f.name != "INDEX.md"])
 
 
+# Trailing filename tokens that denote a VARIANT / VIEWPORT / THEME / density of ONE
+# logical surface — not a distinct surface. A multi-variant design engagement renders the
+# SAME screen several ways (hero-v1-desktop, hero-v2-mobile, hero-dark@2x …); counting each
+# render as a surface false-inflated the count to "9 surfaces" on one menu+hero screen →
+# false M→L drift that also cleared L_PROMOTE_HYSTERESIS. The root is the COUNT, not the
+# threshold: collapse these to the logical-surface
+# key BEFORE counting. Width tokens require a px/w suffix so a real "error-404" is NOT eaten.
+_SURFACE_VARIANT_TOKEN = re.compile(
+    r"[-_@](?:"
+    r"v\d+|var(?:iant)?-?\d*|variation-?\d*|alt-?\d*|option-?\d*|opt-?\d*|"   # variants
+    r"desktop|mobile|tablet|mob|dsk|wide|narrow|"                            # viewports
+    r"dark|light|"                                                            # themes
+    r"2x|3x|retina|hidpi|hi-?dpi|"                                            # density
+    r"\d{2,4}px|\d{3,4}w"                                                     # explicit widths (320px, 1440w)
+    r")$",
+    re.IGNORECASE,
+)
+
+
+def _logical_surface(stem: str) -> str:
+    """Strip trailing variant/viewport/theme/density tokens so all renders of one screen
+    collapse to a single logical-surface key. Iterative (handles stacked suffixes like
+    hero-v2-mobile-dark). Never returns empty (a stem that is ALL tokens keeps its form)."""
+    s = stem
+    while True:
+        nxt = _SURFACE_VARIANT_TOKEN.sub("", s)
+        if nxt == s or not nxt:
+            break
+        s = nxt
+    return s or stem
+
+
 def count_ui_surfaces(eng: Path) -> int:
-    """Distinct screens/{iter}/{theme}/{surface}.png count (across themes)."""
+    """Count distinct LOGICAL surfaces under screens/. Variants/viewports/themes of one
+    screen (hero-v1-desktop, hero-v2-mobile, …) collapse to one (per-variant/viewport
+    counting could otherwise drift an engagement M→L falsely)."""
     d = eng / "screens"
     if not d.exists():
         return 0
     surfaces: set[str] = set()
     for png in d.rglob("*.png"):
-        # Path: screens/iter-1/dark/dashboard.png → key = "dashboard"
-        surfaces.add(png.stem)
+        # Path: screens/iter-1/dark/hero-v2-mobile.png → logical key = "hero"
+        surfaces.add(_logical_surface(png.stem))
     return len(surfaces)
 
 

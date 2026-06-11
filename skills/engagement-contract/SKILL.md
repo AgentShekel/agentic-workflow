@@ -23,7 +23,7 @@ If you are NOT inside an engagement (the user invoked you directly, no `engageme
 
 1. **Read `engagement/criteria.md` first.** Respect frontmatter (`size`, `ux_heavy`, `tools_required`). Acknowledge each `crit-N` you are addressing.
 
-2. **Write only to `engagement/executor-reports/{your-agent-name}.md`** — single output channel, append-only across iterations. Open each iteration with `## Iteration N` heading.
+2. **Write only to `engagement/executor-reports/{your-agent-name}.md`** — single output channel, append-only across iterations. Open each iteration with `## Iteration N` heading. **Per-task contract:** if your dispatch includes a contract step, you propose your assertions **IN-BAND** (in your returned result) — you do NOT write `tasks/{id}.md` yourself; the engine/reviewer writes the co-signed file. Proposing in-band is not writing an engagement file, so this bullet (and bullet 3) stay intact.
 
 3. **Source / project files in their normal paths.** Never create rogue files inside `engagement/`. The directory has a closed whitelist (defined in `engagement-protocol` §"Engagement = a directory"); anything outside is a protocol violation and gets REJECTed.
 
@@ -32,6 +32,10 @@ If you are NOT inside an engagement (the user invoked you directly, no `engageme
 5. **Disclose anti-patterns explicitly.** Skipped tests, hidden UI elements, mocks substituted for real functions, try-except swallow, partial implementations — call them out in your report. Silent shortcuts are caught by validators or the manager later and become REJECT reasons. Self-disclosure does not.
 
 6. **State cross-contract claims verbatim.** If your output depends on another specialist's deliverable ("I assume the auth service returns 401 on expired token"), write that claim verbatim. The top-lead reconciles cross-contract claims in handoff §4 / §4a.
+
+## Per-task contract (when `A.contracts` is on — M/L only)
+
+If your dispatch includes a co-signed contract (`tasks/{id}.md` → `## Contract (co-signed)`): satisfy each assertion's `check_how`, acknowledge the contract in your executor-report, and note any contested assertion ids (those are judged against `criteria.md` directly). The contract is the agreed per-task review rubric; it never replaces `criteria.md` — your work must still satisfy every cited `crit-N`, contract or not. As the owner you PROPOSE assertions in-band (bullet 2); the reviewer co-signs and writes the file. Full schema: `engagement-protocol` §"`tasks/{id}.md` → `## Contract (co-signed)`".
 
 ## Event emission (one line, best-effort)
 

@@ -7,6 +7,15 @@ this do», this document answers «how exactly is it built inside». Read
 top to bottom: problem → five layers → key mechanisms → state model →
 flow.
 
+> **v0.4 (2026-06-11):** the pre-gate **engagement-workflow** engine gains
+> opt-in **activation flags** (`args.A`), each default-OFF and byte-inert
+> when off — `consGuard`, `repoPortable`, `contracts`, `replan`,
+> `renderEval`, `cheapTiers` (see §8.5). Plus the `acceptance-protocol`
+> skill split into a hub + 6 references, precheck check-counts corrected
+> (S=6 / M=13 / L=21), conductor-side `events.jsonl` emission for the
+> pre-gate cascade, and a new `render-eval` validator (59 agents · 30
+> validators). See [`CHANGELOG.md`](CHANGELOG.md).
+>
 > **v0.3 (2026-06-05):** the pre-gate cascade (plan → deliver → validate
 > → handoff → gate) is now the **engagement-workflow** Workflow, conducted
 > by the main loop and stopping at the handoff seam; the LangGraph
@@ -102,12 +111,12 @@ flowchart TB
         H3[Commons-maintainer for SkillOpt promotions]
     end
 
-    subgraph Agents ["Agents layer · 58 agents"]
+    subgraph Agents ["Agents layer · 59 agents"]
         AM[Managers · 3]
         AD[Directors · 3]
         AL[Leads · 3 · plan-only]
         AS[Specialists · 20]
-        AV[Validators · 29]
+        AV[Validators · 30]
     end
 
     subgraph Skills ["Skills layer · 46 skills"]
@@ -246,7 +255,7 @@ hot-path summary indicates the section is relevant.
 
 ## 4. Agents layer
 
-58 Claude Code subagents in `~/.claude/agents/`. Each agent has
+59 Claude Code subagents in `~/.claude/agents/`. Each agent has
 frontmatter with `name`, `description`, `model`, `skills:`,
 `allowed-tools:`. The mirror organises agents into
 `agents/{directors,leads,managers,specialists,validators}/` subdirectories.
@@ -327,7 +336,7 @@ protocol) via frontmatter.
   `marketing-keyword-researcher`, `marketing-web-analyst`,
   `marketing-ai-visibility-specialist`
 
-### Validators (29)
+### Validators (30)
 
 Narrowly-specialized reviewers that the lead invokes for a specific
 reason. Each has a skill-binding with a review methodology and returns
@@ -359,7 +368,8 @@ raw fields (normalized verdict + severity + validator_type).
 | `documentation-reviewer` | Project-knowledge documentation quality |
 | `prompt-reviewer` | LLM prompt quality |
 | `anti-pattern-detector` | Hidden failure modes in diffs |
-| `ux-review` | Exercised narrative on ux-heavy engagements |
+| `ux-review` | Exercised narrative on ux-heavy engagements (drive mode: re-exercises a live preview via Playwright when a URL is supplied) |
+| `render-eval` | Renders artefact-mode HTML in a real browser, checks the rendered result against contract assertions / criteria |
 | `code-researcher` | Codebase research for a feature (Layer 5) |
 | `design-system-researcher` | Existing design system audit before redesign (Layer 5) |
 | `brand-context-researcher` | Existing brand history audit before brand work (Layer 5) |
@@ -594,7 +604,7 @@ flowchart TB
     STOP([hard-stop · readyForAcceptance = false])
 
     START --> PLAN --> DEC --> DEL --> VAL --> HO --> GATE --> SEAM
-    DEL -->|blocked / review-failed / malformed plan| STOP
+    DEL -->|blocked / review-failed / malformed plan / consolidation-failed (consGuard)| STOP
 
     classDef node fill:#dbeafe,stroke:#2563eb,color:#000
     classDef term fill:#dcfce7,stroke:#16a34a,color:#000
@@ -615,7 +625,10 @@ flowchart TB
   octopus-merges the disjoint branches (overlap -> sequential-merge +
   resolver) and runs repo-root tests; **artefact** mode (design / marketing
   deliverables not merged as code) manifest-verifies each file exists and
-  is non-empty.
+  is non-empty. With the `consGuard` flag on, the consolidation RESULT is
+  guarded too — a null consolidator, `merge_ok:false`, or a code-mode merge
+  that landed but failed repo tests hard-stops the run, so dependent waves
+  never branch off a missing or broken integration HEAD.
 - **validate** — every validator in the plan runs in parallel (by
   agentType), then each non-info finding is **adversarially verified** by an
   independent skeptic (refuted findings dropped). The phase writes the
@@ -631,9 +644,31 @@ flowchart TB
 A wave **hard-stops** the engagement (`readyForAcceptance = false`, no
 consolidation) if any task is blocked, crashes, or does not genuinely pass
 its scoped review, or if the plan is malformed (duplicate / unknown / orphan
-task ids) — there is no silent proceed past a broken wave. State is the
-Workflow run journal: re-invoking with `resumeFromRunId` replays completed
-steps from cache and re-runs only the changed or failed ones.
+task ids) — there is no silent proceed past a broken wave. With the
+`consGuard` flag on, a failed *consolidation* (not just a failed task) also
+hard-stops. State is the Workflow run journal: re-invoking with
+`resumeFromRunId` replays completed steps from cache and re-runs only the
+changed or failed ones.
+
+### Activation flags (`args.A`)
+
+The engine ships a set of **opt-in flags**, passed in the Workflow's
+`args.A` object. Each defaults **OFF**, and with all flags off the engine
+renders byte-for-byte identically to the unflagged path — so a flag is a
+per-engagement opt-in, not a global mode change. They let an operator raise
+the cascade's rigour (or trade cost) for a specific engagement.
+
+| Flag | Phase | Effect when on |
+|---|---|---|
+| `consGuard` | deliver | Guards the consolidation RESULT (above): a failed merge / failed repo tests hard-stops instead of being only logged. A merge that never landed is replan-compatible; a merge that landed-but-failed-tests hard-stops without auto-replan. Bug-fix class. |
+| `repoPortable` | discovery | One `detect:repo` agent detects the integration branch + test runner instead of hardcoding `main` / `python -m unittest`; a non-git `repoDir` hard-stops early in code mode. |
+| `contracts` | deliver (M/L) | Per-task contract handshake: owner proposes checkable assertions in-band → a neutral reviewer co-signs and writes `tasks/{id}.md` → `## Contract (co-signed)` → owner may contest. Binds the per-task review rubric only; never waives `criteria.md`. |
+| `replan` | deliver | One bounded replan per run on a wave hard-stop: completed waves locked, remaining work re-planned (ids suffixed `-r{n}`), re-validated, continue. |
+| `renderEval` | deliver (artefact) | After manifest-verify, renders the wave's HTML artefacts and checks OBSERVED values against the co-signed assertions / criteria (via the `render-eval` agent). |
+| `cheapTiers` | engine-wide | Mechanical steps (manifest-verify + gate-runner → haiku; adversarial-verify → sonnet) run on cheaper models; judgement steps keep the inherited model. |
+
+A backslash-`repoDir` guard (validation-only, no flag) rejects
+Windows-style paths that would nest worktrees inside the repo.
 
 ### Why a Workflow here, LangGraph at the gate
 
