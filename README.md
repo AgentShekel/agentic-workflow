@@ -8,71 +8,7 @@
 > (S/M/L), filesystem-isolated adversary review, cross-family second
 > opinion via Codex MCP, human as supreme judge at critical transitions.
 
-> **v0.4 (2026-06-11):** the pre-gate **engagement-workflow** engine
-> gains opt-in **activation flags** (`args.A`), each default-OFF and
-> byte-inert when off: `consGuard` (wave-consolidation guard),
-> `repoPortable` (integration-branch + test-runner detection),
-> `contracts` (per-task contract handshake), `replan` (bounded replan
-> hatch), `renderEval` (artefact render-eval), `cheapTiers` (cheap-model
-> tiering). Plus the `acceptance-protocol` skill split into a hub + 6
-> references, precheck hardening, conductor-side `events.jsonl` emission
-> for the pre-gate cascade, and a new `render-eval` validator (59 agents).
-> See [Engine activation flags](#engine-activation-flags) and
-> [`CHANGELOG.md`](CHANGELOG.md).
->
-> **v0.3 (2026-06-05):** engagement orchestration unified under the
-> **engagement-workflow** Workflow — the main loop conducts a single
-> pre-gate cascade (plan → deliver in isolated git-worktree waves →
-> validate → handoff → gate) and stops at the handoff seam; the LangGraph
-> human-gate (consilium → directive → manager) remains the acceptance
-> path after the seam. Domain leads are planning-only; specialist
-> coordination is structural — waves in the lead's plan. See
-> [`CHANGELOG.md`](CHANGELOG.md).
->
-> **v0.2.4 (2026-05-28):** Windows compatibility — three latent issues
-> surfaced on Max-subscription
-> claude CLI: `claude.CMD` npm-wrapper truncates multiline argv at the
-> first newline (CMD line-parsing), `subprocess.run(text=True)` decodes
-> UTF-8 Russian as cp1251 on Russian-locale Windows, and
-> `consilium_synth_completed` ledger emit was passing raw natural verdict
-> to a schema expecting `ACCEPT/REJECT/DIRECTED`. All three fixed across
-> 4 scripts (`find_claude_cmd()` resolves `.CMD` → `claude.exe`; 10
-> subprocess sites got `encoding="utf-8", errors="replace"`; inline
-> `VERDICT_MAP` mirror in `_make_finalize_node`). All `--invoker mock`
-> tests passed pre-fix; latent risk lived in real subscription mode
-> untested on Windows until now.
->
-> **v0.2.3 (2026-05-28):** `engagement_lg.py` end-to-end across all
-> 11 nodes in three execution modes. NEW `--mock`
-> mode runs the real graph paths but with canned-artefact subprocess
-> wrappers — full end-to-end smoke testing without claude CLI required.
-> Send fan-out to specialists, `validator_lg.py` + `adversary_lg.py`
-> subprocess integration, `claude -p --agent {domain}-manager` for
-> acceptance, REJECT_NOW short-circuit, engagement-archive on ACCEPT.
-> 7 end-to-end smoke paths verified on synthetic engagements (S/M/L
-> tiers + REJECT loop + REJECT terminal + dry-run + claude-CLI-absent
-> fail-fast).
->
-> **v0.2.2 (2026-05-28):** modular precheck refactor (`handoff-precheck.py`
-> 1264→423 lines + new `scripts/lib/precheck/` package, 8 topic-modules)
-> + `engagement_lg.py` skeleton (3rd LangGraph engine owning the
-> engagement-level lifecycle from intake to archive, `EngagementState` with
-> 8 node placeholders, 3 HITL pause points, intake/plan nodes wired to
-> `size-detect.py --auto-promote` + `claude -p --agent {domain}-lead`
-> subprocess). 3 new ledger payload types. WHITELIST drift fix.
->
-> **v0.2.1 (2026-05-28):** refinement release — adversary per-role
-> ledger events (`consilium_started` / `consilium_role_completed`),
-> SkillOpt golden-set parity across all 3 domains (dev/design/marketing,
-> 9 scenarios), hot-path optimization via `references/` split in 3
-> heavily-loaded skills (engagement-protocol / ui-ux-methodology /
-> dev-methodology, −572 lines per engagement load).
->
-> **v0.2 (2026-05-28):** acceptor/optimizer split — `*-manager`
-> per-engagement acceptor + `*-director` system-optimizer (SkillOpt loop).
-> Authority invariant, event ledger (`engagement/events.jsonl`),
-> canonical validator schema, per-engagement reflections. See
-> [`CHANGELOG.md`](CHANGELOG.md) for the full delta.
+Version history: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Why this exists
 
@@ -163,8 +99,8 @@ only at **≥3 same-class signals** clustered by `target × class`
 2. **Codex proposes bounded edits** — cross-family (kills defend-bias),
    budget L: 4–6 patches per cycle, ≤10 lines each.
 3. **Golden-set gate** — director verifies the edit doesn't regress any
-   scenario in `system-optimization-protocol/golden/{domain}/` (3 scenarios
-   per domain × 3 domains = 9 total).
+   scenario in `system-optimization-protocol/golden/{domain}/` (3 per domain
+   × 3 domains + a 4th dev scenario = 10 total).
 4. **Promote or reject** — passing edits land in the corpus; rejected
    edits append to `skill-rejected-edits.md` with reason (read before
    next cycle).

@@ -9,72 +9,7 @@
 > второе мнение через Codex MCP, человек как supreme judge на критических
 > переходах.
 
-> **v0.4 (2026-06-11):** движок pre-gate **engagement-workflow**
-> получает opt-in **activation-флаги** (`args.A`), каждый default-OFF
-> и byte-inert при выключении: `consGuard` (guard консолидации волны),
-> `repoPortable` (детект integration-ветки + тест-раннера), `contracts`
-> (per-task contract handshake), `replan` (bounded replan hatch),
-> `renderEval` (artefact render-eval), `cheapTiers` (cheap-model
-> tiering). Плюс skill `acceptance-protocol` разделён на хаб + 6
-> references, hardening precheck'ов, conductor-side эмиссия
-> `events.jsonl` для pre-gate каскада и новый валидатор `render-eval`
-> (59 агентов). См. [Engine activation flags](#engine-activation-flags)
-> и [`CHANGELOG.md`](CHANGELOG.md).
->
-> **v0.3 (2026-06-05):** оркестрация engagement унифицирована под
-> Workflow **engagement-workflow** — главный цикл проводит единый
-> pre-gate каскад (plan → deliver волнами в изолированных
-> git-worktree → validate → handoff → gate) и останавливается на шве
-> handoff; LangGraph human-gate (consilium → directive → manager)
-> остаётся acceptance-путём после шва. Domain leads — только
-> планирование; координация специалистов структурна — волны в плане
-> lead'а. См. [`CHANGELOG.md`](CHANGELOG.md).
->
-> **v0.2.4 (2026-05-28):** Windows-совместимость — три латентные проблемы
-> вылезли в Max-subscription
-> claude CLI: `claude.CMD` npm-wrapper обрезает multiline argv на первом
-> переводе строки (CMD line-parsing), `subprocess.run(text=True)`
-> декодирует UTF-8 русский как cp1251 на Russian-locale Windows, и
-> `consilium_synth_completed` ledger emit передавал raw natural verdict
-> в схему ожидающую `ACCEPT/REJECT/DIRECTED`. Все три починены в 4
-> скриптах (`find_claude_cmd()` резолвит `.CMD` → `claude.exe`; 10
-> subprocess-сайтов получили `encoding="utf-8", errors="replace"`;
-> inline `VERDICT_MAP` mirror в `_make_finalize_node`). Все `--invoker
-> mock` тесты проходили pre-fix; латентный риск жил в real subscription
-> mode непротестированном на Windows до сих пор.
->
-> **v0.2.3 (2026-05-28):** `engagement_lg.py` end-to-end по всем 11
-> узлам в 3 режимах выполнения. НОВЫЙ режим `--mock` запускает реальные пути графа но с canned-artefact
-> subprocess wrappers — полный end-to-end smoke без claude CLI. Send
-> fan-out на specialists, `validator_lg.py` + `adversary_lg.py`
-> subprocess интеграция, `claude -p --agent {domain}-manager` для
-> acceptance, REJECT_NOW short-circuit, engagement-archive на ACCEPT.
-> 7 end-to-end smoke путей verified на synthetic engagements (S/M/L
-> tiers + REJECT loop + REJECT terminal + dry-run + fail-fast без
-> claude CLI).
->
-> **v0.2.2 (2026-05-28):** модульный precheck refactor (`handoff-precheck.py`
-> 1264→423 строки + новый пакет `scripts/lib/precheck/`, 8 топик-модулей)
-> + `engagement_lg.py` skeleton (третий LangGraph движок,
-> владеющий жизненным циклом engagement от intake до archive,
-> `EngagementState` с 8 узлами-плейсхолдерами, 3 точки HITL-паузы,
-> узлы intake/plan подключены к `size-detect.py --auto-promote` +
-> `claude -p --agent {domain}-lead` subprocess). 3 новых ledger payload
-> types. Фикс WHITELIST drift.
->
-> **v0.2.1 (2026-05-28):** refinement release — adversary per-role ledger events
-> (`consilium_started` / `consilium_role_completed`), полный паритет
-> golden-сетов SkillOpt по 3 доменам (dev/design/marketing, 9 сценариев),
-> hot-path оптимизация через `references/` split в 3 тяжёлых skills
-> (engagement-protocol / ui-ux-methodology / dev-methodology, −572 строки
-> на каждую загрузку engagement).
->
-> **v0.2 (2026-05-28):** разделение ролей acceptor / optimizer —
-> `*-manager` per-engagement acceptor + `*-director` system-optimizer
-> (SkillOpt loop). Инвариант разрешения конфликтов авторитета, event
-> ledger (`engagement/events.jsonl`), канонический envelope
-> валидаторов, per-engagement reflections. Полная дельта —
-> [`CHANGELOG.md`](CHANGELOG.md).
+История версий: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Зачем это нужно
 
@@ -167,7 +102,7 @@ Adjudication completeness проверяется механически — ка
    defend-bias), budget L: 4–6 патчей за цикл, ≤10 строк каждый.
 3. **Golden-set gate** — директор проверяет что правка не регрессит ни
    один сценарий в `system-optimization-protocol/golden/{domain}/` (по
-   3 сценария на домен × 3 домена = 9 всего).
+   3 на домен × 3 домена + 4-й dev-сценарий = 10 всего).
 4. **Promote или reject** — passing правки попадают в корпус;
    отклонённые добавляются в `skill-rejected-edits.md` с причиной
    (читается перед следующим циклом).
