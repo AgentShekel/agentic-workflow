@@ -11,7 +11,7 @@ langgraph-checkpoint-sqlite==3.1.0
 langchain-core==1.4.0
 
 # Only needed for --invoker api (opt-in; subprocess mode is the default and needs neither).
-langchain-anthropic==1.4.3
+langchain-anthropic==1.4.6
 langchain-openai==1.2.1
 
 # Pulled in transitively by langgraph; pinned for reproducibility.
