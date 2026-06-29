@@ -13,7 +13,7 @@ flow.
 > `renderEval`, `cheapTiers` (see §8.5). Plus the `acceptance-protocol`
 > skill split into a hub + 6 references, precheck check-counts corrected
 > (S=6 / M=13 / L=21), conductor-side `events.jsonl` emission for the
-> pre-gate cascade, and a new `render-eval` validator (59 agents · 30
+> pre-gate cascade, and a new `render-eval` validator (60 agents · 30
 > validators). See [`CHANGELOG.md`](CHANGELOG.md).
 >
 > **v0.3 (2026-06-05):** the pre-gate cascade (plan → deliver → validate
@@ -111,9 +111,9 @@ flowchart TB
         H3[Commons-maintainer for SkillOpt promotions]
     end
 
-    subgraph Agents ["Agents layer · 59 agents"]
+    subgraph Agents ["Agents layer · 60 agents"]
         AM[Managers · 3]
-        AD[Directors · 3]
+        AD[Directors · 4]
         AL[Leads · 3 · plan-only]
         AS[Specialists · 20]
         AV[Validators · 30]
@@ -128,7 +128,7 @@ flowchart TB
         SK6[Skill development · 3]
     end
 
-    subgraph Orch ["Orchestration · Workflow engines + 17 main + 3 optional scripts"]
+    subgraph Orch ["Orchestration · Workflow engines + 18 main + 3 optional scripts"]
         O1[Mechanical gates]
         O2[engagement-workflow · pre-gate Workflow]
         O3[Adversary bridge · LangGraph]
@@ -282,7 +282,7 @@ validators sweep-style.
 On S-tier the manager isn't engaged — producer self-attests +
 mechanical checks + human glance.
 
-### Directors (3, REPURPOSED in v0.2)
+### Directors (4, REPURPOSED in v0.2)
 
 `dev-director`, `design-director`, `marketing-director`. Per-domain
 **system-optimizer** role (out-of-band, not per-engagement). Runs the

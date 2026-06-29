@@ -2,6 +2,31 @@
 
 All notable changes to agentic-workflow.
 
+## v0.5.0 — 2026-06-29 (Harness-evolution loop + four new engine flags + verification-coverage hardening)
+
+Adds a second self-improvement loop — a peer of the existing skill-evolution (SkillOpt) loop — that owns the orchestration/acceptance **script + engine** layer the skill loop deliberately excludes. Four new opt-in engine activation flags land (each default-OFF and byte-inert when off), and the verification methodology gains an HTTP-surface exercised-test mandate so an API endpoint can no longer be accepted on green unit tests alone.
+
+### Harness-evolution loop (new subsystem)
+
+- **NEW `harness-director` agent** — a judge-only system-optimizer for `scripts/*.py`, `scripts/lib/precheck/*`, and the `engagement-workflow.js` engine (the layer the dev/design/marketing skill-directors exclude). Cross-family (Codex) authors bounded patches; the director judges them against an EXECUTABLE gate — a red→green regression test + existing regression suites + `py_compile`/`ruff` (or an AsyncFunction compile for the engine) + a live-subprocess repro for orchestration scripts + a byte-identity-when-OFF proof for any engine-flag touch. Two zones: orchestration scripts (full loop) and the frozen engine (reject any new flag / non-byte-identical-OFF edit).
+- **NEW `scripts/harness-ready.py`** — readiness signal (twin of `skillopt-ready.py`): clusters harness-layer signals by `(script × class)` and marks a cluster DUE at ≥2 same-class hits (harness bugs are deterministic, so a 2nd hit is a confirmed regression class, not statistical drift).
+- **NEW `workflows/harnessopt-workflow.js`** — automates the loop end to end (harvest → Codex authors patch-bundles → executable gate → promote / escalate / reject → record); dry-run-safe, never auto-pushes.
+
+### Engine — four new activation flags (`workflows/engagement-workflow.js`)
+
+- **`inPlaceSerial` — in-place serial code mode.** For a containerized runner that bind-mounts the repo root (where git-worktree isolation is void), runs tasks serially against the repo with an in-place wave barrier instead of worktree + octopus merge. Mode-changing, so default-OFF with activation reserved to the conductor.
+- **`infraRetry` — transient-infra-error retry.** Retries a null (transient) review / validator / verify result up to twice before falling back to the exact pre-existing substantive handling, so a transient API error is not misread as a negative verdict. Bug-fix class: behaviour differs only on a transient null.
+- **`engBranch` — dedicated integration branch.** In code mode, consolidates onto an `eng/<slug>` branch off the origin integration branch (instead of the local checkout) and diffs the handoff against the merge-base, so a stale local checkout cannot pollute the delta.
+- **`contractsCodex` — cross-family done-when challenge.** A child of `contracts`: for an exercisable-surface task (HTTP / CLI / rendered screen / public contract), a cross-family Codex reviewer CHALLENGES the proposed done-when before co-sign (is it sufficient? what is not exercised?), and the existing reviewer reconciles the challenge — Codex never authors or judges the contract.
+
+### Skills — verification coverage
+
+- **`validation-pipeline`, `acceptance-protocol`, `dev-lead`** — an HTTP-surface deliverable (route / controller / API endpoint) now requires an HTTP-contract exercised endpoint test that drives the assembled request path (router / guards / validation / controller / serializer), independent of whether the engagement is UI-heavy. A missing exercised proof is "validation incomplete" and cannot be downgraded to a documented deferral at acceptance. A new golden gate scenario covers the class.
+
+### Counts
+
+60 agents (Managers 3 · Directors 4 · Leads 3 · Specialists 20 · Validators 30) · 46 skills · 18 main + 3 optional Python scripts · 3 Workflow engines + 2 LangGraph engines.
+
 ## v0.4.0 — 2026-06-11 (Engine activation flags + acceptance-protocol split + precheck hardening + conductor ledger)
 
 The pre-gate `engagement-workflow` engine gains a set of **opt-in activation flags** (passed in `args.A`), each default-OFF and byte-inert when off — the engine renders identically unless a flag is set, so they roll out per engagement without disturbing the default path. This release also splits the `acceptance-protocol` skill into a hub + references, hardens the mechanical prechecks, and adds conductor-side ledger emission so the pre-gate cascade is visible in `events.jsonl`.

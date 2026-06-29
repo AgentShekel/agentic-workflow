@@ -13,7 +13,7 @@
 > `renderEval`, `cheapTiers` (см. §8.5). Плюс skill `acceptance-protocol`
 > разделён на хаб + 6 references, счётчики precheck скорректированы
 > (S=6 / M=13 / L=21), conductor-side эмиссия `events.jsonl` для pre-gate
-> каскада и новый валидатор `render-eval` (59 агентов · 30 валидаторов).
+> каскада и новый валидатор `render-eval` (60 агентов · 30 валидаторов).
 > См. [`CHANGELOG.md`](CHANGELOG.md).
 >
 > **v0.3 (2026-06-05):** pre-gate каскад (plan → deliver → validate
@@ -111,9 +111,9 @@ flowchart TB
         H3[Commons-maintainer для SkillOpt promotions]
     end
 
-    subgraph Agents ["Agents layer · 59 агентов"]
+    subgraph Agents ["Agents layer · 60 агентов"]
         AM[Managers · 3]
-        AD[Directors · 3]
+        AD[Directors · 4]
         AL[Leads · 3 · plan-only]
         AS[Specialists · 20]
         AV[Validators · 30]
@@ -128,7 +128,7 @@ flowchart TB
         SK6[Skill development · 3]
     end
 
-    subgraph Orch ["Orchestration · Workflow engines + 17 main + 3 optional scripts"]
+    subgraph Orch ["Orchestration · Workflow engines + 18 main + 3 optional scripts"]
         O1[Mechanical gates]
         O2[engagement-workflow · pre-gate Workflow]
         O3[Adversary bridge · LangGraph]
@@ -283,7 +283,7 @@ sweep-стилем.
 На S-tier manager не задействован — producer self-attests + mechanical
 checks + human glance.
 
-### Directors (3, ПЕРЕПРОФИЛИРОВАНО в v0.2)
+### Directors (4, ПЕРЕПРОФИЛИРОВАНО в v0.2)
 
 `dev-director`, `design-director`, `marketing-director`. Per-domain
 **system-optimizer** (out-of-band, не per-engagement). Запускает

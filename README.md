@@ -2,8 +2,8 @@
 
 # agentic-workflow
 
-> Multi-agent framework for Claude Code: 59 agents, 46 methodology
-> skills, 17 + 3 Python orchestration scripts, 2 Workflow orchestration
+> Multi-agent framework for Claude Code: 60 agents, 46 methodology
+> skills, 18 + 3 Python orchestration scripts, 3 Workflow orchestration
 > engines + 2 LangGraph human-gate engines, tier-aware acceptance
 > (S/M/L), filesystem-isolated adversary review, cross-family second
 > opinion via Codex MCP, human as supreme judge at critical transitions.
@@ -26,9 +26,9 @@ systemic failure modes:
 ```mermaid
 flowchart TB
     H["Human layer<br/>Trigger phrase + supreme judge on M/L acceptance + SkillOpt commons-maintainer"]
-    A["Agents layer · 59 agents<br/>managers / directors / leads / specialists / validators"]
+    A["Agents layer · 60 agents<br/>managers / directors / leads / specialists / validators"]
     S["Skills layer · 46 skills<br/>methodologies, protocols, tool guides"]
-    O["Orchestration layer · 17 + 3 Python scripts<br/>mechanical gates, adversary, consilium, archival, event ledger"]
+    O["Orchestration layer · 18 + 3 Python scripts<br/>mechanical gates, adversary, consilium, archival, event ledger"]
     St["State layer<br/>engagement/ directory · whitelist · append-only logs"]
 
     H <--> A
@@ -100,7 +100,7 @@ only at **≥3 same-class signals** clustered by `target × class`
    budget L: 4–6 patches per cycle, ≤10 lines each.
 3. **Golden-set gate** — director verifies the edit doesn't regress any
    scenario in `system-optimization-protocol/golden/{domain}/` (3 per domain
-   × 3 domains + a 4th dev scenario = 10 total).
+   × 3 domains + a 4th dev scenario = 11 total).
 4. **Promote or reject** — passing edits land in the corpus; rejected
    edits append to `skill-rejected-edits.md` with reason (read before
    next cycle).
@@ -195,18 +195,22 @@ else.
 | `replan` | off | One bounded replan per run when a wave hard-stops: lock completed waves, re-plan the remaining work (ids suffixed `-r{n}`), re-validate, continue. |
 | `renderEval` | off (artefact) | After manifest-verify, renders the wave's HTML artefacts in a real browser and checks the OBSERVED values against the co-signed assertions / criteria — not just that the file exists. |
 | `cheapTiers` | off | Routes mechanical engine steps (manifest-verify + gate-runner → haiku; adversarial-verify → sonnet) to cheaper models; judgement steps stay on the inherited model. |
+| `inPlaceSerial` | off (mode-changing) | For a containerized runner that bind-mounts the repo root (where git-worktree isolation is void), runs tasks serially against the repo with an in-place wave barrier instead of worktree + octopus merge. Conductor-activated. |
+| `infraRetry` | off (guard-class) | Retries a null (transient) review / validator / verify result up to twice before the pre-existing substantive handling, so a transient API error isn't misread as a negative verdict. |
+| `engBranch` | off | In code mode, consolidates onto an `eng/<slug>` branch off the origin integration branch (not the local checkout) and diffs the handoff against the merge-base, so a stale local checkout can't pollute the delta. |
+| `contractsCodex` | off (child of `contracts`) | For an exercisable-surface task (HTTP / CLI / rendered screen), a cross-family Codex reviewer challenges the proposed done-when before co-sign; the existing reviewer reconciles it — Codex never authors or judges the contract. |
 
 A backslash-`repoDir` guard (validation-only, no flag) rejects
 Windows-style paths that would nest worktrees inside the repo.
 
 ## What's inside
 
-### Agents (59)
+### Agents (60)
 
 | Category | Count | Roles |
 |---|---|---|
 | **Managers** | 3 | `dev-manager`, `design-manager`, `marketing-manager` — per-engagement acceptor (judge between producer + adversary) |
-| **Directors** | 3 | `dev-director`, `design-director`, `marketing-director` — out-of-band system-optimizer (SkillOpt loop) |
+| **Directors** | 4 | `dev-director`, `design-director`, `marketing-director`, `harness-director` — out-of-band system-optimizers (the SkillOpt skill/agent loop + the harness-evolution script/engine loop) |
 | **Leads** | 3 | `dev-lead`, `design-lead`, `marketing-lead` — planning-only (the engagement-workflow's `lead:plan` step; they plan waves, the Workflow dispatches specialists) |
 | **Specialists** | 20 | backend, frontend, fullstack, devops, qa, tech-architect, product-analyst, technical-writer; ux, ui, visual, brand-strategist, presentation; copywriter, banner-designer, seo, ppc, keyword-researcher, web-analyst, ai-visibility |
 | **Validators** | 30 | code-reviewer, security-auditor, accessibility, performance, migration, test-reviewer, reality-checker, skeptic, completeness, task/tech-spec/user-spec validators, infra/deploy reviewers, pre/post-deploy QA, anti-pattern detector, ux-review, render-eval, skill-checker, 3 researchers (code/brand/design-system), product-context-validator, etc. |
@@ -224,11 +228,12 @@ Windows-style paths that would nest worktrees inside the repo.
 
 Frontmatter tags for the router: `[PROTOCOL]`, `[METHODOLOGY]`, `[TOOL]`.
 
-### Scripts (17 main + 3 optional)
+### Scripts (18 main + 3 optional)
 
-Two Workflow orchestration engines (`workflows/`):
+Three Workflow orchestration engines (`workflows/`):
 - `engagement-workflow.js` — the **pre-gate cascade** the main loop conducts: discovery (`lead:plan`) → decompose (gated) → deliver (specialist waves in isolated git worktrees, per-task review→rework, per-wave consolidation: code = octopus-merge / artefact = manifest-verify) → validate (validators in parallel + adversarial-verify each finding) → handoff → gate. Stops at the handoff seam; a wave hard-stops if a task is blocked / fails review / the plan is malformed (no silent proceed). Resumes via the Workflow run journal (`resumeFromRunId`). Opt-in activation flags (`args.A`, all default-OFF) add the per-task contract handshake, bounded replan, repo detection, consolidation guard, artefact render-eval, and cheap-model tiering — see [Engine activation flags](#engine-activation-flags).
 - `skillopt-workflow.js` — the director SkillOpt cycle as a Workflow (harvest due signals → Codex proposes bounded edits → golden-set gate → promote / reject).
+- `harnessopt-workflow.js` — the harness-evolution cycle as a Workflow (harvest harness-ready signals → Codex authors patch-bundles → executable gate → promote / escalate / reject); the script/engine-layer peer of `skillopt-workflow.js`.
 
 Two LangGraph engines (the human-gate, after the seam):
 - `adversary_lg.py` — LangGraph adversary bridge: 5 reviewer roles, two-pass curated-view isolation, `Send`-based parallel fan-out, SQLite-checkpointed `--resume`, native HITL via `interrupt()`, event ledger wired

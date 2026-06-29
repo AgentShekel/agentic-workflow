@@ -77,9 +77,9 @@ INTAKE_S_SIGNALS = [
 ]
 
 # Structural narrowness signals — explicit scope-limiting language that marks
-# an S task regardless of how many done-when bullets were written.
-# Structural facts (one file / one endpoint / no migration / mirrors
-# existing code) must
+# an S task regardless of how many done-when bullets were written. Per
+# skill-evolution signal #1 (2026-05-28 S field test): structural facts
+# (one file / one endpoint / no migration / mirrors existing code) must
 # outweigh bullet count, which had over-inflated legitimate S tasks to M.
 STRUCTURAL_S_SIGNALS = [
     r"\b(?:one|single)\s+file\b", r"\b(?:one|single)\s+endpoint\b",
@@ -198,8 +198,8 @@ def intake_heuristic(eng: Path) -> dict:
     if m_hits and not l_hits:
         reasons.append(f"M-signal keywords: {[h.strip(chr(92)+chr(98)) for h in m_hits[:3]]}")
 
-    # Structural narrowness OVERRIDES bullet count. A task that names
-    # concrete scope limits
+    # Structural narrowness OVERRIDES bullet count (skill-evolution signal #1,
+    # 2026-05-28 S field test). A task that names concrete scope limits
     # (one file / no migration / mirrors existing code) is structurally S
     # even with several done-when bullets. Gated so a legitimate L keyword,
     # ux_heavy floor, or cross-domain floor still holds the size up.
@@ -269,9 +269,9 @@ def count_tasks(eng: Path) -> int:
 # Trailing filename tokens that denote a VARIANT / VIEWPORT / THEME / density of ONE
 # logical surface — not a distinct surface. A multi-variant design engagement renders the
 # SAME screen several ways (hero-v1-desktop, hero-v2-mobile, hero-dark@2x …); counting each
-# render as a surface false-inflated the count to "9 surfaces" on one menu+hero screen →
-# false M→L drift that also cleared L_PROMOTE_HYSTERESIS. The root is the COUNT, not the
-# threshold: collapse these to the logical-surface
+# render as a surface false-inflated a design engagement to "9 surfaces" on one menu+hero screen →
+# false M→L drift that also cleared L_PROMOTE_HYSTERESIS (skill-evolution log 2026-06-04,
+# bug #1). The root is the COUNT, not the threshold: collapse these to the logical-surface
 # key BEFORE counting. Width tokens require a px/w suffix so a real "error-404" is NOT eaten.
 _SURFACE_VARIANT_TOKEN = re.compile(
     r"[-_@](?:"
@@ -300,8 +300,8 @@ def _logical_surface(stem: str) -> str:
 
 def count_ui_surfaces(eng: Path) -> int:
     """Count distinct LOGICAL surfaces under screens/. Variants/viewports/themes of one
-    screen (hero-v1-desktop, hero-v2-mobile, …) collapse to one (per-variant/viewport
-    counting could otherwise drift an engagement M→L falsely)."""
+    screen (hero-v1-desktop, hero-v2-mobile, …) collapse to one (skill-evolution 2026-06-04
+    bug #1: per-variant/viewport counting drifted a design engagement M→L falsely)."""
     d = eng / "screens"
     if not d.exists():
         return 0
@@ -344,6 +344,13 @@ def count_deploy_crossed(eng: Path) -> bool:
     return (eng / "deploy-log.md").exists()
 
 
+# Diff-base sanity ceiling — above these, the handoff §1 diff number almost certainly
+# reflects a wrong diff base (a whole-repo count from a bootstrap-commit diff) rather than a
+# real engagement delta, so the diff axis is dropped from tier observation (see runtime_observe).
+DIFF_SANITY_MAX_FILES = 50
+DIFF_SANITY_MAX_LOC = 10000
+
+
 def runtime_observe(eng: Path) -> dict:
     """Measure current engagement state and decide observed tier."""
     meta = read_criteria_meta(eng)
@@ -365,6 +372,21 @@ def runtime_observe(eng: Path) -> dict:
     files, loc = count_diff_files_loc(eng)
     deploy = count_deploy_crossed(eng)
 
+    # Diff-base sanity guard: handoff §1 is `git diff --stat` output generated upstream; if it
+    # was diffed against the bootstrap commit instead of the merge-base with origin/main (the
+    # engine-on-local-main bug, 2026-06-25), it reports the WHOLE repo as the delta. No single
+    # agency engagement realistically ships this much, so drop the diff axis rather than let a
+    # wrong base mis-promote the tier — the other axes still apply. Root fix is in the diff
+    # generator (handoff §1), not here.
+    diff_base_suspect = None
+    if files > DIFF_SANITY_MAX_FILES or loc > DIFF_SANITY_MAX_LOC:
+        diff_base_suspect = (
+            f"diff axis dropped: files={files}/loc={loc} exceeds sanity caps "
+            f"(>{DIFF_SANITY_MAX_FILES} files or >{DIFF_SANITY_MAX_LOC} loc) — likely a "
+            f"wrong diff base (whole-repo count), not a real engagement delta"
+        )
+        files, loc = 0, 0
+
     measurements = {
         "specialists": specialists,
         "tasks": tasks,
@@ -373,11 +395,14 @@ def runtime_observe(eng: Path) -> dict:
         "diff_loc_added": loc,
         "deploy_crossed": deploy,
         "ux_heavy": ux_heavy,
+        "diff_base_suspect": diff_base_suspect,
     }
 
     # Pick observed tier: highest threshold any measurement crosses
     observed_score = 0  # S
     triggered: list[str] = []
+    if diff_base_suspect:
+        triggered.append(diff_base_suspect)
 
     s_t = THRESHOLDS["S"]
     m_t = THRESHOLDS["M"]

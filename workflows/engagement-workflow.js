@@ -16,7 +16,7 @@ const TS = A.ts               // UTC timestamp string "YYYYMMDDTHHMMSSZ" (Date.n
 if (!REPO || !SCRIPTS || !TS) {
   return { error: 'engagement-workflow requires args.repoDir, args.scriptsDir, args.ts', readyForAcceptance: false }
 }
-// Reject backslash repoDir. SIBLING = REPO.replace(/\/[^/]+$/,'') assumes forward slashes;
+// reject backslash repoDir. SIBLING = REPO.replace(/\/[^/]+$/,'') assumes forward slashes;
 // a Windows-style backslash path would silently nest every worktree INSIDE the repo. This is
 // validation-not-transformation — it fires ONLY on an already-invalid input, so every valid
 // (forward-slash) repoDir renders byte-identically (no flag needed; same class as the guard above).
@@ -91,7 +91,7 @@ const REVIEW_VERDICT_SCHEMA = {
     summary: { type: 'string' },
   },
 }
-// ---- Per-task contract handshake schemas (used only when A.contracts === true) ----
+// ---- per-task contract handshake schemas (used only when A.contracts === true) ----
 const CONTRACT_SCHEMA = {
   type: 'object', additionalProperties: false, required: ['assertions'],
   properties: {
@@ -113,7 +113,7 @@ const CONTEST_SCHEMA = {
   type: 'object', additionalProperties: false, required: ['contested', 'rationale'],
   properties: { contested: { type: 'array', items: { type: 'string' } }, rationale: { type: 'string' } },
 }
-// ---- Bounded replan hatch (used only when A.replan === true) ----
+// ---- bounded replan hatch (used only when A.replan === true) ----
 const REPLAN_SCHEMA = {
   type: 'object', additionalProperties: false, required: ['waves', 'tasks', 'reason'],
   properties: {
@@ -128,7 +128,7 @@ const REPLAN_SCHEMA = {
     reason: { type: 'string' },
   },
 }
-// ---- Artefact render-eval findings (used only when A.renderEval === true) ----
+// ---- artefact render-eval findings (used only when A.renderEval === true) ----
 const RENDER_EVAL_SCHEMA = {
   type: 'object', additionalProperties: false, required: ['status', 'summary', 'findings'],
   properties: {
@@ -166,7 +166,7 @@ const WRITER_SCHEMA = { type: 'object', additionalProperties: false, required: [
 const HANDOFF_SCHEMA = { type: 'object', additionalProperties: false, required: ['handoff_written', 'sections_present', 'iteration_file_written', 'cited_paths_exist', 'notes'], properties: { handoff_written: { type: 'boolean' }, sections_present: { type: 'array', items: { type: 'string' } }, iteration_file_written: { type: 'boolean' }, cited_paths_exist: { type: 'boolean' }, notes: { type: 'string' } } }
 const GATE_SCHEMA = { type: 'object', additionalProperties: false, required: ['precheck_pass', 'exit_code', 'checks', 'failures', 'raw_tail'], properties: { precheck_pass: { type: 'boolean' }, exit_code: { type: 'integer' }, checks: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'status'], properties: { name: { type: 'string' }, status: { type: 'string' }, detail: { type: ['string', 'null'] } } } }, failures: { type: 'array', items: { type: 'string' } }, raw_tail: { type: 'string' } } }
 
-// ---- Engine prompt diet --------------------------------------------------------
+// ---- engine prompt diet --------------------------------------------------
 // Trim fat in-memory payloads before embedding them in engine prompts. Pure JS
 // pre-processing — it changes NO instruction the receiving agent acts on, only
 // strips bytes the agent never reads. validation-writer decides the FINAL list
@@ -189,7 +189,7 @@ function trimForWriter(vals) {
     })),
   }))
 }
-// ---- Cache-friendly prompt discipline (invariant, audited) ----------------------
+// ---- cache-friendly prompt discipline (invariant, audited) ----------------
 // Prompt caching (automatic on the subscription path, breakpointed in api-mode)
 // matches a left-to-right prefix. KEEP STABLE CONTENT AT THE HEAD of every prompt
 // (role + task text + criteria path + co-signed contract) and put VOLATILE content
@@ -197,7 +197,7 @@ function trimForWriter(vals) {
 // UUID / "attempt N" may appear in a prompt's first ~120 chars. Builders below
 // already lead with stable role text; preserve that ordering when editing.
 
-// Plan-graph validation, shared by PHASE 1 (initial plan) and the bounded replan hatch
+// Plan-graph validation, shared by PHASE 1 (initial plan) and the replan hatch
 // (merged graph). Returns [] when clean, else a list of human-readable errors:
 // duplicate ids silently overwrite in tasksById; orphan tasks never run; unknown/
 // duplicate wave refs misroute. Same checks in both call sites (panel requirement).
@@ -241,11 +241,27 @@ if (!plan) return { error: 'planning failed', readyForAcceptance: false }
 const TIER = plan.tier || 'M'
 const MODE = plan.deliverable_mode || (plan.domain === 'dev' ? 'code' : 'artefact') // code: worktree+octopus+tests; artefact: write-to-engagement+manifest
 const MAX_ATTEMPTS = TIER_ITER_MAX[TIER] || 2
-// ---- Repo-portability gate: detect the integration branch + test runner (+ server-boot
-// for future preview-eval, stashed/unused) instead of hardcoding 'main' /
+// ---- in-place serial code mode. Default OFF (mode-changing → gated until field-proven).
+// WHY: code mode's git-worktree + octopus mechanic assumes the test runner executes against the
+// on-disk worktree. That is FALSE when the project runs its suite inside a service container that
+// bind-mounts the repo ROOT (the worktree_safe=false) — the container always tests the repo's
+// working tree, so per-task worktree tests exercise the WRONG tree and the isolation is silently
+// void (a containerized bind-mount-root runner hits this exact failure, with
+// worktree branches even leaking into the integration branch at consolidation). In-place serial mode
+// removes the worktree machinery entirely: tasks mutate the ONE repo working tree SERIALLY (one at a
+// time — a shared tree cannot be edited in parallel), commit directly on the integration branch, and
+// test via TEST.discover(REPO) (which in container repos = "docker compose exec -T <svc> <cmd>" from
+// S2). There is no octopus merge — the wave barrier is just a repo-root test run. Activation is the
+// conductor's explicit decision (A.inPlaceSerial:true), informed by the worktree-VOID warning; the
+// engine never auto-switches. Byte-identity: every in-place-serial addition is gated behind IN_PLACE_SERIAL, so
+// with the flag OFF the deliver loop renders character-for-character as the worktree engine (proven by
+// clean-run call-log diff). Requires MODE==='code'; artefact mode is untouched.
+const IN_PLACE_SERIAL = A.inPlaceSerial === true && MODE === 'code'
+// ---- Repo-portability gate (chip task_bab6adfb): detect the integration branch + test
+// runner (+ server-boot for a future preview-eval, stashed/unused) instead of hardcoding 'main' /
 // 'python -m unittest'. Default OFF. When OFF, INTEGRATION_BRANCH + TEST keep the historical
-// hardcodes, so every code-mode prompt is byte-identical to the flag-off engine. When ON
-// (code mode only), ONE discovery-phase detector agent sets them per
+// hardcodes, so every code-mode prompt is byte-identical to the pre-portability engine (proven
+// by call-log diff). When ON (code mode only), ONE discovery-phase detector agent sets them per
 // the repo; artefact mode never touches them. ----
 const PORTABLE = A.repoPortable === true
 let INTEGRATION_BRANCH = 'main'
@@ -254,7 +270,13 @@ let TEST = {
   discover: (p) => `python -m unittest discover -s ${p}/tests -t ${p} (or py -3)`,
   rerun: 'python -m unittest',
 }
-let SERVER_BOOT = null // {cmd, port} — detected for future code-mode preview-eval; UNUSED for now.
+let SERVER_BOOT = null // {cmd, port} — detected for preview-eval code-mode preview-eval; UNUSED until that lands.
+// ---- container-exec test topology (set by detect:repo when PORTABLE && code). Defaults are the
+// ordinary host-run repo: not containerized, worktree-safe. ----
+let CONTAINERIZED = false       // tests run ONLY inside a service container (docker compose exec -T)
+let WORKTREE_SAFE = true        // false ⇒ container bind-mounts the repo ROOT → git-worktree isolation is VOID (trigger)
+let TEST_SERVICE = null         // the compose service to exec the suite in
+let CONTAINER_WORKDIR = null    // rootdir inside the container (command paths are relative to THIS)
 const PORTABILITY_SCHEMA = {
   type: 'object', additionalProperties: false,
   required: ['is_git_repo', 'integration_branch', 'test_desc', 'test_run_template', 'test_rerun', 'server_boot_cmd', 'server_port', 'evidence'],
@@ -267,6 +289,13 @@ const PORTABILITY_SCHEMA = {
     server_boot_cmd: { type: ['string', 'null'], description: 'dev-server boot command if the repo has one (future preview-eval), else null' },
     server_port: { type: ['integer', 'null'], description: 'dev-server port if known, else null' },
     evidence: { type: 'string', description: 'files/signals used (package.json, pyproject.toml, git symbolic-ref, …)' },
+    // ---- container-exec test topology (OPTIONAL — omitted ⇒ ordinary host-run repo). Kept out of
+    // `required` so the pre-existing detector fixtures (no container keys) still validate under
+    // additionalProperties:false; the engine reads them defensively with host-run defaults. ----
+    containerized: { type: ['boolean', 'null'], description: 'true iff the suite runs ONLY inside a service container (e.g. the app + its deps live in the container, not on the host). Then test_run_template MUST be the container-exec form "docker compose exec -T <svc> <cmd>".' },
+    test_service: { type: ['string', 'null'], description: 'the compose service to exec the tests in (e.g. backend|web|app), else null' },
+    container_workdir: { type: ['string', 'null'], description: 'the rootdir the tests run from INSIDE the container (e.g. /app); paths are relative to THIS, not the host dir — so do NOT prefix host subdirs. Informational; else null.' },
+    worktree_safe: { type: ['boolean', 'null'], description: 'false iff the test runner executes against a BIND-MOUNTED repo root (a container mounts the repo root), so it always tests the on-disk working tree REGARDLESS of any git worktree — meaning git-worktree isolation is VOID and the engine must use in-place serial mode. true (default) for ordinary host-run repos where tests honour the given dir.' },
   },
 }
 function portabilityDetectPrompt() {
@@ -274,16 +303,28 @@ function portabilityDetectPrompt() {
 Detect:
 0. is_git_repo — run git -C ${REPO} rev-parse --is-inside-work-tree. Set is_git_repo=false if it fails / ${REPO} has no .git (code mode needs a git work tree; if the git root is a sub/parent dir, say so in evidence).
 1. integration_branch — the default/integration branch. Try in order: git -C ${REPO} symbolic-ref --short refs/remotes/origin/HEAD (strip leading 'origin/'); else git -C ${REPO} branch --show-current; else look for main|master|develop among branches.
-2. test runner — inspect the repo root: package.json (scripts.test → npm/yarn/pnpm test), pyproject.toml / pytest.ini / tox.ini (pytest), setup.py or a tests/ dir (python -m unittest), go.mod (go test ./...), Cargo.toml (cargo test). Return test_run_template using the LITERAL token __DIR__ for the directory (e.g. "(cd __DIR__ && npm test)"), a one-line test_desc, and a short test_rerun phrase.
+2. test runner — inspect the repo root: package.json (scripts.test → npm/yarn/pnpm test), pyproject.toml / pytest.ini / tox.ini (pytest), setup.py or a tests/ dir (python -m unittest), go.mod (go test ./...), Cargo.toml (cargo test). Return test_run_template using the LITERAL token __DIR__ for the directory (e.g. "(cd __DIR__ && npm test)"), a one-line test_desc, and a short test_rerun phrase. (UNLESS step 4 finds the suite is container-only — then step 4's container-exec template wins and carries NO __DIR__ token.)
 3. server boot (best-effort, for future use) — a dev-server command + port if obvious (package.json scripts.dev, a Procfile, uvicorn/flask/fastapi entry in pyproject); else null/null.
-Use Bash + Read ONLY. Do NOT modify anything. Return per schema with evidence citing the files you read.`
+4. containerization (CRITICAL for correctness) — inspect docker-compose.yml / compose.yaml / docker-compose.*.yml / Dockerfile. Decide whether the test suite runs ONLY inside a service container (the app + its test deps live in the container; there is no host venv/node_modules that can run the suite directly). If so:
+   - containerized=true; test_service=<the service that holds the code, e.g. backend|web|app>; container_workdir=<the WORKDIR tests run from inside it, e.g. /app>.
+   - test_run_template = the CONTAINER-EXEC form with NO __DIR__ token: "docker compose exec -T <svc> <test cmd>" (e.g. "docker compose exec -T backend python -m pytest"). Command paths are relative to container_workdir, NOT the host — do NOT prefix host subdirs (write "python -m pytest", NOT "backend/tests"). The engine runs this with cwd=${REPO} so compose resolves the project; it does NOT cd into a subdir.
+   - worktree_safe — INSPECT THE BIND MOUNT in the service's volumes:. If it bind-mounts the repo ROOT (".:/app", "./:/app", or an absolute repo path → container_workdir), the container ALWAYS tests the repo's on-disk working tree regardless of any git worktree the engine creates → set worktree_safe=FALSE (git-worktree isolation is VOID; the engine must use in-place serial mode). If the image COPYs the code in (no root bind mount) or the suite runs on the host, worktree_safe=true.
+   For an ordinary host-run repo (a venv / node_modules runs the suite directly), set containerized=false, worktree_safe=true, test_service=null, container_workdir=null, and keep the step-2 host test_run_template (with __DIR__).
+Use Bash + Read ONLY. Do NOT modify anything. Return per schema with evidence citing the files you read (compose file + the service's volumes/workdir for the container verdict).`
 }
-// ---- Contract gate: per-task contract handshake. Default OFF. M/L only (S skips). When OFF the
-// deliver loop is byte-identical to the flag-off engine. ----
+// ---- per-task contract handshake. Default OFF. M/L only (S skips). When OFF the
+// deliver loop is byte-identical to the pre-existing engine (proven by call-log diff). ----
 const CONTRACTS_ON = (A.contracts === true) && (TIER === 'M' || TIER === 'L')
-// Two roles in the contract handshake:
+// ---- A.contractsCodex: a cross-family Codex CHALLENGE of the per-task done-when at contract time,
+// for an externally-exercisable-surface deliverable. CHILD of A.contracts (only meaningful when CONTRACTS_ON);
+// default OFF; byte-identical when off (no call + the original co-sign prompt used verbatim via the ternary's
+// null branch). Codex challenges, the reviewer reconciles — Codex is neither author nor judge. Shifts the
+// verification-rigor catch (the "non-exercised proof accepted" class) LEFT to contract time, cross-family.
+// Activation conductor-gated like the other engine flags. ----
+const CONTRACT_CODEX_ON = CONTRACTS_ON && (A.contractsCodex === true)
+// Two roles in the contract handshake (resolved 2026-06-10, commons sign-off — variant B):
 //  - Per-task REVIEW JUDGE: code → code-reviewer; artefact → reality-checker (CRITIQUE_AGENT, a real
-//    critique-class adversary replacing the anonymous default artefact critic).
+//    critique-class adversary replacing the anonymous default artefact critic — the in-loop-C fix).
 //  - Contract WRITER (call 2, persists tasks/{id}.md): reality-checker in BOTH modes, because it HAS
 //    Write and code-reviewer is Read/Glob/Grep only. So in code mode the contract co-signer/writer
 //    (reality-checker) is deliberately a DIFFERENT party from the later review judge (code-reviewer) —
@@ -291,20 +332,48 @@ const CONTRACTS_ON = (A.contracts === true) && (TIER === 'M' || TIER === 'L')
 // Domain-specific critics (accessibility-validator, etc.) still run in the validate phase via plan.validators.
 const CRITIQUE_AGENT = 'reality-checker'
 const CONTRACT_WRITER = 'reality-checker'
-// ---- Replan gate: bounded replan hatch (failure recovery). Default OFF. When OFF a wave hard-stop
-// returns the EXISTING error contract unchanged. When ON,
+// ---- bounded replan hatch (failure recovery). Default OFF. When OFF a wave hard-stop
+// returns the EXISTING error contract unchanged (engagement #1 observes it unmasked). When ON,
 // ONE replan per run is allowed: cleanup failed wave → re-plan remaining waves → re-validate →
 // continue. Max 1 replan; a second hard-stop returns the existing error contract (no loop). ----
 const REPLAN_ON = A.replan === true
 let replanCount = 0
-// ---- Consolidation-guard gate: wave-consolidation guard. Default OFF. When OFF the post-
-// consolidation result is only logged (flag-off behaviour). When ON, a null
+// ---- wave-consolidation guard. Default OFF. When OFF the post-consolidation result is
+// only logged (pre-existing behaviour — proven byte-identical by call-log diff). When ON, a null
 // consolidator / merge_ok:false / (code-mode) merge-landed-but-tests-failed hard-stops the run
 // with the same error-contract shape as the pre-consolidation hard-stop, so dependent waves never
 // branch off a missing or broken integration HEAD. Bug-fix class: behaviour differs ONLY on a
-// failed consolidation; clean runs are unchanged. Activation policy is the conductor's —
-// guard-class flags may default ON earlier than feature-class flags. ----
+// failed consolidation; clean runs are unchanged. Activation policy is the conductor's (see field
+// checklist) — guard-class flags may be ON at engagement #1 unlike feature-class flags. ----
 const CONSGUARD_ON = A.consGuard === true
+// ---- transient-infra-error retry in the review/validate loops. Default OFF. The Workflow
+// agent() contract returns `null` when a subagent dies on a terminal API error AFTER its own retries
+// (e.g. a sustained 529 Overloaded / timeout) OR when the user skips it — a null that the engine
+// CANNOT distinguish from a substantive negative verdict. Previously, a null from a review/validator
+// agent counts as review_ok=false (wave hard-stop) or a dropped finding — i.e. a transient infra
+// blip is mis-read as a REJECT. agentR() re-invokes the SAME call up to INFRA_RETRY_MAX times on a
+// null result so a transient is collapsed; if every retry still returns null the result falls through
+// to the EXACT pre-existing substantive handling (break / drop). Bug-fix class: behaviour differs ONLY when
+// a wrapped call returns null — on a clean run (or any non-null result) agentR makes exactly ONE
+// agent() call with identical (prompt, opts), so the call-log is byte-identical whether the flag is on
+// or off (proven by clean-run call-log diff). Activation is the conductor's: like A.consGuard this is a
+// guard/bug-fix flag the conductor MAY pass ON at engagement #1. SCOPE = the two sites the field signal
+// named — the deliver-loop per-task REVIEW and the validate-loop VALIDATOR + adversarial-VERIFY calls.
+// impl/rework/consolidate nulls stay substantive (blockedSpec / consolidation-guard hard-stop), which
+// are already resumable via resumeFromRunId; widening to them is a deliberate non-goal here.
+const INFRA_RETRY = A.infraRetry === true
+const INFRA_RETRY_MAX = 2
+async function agentR(prompt, opts) {
+  let r = await agent(prompt, opts)
+  if (!INFRA_RETRY) return r
+  let tries = 0
+  while (r == null && tries < INFRA_RETRY_MAX) {
+    tries++
+    log(`infra-retry ${tries}/${INFRA_RETRY_MAX} for ${opts && opts.label} — null result treated as a TRANSIENT infra error (529/overloaded/timeout), NOT a REJECT; re-invoking`)
+    r = await agent(prompt, opts)
+  }
+  return r
+}
 function replanPrompt(failedWaveNo, reason, completedTaskIds, remainingCritRefs, suffix) {
   return `You are re-planning an agency engagement after wave ${failedWaveNo} hard-stopped: ${reason}. The SCRIPT orchestrates fan-out; you do NOT dispatch. Read ${ENG}/criteria.md.
 COMPLETED & LOCKED (do NOT re-schedule, do NOT reuse these ids): ${JSON.stringify(completedTaskIds)} — their merged work stays on the integration branch / under ${ENG}.
@@ -341,7 +410,20 @@ if (PORTABLE && MODE === 'code') {
       TEST = { desc: det.test_desc || TEST.desc, discover, rerun: det.test_rerun || 'the test command above' }
     }
     SERVER_BOOT = det.server_boot_cmd ? { cmd: det.server_boot_cmd, port: det.server_port || null } : null
-    log(`repo-portability: branch=${INTEGRATION_BRANCH}; test='${(det.test_run_template || '').slice(0, 48)}'; serverBoot=${SERVER_BOOT ? SERVER_BOOT.cmd : 'none'}`)
+    // ---- read the container-exec topology (defensive defaults: host-run, worktree-safe) ----
+    CONTAINERIZED = det.containerized === true
+    WORKTREE_SAFE = det.worktree_safe !== false   // default true unless the detector explicitly says false
+    TEST_SERVICE = det.test_service || null
+    CONTAINER_WORKDIR = det.container_workdir || null
+    log(`repo-portability: branch=${INTEGRATION_BRANCH}; test='${(det.test_run_template || '').slice(0, 48)}'; serverBoot=${SERVER_BOOT ? SERVER_BOOT.cmd : 'none'}; containerized=${CONTAINERIZED}${CONTAINERIZED ? ` svc=${TEST_SERVICE || '?'} worktreeSafe=${WORKTREE_SAFE}` : ''}`)
+    // ---- trigger: a containerized runner that bind-mounts the repo ROOT makes git-worktree
+    // isolation VOID (per-task tests would exercise the wrong tree). Warn loudly unless the conductor
+    // already asked for in-place serial mode (A.inPlaceSerial). This is detection+advice only — the
+    // engine does NOT auto-switch modes (mode change stays an explicit conductor decision, like the
+    // other feature flags). ----
+    if (CONTAINERIZED && !WORKTREE_SAFE && A.inPlaceSerial !== true) {
+      log(`repo-portability: WARNING — containerized test runner bind-mounts the repo ROOT (service ${TEST_SERVICE || '?'}, workdir ${CONTAINER_WORKDIR || '?'}); git-worktree isolation is VOID, per-task tests would exercise the WRONG tree. Re-run with A.inPlaceSerial:true (in-place serial code mode). Worktree mode is UNSAFE for this repo.`)
+    }
   }
 }
 
@@ -370,15 +452,35 @@ Keep files short. Return {written:[paths]}.`,
 //              (design / marketing)
 // ===========================================================================
 phase('deliver')
+// ---- engBranch (A.engBranch): engagement-branch isolation. Default OFF; frozen-engine byte-identity
+// when OFF — the gated block below does nothing and INTEGRATION_BRANCH is untouched, so every downstream
+// ${INTEGRATION_BRANCH} interpolation renders character-for-character as before and ZERO agent calls are
+// added. When ON (code mode): INTEGRATION_BRANCH is reassigned to a dedicated eng/<slug> branch so all
+// worktree / consolidate / in-place-serial sites target it (the real integration branch is preserved as
+// ORIGIN_BASE), created off origin/<integration> (else local), never mutating the working integration
+// branch; the handoff §1 diff then uses a clean merge-base. Fixes the local-main-ahead + whole-repo-diff
+// signals. Activation is the conductor's, gated on an off-path call-log diff + one
+// clean ON code engagement (use with A.repoPortable:true).
+const ENGBRANCH_ON = A.engBranch === true && MODE === 'code'
+const ORIGIN_BASE = INTEGRATION_BRANCH
+if (ENGBRANCH_ON) {
+  const _slug = String(plan.engagement || TS).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || TS
+  INTEGRATION_BRANCH = `eng/${_slug}`
+  await agent(
+    `Initialize engagement branch ${INTEGRATION_BRANCH} in repo ${REPO}. Do NOT mutate ${ORIGIN_BASE} (the working integration branch).
+Steps (Bash): if \`git -C ${REPO} show-ref --verify --quiet refs/remotes/origin/${ORIGIN_BASE}\` succeeds, base it on the remote — git -C ${REPO} branch -f ${INTEGRATION_BRANCH} origin/${ORIGIN_BASE} ; else base it on the local branch — git -C ${REPO} branch -f ${INTEGRATION_BRANCH} ${ORIGIN_BASE} . Then git -C ${REPO} checkout ${INTEGRATION_BRANCH} . If it already exists from a prior attempt, just checkout it (do NOT reset). Confirm git -C ${REPO} rev-parse --abbrev-ref HEAD prints ${INTEGRATION_BRANCH}. Report the base ref used and the head sha.`,
+    { label: 'eng-branch:init', phase: 'deliver' })
+  log(`engBranch: waves consolidate onto ${INTEGRATION_BRANCH} (off origin/${ORIGIN_BASE}); working ${ORIGIN_BASE} untouched`)
+}
 function wt(t) { return `${SIBLING}/wt_${t.id}` }
 function br(t) { return `wf_${t.id}` }
 
-// ---- Per-task contract handshake (pinned 3-call sequence; gated CONTRACTS_ON; M/L only) ----
+// ---- per-task contract handshake (pinned 3-call sequence; gated CONTRACTS_ON; M/L only) ----
 // Call 1 owner proposes in-band (writes NO file). Call 2 reviewer (code → code-reviewer;
 // artefact → CRITIQUE_AGENT) amends/accepts AND writes tasks/{id}.md "## Contract (co-signed)".
 // Call 3 owner contests (only if reviewer amended). Returns the agreed assertions + contested
 // ids + the negotiation transcript, or null (flag off / S / empty proposal → deliver loop runs
-// exactly as flag-off). The contract is later injected ONLY into the review prompt (conditional).
+// exactly as pre-existing). The contract is later injected ONLY into the review prompt (conditional).
 function contractProposePrompt(t) {
   return `You are the OWNER (${t.owner}) of one atomic task. BEFORE implementing, propose the per-task acceptance CONTRACT. Read ${ENG}/criteria.md (criteria ${t.crit_refs.join(', ')}).
 Task ${t.id}: ${t.title}. Files you will produce: ${t.files.join(', ')}.
@@ -412,12 +514,40 @@ function contractImplNote(t, contract) {
   if (!contract) return ''
   return `\nThis task has a CO-SIGNED CONTRACT at ${ENG}/tasks/${t.id}.md ("## Contract (co-signed)"): satisfy each assertion's check_how. Acknowledge the contract in your executor-report and note any contested ids ${JSON.stringify(contract.contested)} (those are judged against criteria.md directly).`
 }
+const CONTRACT_CHALLENGE_SCHEMA = { type: 'object', additionalProperties: false, required: ['codex_ran', 'challenge_points'], properties: { codex_ran: { type: 'boolean' }, challenge_points: { type: 'array', items: { type: 'string' } } } }
+// Cheap deterministic predicate (S2c cost-guard): does the task deliver an externally-EXERCISABLE surface
+// (HTTP/route/CLI/rendered UI/public contract)? Only those get the Codex challenge — derived from title+files,
+// no detector call.
+const EXERCISABLE_RE = /\b(api|routes?|controllers?|handlers?|servers?|endpoints?|webhooks?|graphql|rest|http|cli|cmd|bin|commands?|argv|stdin|stdout|openapi|schema|contracts?|pages?|views?|screens?|components?|render|browser|forms?|buttons?)\b|\.(html?|jsx|tsx|vue|svelte|astro)\b/i
+function maybeExercisableSurface(t) {
+  return EXERCISABLE_RE.test(`${t.title || ''} ${(t.files || []).join(' ')}`)
+}
+function contractCodexChallengePrompt(t, proposal) {
+  return `You ORCHESTRATE Codex (cross-family) as an ADVERSARIAL CHALLENGER of a per-task Definition-of-Done — you neither author nor judge it; you RELAY Codex's points and the WRITER reconciles them. Call mcp__codex__codex (load via tool search if its schema is not loaded; approval-policy:"never", sandbox:"read-only", cwd:"${REPO}") with ONE question about task ${t.id} ("${t.title}"), whose deliverable has an externally-exercisable surface (files: ${t.files.join(', ')}; criteria ${t.crit_refs.join(', ')}):
+Proposed done-when assertions: ${JSON.stringify(proposal.assertions)}
+CHALLENGE: is this done-when sufficient to call the result CORRECT, or could EVERY assertion pass while the assembled surface is still broken? Name specifically what is NOT exercised — the real request/response path, the rendered output, the CLI invocation, the public contract — and which concrete exercised check is missing (e.g. "drive an actual HTTP request against the assembled route and assert the expected non-error response", not just unit-green). Return CHALLENGE POINTS, not rewritten assertions.
+RELAY Codex's points into the schema (challenge_points[]); do NOT author or judge. codex_ran=true iff Codex returned.`
+}
+function contractCosignPromptChallenged(t, proposal, challenge) {
+  return contractCosignPrompt(t, proposal) + `
+
+CROSS-FAMILY CHALLENGE (Codex) of this done-when — reconcile each point BEFORE co-signing (these are adversarial QUESTIONS, not assertions; you hold the rubric — fold the valid ones in, ignore over-reach): ${JSON.stringify((challenge && challenge.challenge_points) || [])}
+For each valid challenge, ADD or TIGHTEN an assertion whose check_how EXERCISES the real surface (e.g. "run an HTTP request against the assembled route, assert the expected non-error response"), bound to its crit-N parent (no scope-creep).`
+}
 async function negotiateContract(t) {
   if (!CONTRACTS_ON) return null
   const proposal = await agent(contractProposePrompt(t), { label: `contract-propose:${t.id}`, phase: 'deliver', agentType: t.owner, schema: CONTRACT_SCHEMA })
   if (!proposal || !proposal.assertions || !proposal.assertions.length) return null
-  // the WRITER co-signs + persists tasks/{id}.md (reality-checker, both modes — it has Write).
-  const cosigned = await agent(contractCosignPrompt(t, proposal), { label: `contract-cosign:${t.id}`, phase: 'deliver', agentType: CONTRACT_WRITER, schema: CONTRACT_SCHEMA })
+  // A.contractsCodex: cross-family Codex challenge of the proposed done-when BEFORE co-sign, for an
+  // exercisable-surface deliverable. Challenge POINTS only (Codex not author/judge); the WRITER reconciles.
+  // OFF (default) → challenge stays null → no Codex call AND the co-sign uses the ORIGINAL prompt verbatim
+  // (the ternary's null branch), so the deliver loop is byte-identical to pre-existing.
+  let challenge = null
+  if (CONTRACT_CODEX_ON && maybeExercisableSurface(t)) {
+    challenge = await agent(contractCodexChallengePrompt(t, proposal), { label: `contract-codex-challenge:${t.id}`, phase: 'deliver', schema: CONTRACT_CHALLENGE_SCHEMA })
+  }
+  // variant B: the WRITER co-signs + persists tasks/{id}.md (reality-checker, both modes — it has Write).
+  const cosigned = await agent((challenge && challenge.codex_ran) ? contractCosignPromptChallenged(t, proposal, challenge) : contractCosignPrompt(t, proposal), { label: `contract-cosign:${t.id}`, phase: 'deliver', agentType: CONTRACT_WRITER, schema: CONTRACT_SCHEMA })
   const assertions = (cosigned && cosigned.assertions && cosigned.assertions.length) ? cosigned.assertions : proposal.assertions
   let contested = []
   if (JSON.stringify(assertions) !== JSON.stringify(proposal.assertions)) {
@@ -487,15 +617,15 @@ function blockedSpec(t, reason) {
   return { task_id: t.id, status: 'blocked', branch: '', head_sha: '', files_touched: [], report_path: '', self_tests_pass: false, notes: reason, review_trail: ['impl-failed'], review_ok: false }
 }
 async function deliverArtefactTask(t) {
-  const contract = await negotiateContract(t)  // null when flag off / S / empty proposal → identical to flag-off
+  const contract = await negotiateContract(t)  // null when flag off / S / empty proposal → identical to pre-existing
   let spec = await agent(artefactImplPrompt(t, 1, contract), { label: `impl:${t.id}#1`, phase: 'deliver', agentType: t.owner, schema: SPEC_SCHEMA })
   if (!spec) return blockedSpec(t, 'artefact implementation agent returned no result')
   const trail = []
   let review_ok = false
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const reviewOpts = { label: `review:${t.id}#${attempt}`, phase: 'deliver', schema: REVIEW_VERDICT_SCHEMA }
-    if (contract) reviewOpts.agentType = CRITIQUE_AGENT  // real critic instead of anonymous default (contract path only)
-    const review = await agent(artefactReviewPrompt(t, spec, contract), reviewOpts)
+    if (contract) reviewOpts.agentType = CRITIQUE_AGENT  // in-loop-C fix: real critic instead of anonymous default (contract path only)
+    const review = await agentR(artefactReviewPrompt(t, spec, contract), reviewOpts)
     trail.push(review ? review.verdict : 'error')
     if (review && review.verdict === 'pass') { review_ok = true; break }
     if (!review) break  // review agent FAILED (null) — do NOT treat as pass; wave guard hard-stops on review_ok=false
@@ -507,13 +637,13 @@ async function deliverArtefactTask(t) {
   return { ...spec, review_trail: trail, review_ok, contract }
 }
 async function deliverOneTask(t) {
-  const contract = await negotiateContract(t)  // null when flag off / S / empty proposal → identical to flag-off
+  const contract = await negotiateContract(t)  // null when flag off / S / empty proposal → identical to pre-existing
   let spec = await agent(implPrompt(t, 1, contract), { label: `impl:${t.id}#1`, phase: 'deliver', agentType: t.owner, schema: SPEC_SCHEMA })
   if (!spec) return blockedSpec(t, 'implementation agent returned no result')
   const trail = []
   let review_ok = false
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const review = await agent(reviewTaskPrompt(t, spec, contract), { label: `review:${t.id}#${attempt}`, phase: 'deliver', agentType: 'code-reviewer', schema: REVIEW_VERDICT_SCHEMA })
+    const review = await agentR(reviewTaskPrompt(t, spec, contract), { label: `review:${t.id}#${attempt}`, phase: 'deliver', agentType: 'code-reviewer', schema: REVIEW_VERDICT_SCHEMA })
     trail.push(review ? review.verdict : 'error')
     if (review && review.verdict === 'pass') { review_ok = true; break }
     if (!review) break  // review agent FAILED (null) — do NOT treat as pass; wave guard hard-stops on review_ok=false
@@ -525,15 +655,73 @@ async function deliverOneTask(t) {
   return { ...spec, review_trail: trail, review_ok, contract }
 }
 
-// ---- Render-eval gate: artefact render-eval. Default OFF. Artefact mode only; runs AFTER manifest-verify.
+// ---- S1 in-place serial code mode (gated IN_PLACE_SERIAL; code only). REPO-rooted twins of the
+// worktree builders: NO `git worktree add`, NO per-task branch — the specialist edits the ONE repo
+// working tree directly on INTEGRATION_BRANCH and tests via TEST.discover(REPO) (container-exec in
+// S2 repos). Tasks run SERIALLY (serialDeliver), so the shared tree is never mutated concurrently. ----
+function implSerialPrompt(t, attempt, contract) {
+  const deps = (t.depends_on && t.depends_on.length)
+    ? `\nThis task DEPENDS ON earlier tasks already committed on ${INTEGRATION_BRANCH} IN THIS SAME working tree: ${t.depends_on.join(', ')} — their files are already present under ${REPO}; import/use them, do NOT recreate them.` : ''
+  return `You are a dev specialist implementing ONE atomic task IN-PLACE in the shared repo working tree (in-place serial mode — the project's test runner bind-mounts the repo root, so a git worktree would test the WRONG tree). Use \`git -C ${REPO}\` + absolute paths. Do NOT create a git worktree or a new branch; edit the repo directly on ${INTEGRATION_BRANCH}.
+
+Task ${t.id}: ${t.title}
+Repo ${REPO} (you are on integration branch ${INTEGRATION_BRANCH}; tasks in this engagement run SERIALLY, one at a time, so the tree is yours for this step).
+Files YOU create/edit: ${t.files.join(', ')}. Criteria: ${t.crit_refs.join(', ')}.${deps}
+
+Steps:
+1. Ensure you are on the integration branch: git -C ${REPO} checkout ${INTEGRATION_BRANCH} (do NOT create a worktree or a new branch).
+2. Implement your files directly under ${REPO}/. Standard library ONLY unless criteria allow deps. Follow the criteria contract LITERALLY (exact body shapes/keys). ${TEST.desc}
+3. Run your own tests: ${TEST.discover(REPO)}. Capture pass/fail.
+4. Commit on ${INTEGRATION_BRANCH}: git -C ${REPO} add -A && git -C ${REPO} commit -m '${t.id}: ${t.title} (attempt ${attempt})'
+5. head_sha = git -C ${REPO} rev-parse HEAD
+6. Write/refresh executor-report at CANONICAL ${ENG}/executor-reports/${t.id}.md (absolute). MUST open with "## Criteria acknowledgement" then one bullet per criterion naming the crit id. Then "## Work". No slot/last-attempt language.
+Return per schema: task_id, branch="${INTEGRATION_BRANCH}", head_sha (the commit), files_touched (the repo-relative paths you wrote), report_path, self_tests_pass, status, notes.` + contractImplNote(t, contract)
+}
+function reviewSerialPrompt(t, spec, contract) {
+  return `You are code-reviewer doing a SCOPED per-task review inside the in-place serial delivery loop. Review ONLY task ${t.id}'s files in the repo working tree ${REPO}, judged against the cited criteria — passing tests is NOT sufficient; the implementation MUST match the criteria contract literally (exact keys/shapes/status codes).
+Read: ${t.files.map(f => REPO + '/' + f).join(' , ')} and ${ENG}/criteria.md (criteria ${t.crit_refs.join(', ')}). Specialist report ${spec.report_path}, self_tests_pass=${spec.self_tests_pass}.
+Return per schema: verdict ('pass' if all cited criteria literally satisfied else 'rework'), findings[] (severity/file/message/crit_ref), summary.` + contractReviewBlock(contract)
+}
+function reworkSerialPrompt(t, review, attempt) {
+  return `You are the SAME dev specialist reworking task ${t.id} IN-PLACE in the repo working tree ${REPO} (on ${INTEGRATION_BRANCH}) after a scoped review returned 'rework'. Address EVERY finding so cited criteria are LITERALLY satisfied. Fix BOTH implementation AND its test if needed. Re-run ${TEST.rerun} for your test (confirm green). Commit: git -C ${REPO} add -A && git -C ${REPO} commit -m '${t.id}: rework attempt ${attempt}'. Append "## Rework attempt ${attempt}" to ${ENG}/executor-reports/${t.id}.md.
+Review findings: ${JSON.stringify(review.findings)}
+Return per schema (head_sha=new HEAD).`
+}
+async function deliverInPlaceTask(t) {
+  const contract = await negotiateContract(t)  // null when flag off / S / empty proposal → identical to pre-existing
+  let spec = await agent(implSerialPrompt(t, 1, contract), { label: `impl:${t.id}#1`, phase: 'deliver', agentType: t.owner, schema: SPEC_SCHEMA })
+  if (!spec) return blockedSpec(t, 'in-place implementation agent returned no result')
+  const trail = []
+  let review_ok = false
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const review = await agentR(reviewSerialPrompt(t, spec, contract), { label: `review:${t.id}#${attempt}`, phase: 'deliver', agentType: 'code-reviewer', schema: REVIEW_VERDICT_SCHEMA })
+    trail.push(review ? review.verdict : 'error')
+    if (review && review.verdict === 'pass') { review_ok = true; break }
+    if (!review) break  // review agent FAILED (null, retries exhausted) — wave guard hard-stops on review_ok=false
+    if (attempt === MAX_ATTEMPTS) break  // rework budget exhausted still on 'rework'
+    const reworked = await agent(reworkSerialPrompt(t, review, attempt + 1), { label: `rework:${t.id}#${attempt + 1}`, phase: 'deliver', agentType: t.owner, schema: SPEC_SCHEMA })
+    if (!reworked) break
+    spec = reworked
+  }
+  return { ...spec, review_trail: trail, review_ok, contract }
+}
+// Serial fan-IN: deliver each task one at a time (await in order) — a shared working tree cannot be
+// mutated by parallel specialists. Mirrors the `.filter(Boolean)` of the parallel path.
+async function serialDeliver(waveTasks) {
+  const out = []
+  for (const t of waveTasks) { const s = await deliverInPlaceTask(t); if (s) out.push(s) }
+  return out
+}
+
+// ---- artefact render-eval. Default OFF. Artefact mode only; runs AFTER manifest-verify.
 // When OFF (or code mode, or no renderable HTML in the wave) the step makes zero agent calls. ----
 const RENDEREVAL_ON = A.renderEval === true
 const RENDER_BASE = A.previewUrl || ('file://' + ENG + '/')  // caller-supplied http base where file:// is blocked
 const isRenderable = f => /\.html?$/i.test(String(f))
-// ---- Cheap-tier gate: cheap-model tiering for mechanical engine steps. Default OFF. When OFF, no `model`
+// ---- cheap-model tiering for mechanical engine steps. Default OFF. When OFF, no `model`
 // key is added to any opts → byte-identical to current behaviour. When ON: manifest-verify + gate-runner
 // → haiku (string-match / exit-code work); adversarial-verify → sonnet. impl/review/plan/handoff/
-// consolidate stay on the inherited model (judgement work). Quality gate: A/B identical verdicts. ----
+// consolidate stay on the inherited model (judgement work). Quality gate: scratch A/B identical verdicts. ----
 const CHEAP = A.cheapTiers === true
 const cheapModel = (m) => CHEAP ? { model: m } : {}
 function renderEvalPrompt(waveNo, pass, checklist) {
@@ -546,19 +734,22 @@ For each file: navigate to ${RENDER_BASE}<file>, read OBSERVED values (browser_s
 
 const allSpecs = []
 const waveSummaries = []
-// `waves` is mutable so the bounded replan hatch can splice in re-planned remaining waves; with
+// `waves` is mutable so the replan hatch can splice in re-planned remaining waves; with
 // REPLAN_ON=false it is just plan.waves.slice() and this loop runs exactly as the prior for-loop.
 let waves = plan.waves.slice()
 let wi = 0
-// ---- Bounded replan hatch, EXTRACTED so the pre-consolidation hard-stop AND
+// ---- S3 bounded replan hatch, EXTRACTED (2026-06-11, B1) so the pre-consolidation hard-stop AND
 // the post-consolidation consolidation guard (below) share ONE replan path — no duplicated machinery,
 // no second replan loop. Returns true iff a replan was spliced (caller `continue`s at the same wi);
 // false → caller falls through to its own error contract. Reassigns the outer waves/replanCount and
 // mutates tasksById/waveSummaries + the passed-in specs (same object refs as before extraction). When
 // REPLAN_ON is false it returns false immediately with ZERO agent calls — so every prior call site is
-// behaviour-identical when the flag is off. ----
+// behaviour-identical (proven by clean-run call-log diff vs B7). ----
 async function tryReplan(reasonStr, waveTasks, specs) {
-  if (!(REPLAN_ON && replanCount < 1)) return false
+  // In-place serial mode can't cleanly discard a failed wave (no worktree to remove; the impl commits
+  // already sit on the integration branch), so replan is disabled there — a serial wave hard-stop is
+  // resumable (resumeFromRunId) after a manual fix. IN_PLACE_SERIAL is false by default → byte-identical.
+  if (!(REPLAN_ON && replanCount < 1) || IN_PLACE_SERIAL) return false
   // (1) NEW cleanup step: cleanupCommands ARE NOW EXECUTED (returned data was never run before) — plus
   //     `git branch -D wf_{id}` because branches SURVIVE worktree removal. Trade-off: this sacrifices the
   //     failed wave's resume-reuse; completed waves' prefix-cache is untouched.
@@ -611,7 +802,9 @@ while (wi < waves.length) {
   const waveTasks = waves[wi].map(id => tasksById[id])  // refs validated upfront (incl. replan-spliced waves)
   if (!waveTasks.length) { wi++; continue }
   log(`deliver wave ${wi + 1}/${waves.length}: ${waveTasks.map(t => t.id).join(', ')}`)
-  const specs = (await parallel(waveTasks.map(t => () => (MODE === 'code' ? deliverOneTask(t) : deliverArtefactTask(t))))).filter(Boolean)
+  const specs = IN_PLACE_SERIAL
+    ? await serialDeliver(waveTasks)
+    : (await parallel(waveTasks.map(t => () => (MODE === 'code' ? deliverOneTask(t) : deliverArtefactTask(t))))).filter(Boolean)
   allSpecs.push(...specs)
   // Pre-consolidation HARD-STOP: never merge/manifest a wave that (a) lost a task
   // to a thrown thunk (parallel() turns a throw into null -> filtered out), (b) has
@@ -628,18 +821,27 @@ while (wi < waves.length) {
     if (bad.length) reasons.push(`blocked/review-failed: ${bad.map(s => `${s.task_id}[${s.status === 'blocked' ? 'blocked' : 'review:' + (s.review_trail || []).join('>')}]`).join(', ')}`)
     const reasonStr = reasons.join('; ')
     log(`deliver wave ${wi + 1} HARD-STOP: ${reasonStr}`)
-    // ---- Bounded replan hatch (ONE per run). When OFF or already used → existing error contract. ----
+    // ---- bounded replan hatch (ONE per run). When OFF or already used → existing error contract. ----
     if (await tryReplan(reasonStr, waveTasks, specs)) continue
     return {
       error: `deliver wave ${wi + 1} did not cleanly complete — ${reasonStr}. No consolidation; fix and resume (resumeFromRunId), or clean worktrees first.`,
       engagementDir: ENG, domain: plan.domain, tier: TIER,
       deliver: allSpecs.map(s => ({ id: s.task_id, status: s.status, review_trail: s.review_trail, review_ok: s.review_ok, superseded_by_replan: !!s.superseded_by_replan })),
-      cleanupCommands: (MODE === 'code') ? waveTasks.map(t => `git -C ${REPO} worktree remove --force ${wt(t)}`) : [],
+      cleanupCommands: (MODE === 'code' && !IN_PLACE_SERIAL) ? waveTasks.map(t => `git -C ${REPO} worktree remove --force ${wt(t)}`) : [],
       gate: { precheck_pass: false, exit_code: null, failures: [`deliver-wave-${wi + 1}-incomplete`], checks: [] },
       readyForAcceptance: false,
     }
   }
-  const cons = (MODE === 'code')
+  const cons = IN_PLACE_SERIAL
+    ? await agent(
+      `Wave-barrier VERIFY for repo ${REPO}, wave ${wi + 1} (in-place serial mode — NO git merge; every task already committed its work directly on ${INTEGRATION_BRANCH} in this one working tree). Confirm the wave's combined work is coherent:
+Tasks this wave: ${specs.map(s => `${s.task_id} @ ${s.head_sha}`).join(', ')}
+Steps (Bash, capture raw):
+1. Run repo-root tests: ${TEST.discover(REPO)}. Capture output + pass/fail.
+2. merge_head = git -C ${REPO} rev-parse HEAD.
+Return per schema: merge_ok:true (there is NO merge to perform in in-place serial mode — set true), conflicts:false, conflict_resolved:false, strategy:'in-place-serial', merge_head, tests_passed (true iff the repo-root tests pass), test_output (trimmed), notes (name any failing test).`,
+      { label: `consolidate:w${wi + 1}`, phase: 'deliver', schema: CONSOLIDATE_SCHEMA })
+    : (MODE === 'code')
     ? await agent(
       `Wave-barrier CONSOLIDATOR for repo ${REPO}, wave ${wi + 1}. Merge these branches into ${INTEGRATION_BRANCH} (they branched off ${INTEGRATION_BRANCH}; same-wave files are disjoint so octopus should be clean):
 ${specs.map(s => `- ${s.task_id}: branch ${s.branch} @ ${s.head_sha}`).join('\n')}
@@ -659,7 +861,7 @@ ${specs.map(s => `- ${s.task_id}: ${(s.files_touched || []).join(', ')}`).join('
 Steps (Bash): for EACH file run \`test -s ${ENG}/<file> && echo OK <file> || echo MISSING <file>\` (exists AND non-empty). Then \`ls -la\` the touched paths for the listing.
 Return per schema: merge_ok (true iff ALL files exist and are non-empty), conflicts:false, conflict_resolved:false, strategy:'artefact-manifest', merge_head:"" , tests_passed (same as merge_ok — all artefacts present & non-empty), test_output (the OK/MISSING lines + ls, trimmed), notes (name any MISSING / empty file).`,
       { label: `manifest:w${wi + 1}`, phase: 'deliver', schema: CONSOLIDATE_SCHEMA, ...cheapModel('haiku') })
-  // ---- Wave-consolidation guard (A.consGuard). The pre-consolidation hard-stop above guards task
+  // ---- B1: wave-consolidation guard (A.consGuard). The pre-consolidation hard-stop above guards task
   // DELIVERY; this guards the consolidation RESULT, which was previously only logged before the loop
   // proceeded to dependent waves. A null consolidator or merge_ok:false means the merge never landed
   // → the integration branch is unchanged, so it is replan-compatible (routed through the SAME bounded
@@ -678,12 +880,12 @@ Return per schema: merge_ok (true iff ALL files exist and are non-empty), confli
       error: `wave ${wi + 1} consolidation failed — ${why}. No further waves; fix and resume (resumeFromRunId)${consMissing ? ' or clean worktrees first' : ''}.`,
       engagementDir: ENG, domain: plan.domain, tier: TIER,
       deliver: allSpecs.map(s => ({ id: s.task_id, status: s.status, review_trail: s.review_trail, review_ok: s.review_ok, superseded_by_replan: !!s.superseded_by_replan })),
-      cleanupCommands: (MODE === 'code') ? waveTasks.map(t => `git -C ${REPO} worktree remove --force ${wt(t)}`) : [],
+      cleanupCommands: (MODE === 'code' && !IN_PLACE_SERIAL) ? waveTasks.map(t => `git -C ${REPO} worktree remove --force ${wt(t)}`) : [],
       gate: { precheck_pass: false, exit_code: null, failures: [`wave-${wi + 1}-consolidation-failed`], checks: [] },
       readyForAcceptance: false,
     }
   }
-  // ---- Artefact render-eval (gated; artefact mode; after manifest). Renders the wave's HTML
+  // ---- artefact render-eval (gated; artefact mode; after manifest). Renders the wave's HTML
   // artefacts and attacks each task's co-signed assertions (preferred) or crit_refs; a finding
   // re-dispatches the OWNING task ONCE (no merge/worktree machinery in artefact mode), then re-renders. ----
   if (MODE === 'artefact' && RENDEREVAL_ON) {
@@ -724,7 +926,7 @@ const reviewTarget = (MODE === 'code')
 const verifyReadLoc = (MODE === 'code') ? REPO : ENG
 const verifiedResults = await pipeline(
   VALIDATORS,
-  (v) => agent(
+  (v) => agentR(
     `You are ${v}. Review ${reviewTarget} against ${ENG}/criteria.md. Read the relevant files. Return findings per schema: validator="${v}", status (approved|approved_with_suggestions|changes_required|blocked), summary, methodology (null unless a formal standard like WCAG/OWASP applies), findings[] (severity critical|high|medium|low|info / message / file / line / fix).`,
     { label: `validate:${v}`, phase: 'validate', agentType: v, schema: FINDINGS_SCHEMA }),
   (review, v) => {
@@ -732,7 +934,7 @@ const verifiedResults = await pipeline(
     const issues = (review.findings || []).filter(f => String(f.severity).toLowerCase() !== 'info')
     if (!issues.length) return { ...review, verified: [] }
     return parallel(issues.map((f, i) => () =>
-      agent(`Independently and adversarially verify ONE validator finding — try to REFUTE it; default is_real=false if it is noise/non-issue/unsupported. Read the cited file under ${verifyReadLoc}.
+      agentR(`Independently and adversarially verify ONE validator finding — try to REFUTE it; default is_real=false if it is noise/non-issue/unsupported. Read the cited file under ${verifyReadLoc}.
 Validator: ${v}. Finding: ${JSON.stringify(f)}. Criteria: ${ENG}/criteria.md.
 Return per schema: is_real, adjusted_severity, rationale.`,
         { label: `verify:${v}#${i}`, phase: 'validate', schema: VERDICT_SCHEMA, ...cheapModel('sonnet') }).then(verdict => ({ finding: f, verdict }))
@@ -769,7 +971,9 @@ phase('handoff')
 const sections = HANDOFF_SECTIONS[TIER] || HANDOFF_SECTIONS.M
 const pathWord = (MODE === 'code') ? 'code paths' : 'artefact paths'
 const diffGuidance = (MODE === 'code')
-  ? `diff base = the repo's initial commit (run git -C ${REPO} log --oneline | tail -1 for it, or git -C ${REPO} diff --stat <root>..HEAD).`
+  ? (ENGBRANCH_ON
+    ? `§1 Diff summary = the ENGAGEMENT DELTA only. Run: git -C ${REPO} diff --stat "$(git -C ${REPO} merge-base origin/${ORIGIN_BASE} HEAD)"..HEAD . If origin/${ORIGIN_BASE} or the merge-base is unavailable, fall back to git -C ${REPO} diff --stat ${ORIGIN_BASE}..HEAD . Do NOT diff from the repo's initial commit — that counts the whole pre-existing repo, not this engagement.`
+    : `diff base = the repo's initial commit (run git -C ${REPO} log --oneline | tail -1 for it, or git -C ${REPO} diff --stat <root>..HEAD).`)
   : `§1 Diff = a FILE MANIFEST of the artefacts created/modified under ${ENG} (Bash: ls -la the deliverable paths; mark created vs modified). There is NO git diff — this is an artefact engagement, so do not run git diff. CITE EVERY artefact deliverable ENGAGEMENT-ROOTED, e.g. \`engagement/design-system/tokens.json\` or \`engagement/copy/landing.md\` — NOT bare \`design-system/tokens.json\`. The path-checker only existence-verifies engagement-rooted paths; a bare artefact root (ui/, brand/, copy/, reports/, …) is silently skipped, so a bare citation would pass unchecked.`
 const handoff = await agent(
   `Assemble the engagement HANDOFF for a ${plan.domain} ${TIER}-tier engagement, then STOP (human gate is downstream). Use Bash/Write/Read. All cited ${pathWord} MUST exist.

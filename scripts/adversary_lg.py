@@ -112,7 +112,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send, Command, interrupt
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-# Append-only event ledger. Optional dependency: graceful no-op
+# Event-ledger layer — append-only event ledger. Optional dependency: graceful no-op
 # when lib.ledger import fails (so adversary_lg.py works on stripped installs).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
@@ -703,7 +703,8 @@ class SubprocessInvoker(Invoker):
         # the (temp-dir) curated / engagement paths it has to read. Without this it
         # runs in default permission mode where every Read is denied in -p mode, so
         # the role reports "permission_denied_all_engagement_files" and produces no
-        # verdict — the dispatch-environment gap that silently skipped the consilium.
+        # verdict — the dispatch-environment gap that silently skipped the consilium
+        # on every prior engagement (diagnosed an early engagement L impl, 2026-06-01).
         # Read-only grant (Read/Glob/Grep): the reviewer inspects artefacts and
         # prints JSON; it never edits, runs Bash, or deploys.
         cmd = [claude, "-p", prompt, "--model", model,
@@ -712,8 +713,10 @@ class SubprocessInvoker(Invoker):
             cmd += ["--add-dir", d]
         try:
             # stdin=DEVNULL: a headless `claude -p` waits on stdin even WITH a
-            # prompt arg; an inherited never-closing pipe in a subprocess context
-            # blocks it to the timeout with empty stdout. DEVNULL = instant EOF,
+            # prompt arg; an inherited never-closing pipe in the orchestrator
+            # subprocess context blocks it to the role timeout with empty stdout
+            # (the consilium-reviewer empty-timeout hang, diagnosed
+            # an engagement 2026-06-01). DEVNULL = instant EOF,
             # so it proceeds with the argv prompt instead of hanging.
             r = subprocess.run(cmd, capture_output=True, text=True,
                                encoding="utf-8", errors="replace",
@@ -732,15 +735,16 @@ class SubprocessInvoker(Invoker):
                 "authenticate via `codex auth` (uses ChatGPT subscription) or set "
                 "OPENAI_API_KEY for API-key auth."
             )
-        # `codex exec` is the non-interactive path (rides the ChatGPT subscription via
-        # ~/.codex/auth.json — no API key; sandbox read-only). --skip-git-repo-check is
-        # REQUIRED: reviewers run in a curated temp dir that is not a git repo; without it
-        # codex exits 1 "Not inside a trusted directory" with empty stdout (else the role
-        # is silently reported "unavailable").
+        # `codex exec` is the non-interactive path (rides the ChatGPT subscription
+        # via ~/.codex/auth.json — no API key; sandbox read-only). --skip-git-repo-check
+        # is REQUIRED: reviewers run in a curated temp dir that is not a git repo, and
+        # without it codex exits 1 "Not inside a trusted directory" with empty stdout
+        # (the 2026-06-04 an engagement "codex unreachable" root cause — the CLI IS installed).
         for variant in ([codex, "exec", "--skip-git-repo-check", prompt],
                         [codex, "exec", prompt], [codex, prompt]):
             try:
-                # stdin=DEVNULL — same headless-stdin hang guard as _invoke_claude.
+                # stdin=DEVNULL — same headless-stdin hang guard as _invoke_claude
+                # (codex reviewers also timed out empty, 2026-06-01).
                 r = subprocess.run(variant, capture_output=True, text=True,
                                    encoding="utf-8", errors="replace",
                                    stdin=subprocess.DEVNULL, timeout=timeout_s)
@@ -949,20 +953,25 @@ def _find_completed_roles(eng: Path, iter_n: int) -> set[str]:
     return done
 
 
-# Cross-repo reviewer access. A claude-family reviewer is granted --add-dir for the
-# curated copy (Pass 1) and the engagement dir (Pass 2) only. When a deliverable lives
-# in a DIFFERENT repo than the engagement dir (e.g. an engagement that mirrors a contract
-# or doc into a sibling repo), the reviewer hits "path outside allowed working
-# directories" on that sibling repo and reviews it semi-blind. _EXTRA_ADD_DIRS holds
-# opt-in extra roots (criteria.md frontmatter `extra_roots:` and/or CLI --extra-add-dir),
-# appended to BOTH passes. Default [] = unchanged single-root behaviour.
+# Cross-repo reviewer access (Finding B — field-confirmed on
+# an early multi-wave engagement, 2026-06-02). A claude-family reviewer is
+# granted --add-dir for the curated copy (Pass 1) and the engagement dir (Pass 2)
+# only. When a deliverable lives in a DIFFERENT repo than the engagement dir (a
+# donor->host transplant: engagement in the donor repo, D6 mirrored to the host
+# repo's docs/), the reviewer hits "path outside allowed working directories" on
+# the host repo and reviews it semi-blind (peer-opus + sonnet preliminary both
+# blinded on the host a project docs path  mirror; codex roles read it via codex
+# exec's broader fs access, so the consilium converged — but the claude-side blind
+# spot is real). _EXTRA_ADD_DIRS holds opt-in extra roots (criteria.md frontmatter
+# `extra_roots:` and/or CLI --extra-add-dir), appended to BOTH passes. Default []
+# = unchanged single-root behaviour.
 _EXTRA_ADD_DIRS: list[str] = []
 
 
 def _read_extra_roots_from_criteria(eng: Path) -> list[str]:
-    """Optional `extra_roots:` in criteria.md frontmatter -- additional repo roots a
-    cross-repo reviewer must read (e.g. a sibling repo a deliverable was mirrored into).
-    Accepts an inline YAML list (`extra_roots: [/path/a, /path/b]`) or a comma/space-
+    """Optional `extra_roots:` in criteria.md frontmatter — additional repo roots a
+    cross-repo reviewer must read (e.g. the host repo of a donor->host transplant).
+    Accepts an inline YAML list (`extra_roots: [C:/a, C:/b]`) or a comma/space-
     separated scalar. Returns existing absolute dir paths only (missing entries are
     dropped with a warning)."""
     crit = eng / "criteria.md"
@@ -1021,7 +1030,7 @@ def run_two_pass(role: str, eng: Path, iter_n: int, invoker: Invoker, *,
             prompt1 = config["prompt_pass1"].format(
                 curated_path=str(curated), role=role, iter_n=iter_n,
             )
-            # Pass-1 reviewer reads the CURATED copy (temp dir) -> grant it that dir.
+            # Pass-1 reviewer reads the CURATED copy (temp dir) → grant it that dir.
             preliminary, rc1, stdout1, stderr1, elapsed1 = _invoke_with_retry(
                 invoker, role, {**config, "allow_dirs": [str(curated), *_EXTRA_ADD_DIRS]}, prompt1,
             )
@@ -1074,7 +1083,7 @@ def run_two_pass(role: str, eng: Path, iter_n: int, invoker: Invoker, *,
         preliminary_json=json.dumps(preliminary, ensure_ascii=False, indent=2),
         peer_findings=peer_findings or "(none)",
     )
-    # Pass-2 reviewer reads the FULL real engagement -> grant it that dir.
+    # Pass-2 reviewer reads the FULL real engagement → grant it that dir.
     parsed2, rc2, stdout2, stderr2, elapsed2 = _invoke_with_retry(
         invoker, role, {**config, "allow_dirs": [str(eng), *_EXTRA_ADD_DIRS]}, prompt2,
     )
@@ -1179,9 +1188,9 @@ class ConsiliumState(TypedDict, total=False):
     peer_findings: str
     # Reducer key — every role node appends here, results merge across the fan-out.
     results: Annotated[list[dict], operator.add]
-    # Auto-synth output: consilium-synth.py JSON result if it ran.
+    # Auto-synth output (auto-synth): consilium-synth.py JSON result if it ran.
     synth_result: dict
-    # native HITL via interrupt():
+    # the HITL pause — native HITL via interrupt():
     # Whether to pause for human directive after auto-synth.
     interrupt_enabled: bool
     # Captured human directive once resumed (from Command(resume=...)).
@@ -1277,6 +1286,19 @@ def _make_finalize_node(auto_synth: bool):
     consilium-summary.md is what the director reads in the human-judge step.
     """
     def finalize_node(state: ConsiliumState) -> dict:
+        # Visibility: emit how many role FINALs are already on disk BEFORE the
+        # (potentially slow / stdin-blocking) synth subprocess runs. If synth or a
+        # downstream interrupt stalls and the operator kills the run, this is the
+        # last line they see — a completed-but-unsynthed consilium then reads as
+        # "roles ran, N FINALs written", not "never ran" (the mis-read behind two
+        # field substitutions: recent engagements 2026-06-01, a field engagement 2026-06-25).
+        try:
+            _done_sig = sorted(_find_completed_roles(Path(state["engagement"]), state["iter_n"]))
+            print(f"[consilium] iter {state['iter_n']}: {len(_done_sig)} role FINAL(s) "
+                  f"on disk before synth: {_done_sig or '(none)'}",
+                  file=sys.stderr, flush=True)
+        except Exception as _sig_e:
+            print(f"WARN: completed-roles signal failed: {_sig_e}", file=sys.stderr, flush=True)
         if not auto_synth:
             return {}
         results = state.get("results", [])
@@ -1301,7 +1323,8 @@ def _make_finalize_node(auto_synth: bool):
                 [sys.executable, str(synth_script), str(eng),
                  "--iter", str(iter_n), "--json"],
                 capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=60,
+                encoding="utf-8", errors="replace",
+                stdin=subprocess.DEVNULL, timeout=60,
             )
             if r.returncode == 0:
                 try:
@@ -1356,7 +1379,7 @@ def _make_finalize_node(auto_synth: bool):
 
 
 def _present_node(state: ConsiliumState) -> dict:
-    """invoke consilium-present.py to format chat-ready summary.
+    """the HITL pause — invoke consilium-present.py to format chat-ready summary.
 
     Runs only when interrupt is enabled AND synth produced a summary. Output
     goes to stderr so JSON stdout stays clean. The actual interrupt happens
@@ -1380,7 +1403,8 @@ def _present_node(state: ConsiliumState) -> dict:
         r = subprocess.run(
             [sys.executable, str(present_script), str(eng)],
             capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=30,
+            encoding="utf-8", errors="replace",
+            stdin=subprocess.DEVNULL, timeout=30,
         )
         if r.returncode == 0 and r.stdout:
             # The decision-menu output is meant for the operator. Goes to
@@ -1402,7 +1426,7 @@ def _present_node(state: ConsiliumState) -> dict:
 
 
 def _interrupt_apply_directive_node(state: ConsiliumState) -> dict:
-    """native HITL pause via interrupt() + apply directive on resume.
+    """the HITL pause — native HITL pause via interrupt() + apply directive on resume.
 
     Pattern: graph pauses at interrupt(); operator runs:
 
@@ -1661,7 +1685,7 @@ def build_graph(invoker: Invoker, checkpointer, resume: bool = False,
     builder.add_node("barrier", _barrier_node)
     builder.add_node("note_skipped_ci", _note_skipped_ci_node)
     builder.add_node("finalize", finalize_node)
-    # optional HITL pause-and-resume branch.
+    # the HITL pause: optional HITL pause-and-resume branch.
     builder.add_node("present", _present_node)
     builder.add_node("interrupt_apply_directive", _interrupt_apply_directive_node)
 
@@ -1675,7 +1699,7 @@ def build_graph(invoker: Invoker, checkpointer, resume: bool = False,
     )
     builder.add_edge("run_role_p2", "finalize")
     builder.add_edge("note_skipped_ci", "finalize")
-    # route either to END (default) or through HITL branch.
+    # the HITL pause: route either to END (default) or through HITL branch.
     builder.add_conditional_edges(
         "finalize", _route_after_finalize, ["present", END],
     )
@@ -1762,7 +1786,7 @@ Invoker billing model
 
 
 def _resume_interrupted(args) -> int:
-    """resume a graph paused at interrupt() with a human directive.
+    """the HITL pause — resume a graph paused at interrupt() with a human directive.
 
     Replays via Command(resume={...}). The graph picks up at
     _interrupt_apply_directive_node, validates the directive, invokes
@@ -1849,7 +1873,7 @@ def main() -> int:
                              "consilium-summary.md is written in the same command. --no-synth "
                              "restores the older two-step flow.")
     parser.add_argument("--interrupt", action="store_true",
-                        help="pause after auto-synth for native HITL via interrupt(). "
+                        help="the HITL pause: pause after auto-synth for native HITL via interrupt(). "
                              "Graph runs roles → synth → presents chat summary to stderr → pauses. "
                              "Operator resumes with: --resume-interrupt <thread_id> "
                              "--decision PROCEED|REJECT|DIRECTED [--reasons ...] [--note ...] "
@@ -1870,8 +1894,8 @@ def main() -> int:
                         help="Override instructions (used with --decision DIRECTED).")
     parser.add_argument("--extra-add-dir", action="append", metavar="DIR", default=[],
                         help="Extra repo root(s) reviewers may read beyond the engagement dir "
-                             "(cross-repo deliverables). Repeatable; merged with criteria.md "
-                             "`extra_roots:`. Default none = single-root behaviour.")
+                             "(cross-repo deliverables — Finding B). Repeatable; merged with "
+                             "criteria.md `extra_roots:`. Default none = single-root behaviour.")
     parser.add_argument("--help-billing", action="store_true",
                         help="Explain the --invoker billing model and exit.")
     args = parser.parse_args()
@@ -1883,7 +1907,7 @@ def main() -> int:
     if not args.engagement:
         parser.error("engagement path is required (unless --help-billing)")
 
-    # resume-interrupt is its own short path — no need for --role/--consilium.
+    # the HITL pause: resume-interrupt is its own short path — no need for --role/--consilium.
     if args.resume_interrupt:
         if not args.decision:
             parser.error("--resume-interrupt requires --decision PROCEED|REJECT|DIRECTED")
@@ -1896,7 +1920,7 @@ def main() -> int:
     if not args.role and not args.consilium:
         parser.error("one of --role or --consilium is required")
 
-    # --interrupt only valid for consilium runs (single-role doesn't synth).
+    # the HITL pause: --interrupt only valid for consilium runs (single-role doesn't synth).
     if args.interrupt and not args.consilium:
         parser.error("--interrupt requires --consilium {M|L} (single-role doesn't pause)")
     if args.interrupt and args.no_synth:
@@ -1909,7 +1933,7 @@ def main() -> int:
         print(f"ERROR: engagement directory not found: {eng}", file=sys.stderr)
         return 2
 
-    # Opt-in extra reviewer roots = CLI --extra-add-dir + criteria extra_roots.
+    # Finding B: opt-in extra reviewer roots = CLI --extra-add-dir + criteria extra_roots.
     # Default [] preserves single-root behaviour; only a cross-repo engagement opts in.
     global _EXTRA_ADD_DIRS
     _cli_extra = [str(Path(d).resolve()) for d in (args.extra_add_dir or []) if Path(d).is_dir()]
@@ -1928,7 +1952,7 @@ def main() -> int:
         roles = list(CONSILIUM[tier])
         label = f"consilium-{tier}"
 
-    # Initialize event ledger (no-op when lib.ledger import failed).
+    # Event-ledger layer — initialize event ledger (no-op when lib.ledger import failed).
     global _RUN_LEDGER
     if _LEDGER_AVAILABLE:
         try:
@@ -1984,7 +2008,7 @@ def main() -> int:
             "interrupt_enabled": bool(args.interrupt),
         }
         final_state = graph.invoke(init_state, config)
-        # if --interrupt was set, the graph paused at interrupt().
+        # the HITL pause: if --interrupt was set, the graph paused at interrupt().
         # Detect by presence of an __interrupt__ key OR absence of human_directive_result.
         if args.interrupt:
             paused = bool(final_state.get("__interrupt__"))
@@ -1992,7 +2016,7 @@ def main() -> int:
             if paused or no_directive:
                 thread_id = config["configurable"]["thread_id"]
                 print("\n" + "=" * 70, file=sys.stderr)
-                print("GRAPH PAUSED for human directive (HITL pause).", file=sys.stderr)
+                print("GRAPH PAUSED for human directive (the HITL pause).", file=sys.stderr)
                 print(f"  thread_id: {thread_id}", file=sys.stderr)
                 print("  Resume command:", file=sys.stderr)
                 print(f"    python {Path(__file__).name} {eng} "

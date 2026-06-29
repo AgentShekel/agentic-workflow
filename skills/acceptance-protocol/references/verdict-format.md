@@ -10,7 +10,7 @@ If validation cannot be completed (Docker not running, Playwright unavailable, D
 
 ## Canonical form (machine-parseable, structurally enforced)
 
-Before writing any M/L verdict, the manager MUST verify that the current iteration's pre-human **Consilium fidelity/provenance cross-check** exists in `acceptance-log.md` and is reconciled. A missing or unreconciled fidelity/provenance flag, any constituent `REJECT`/`rework_required`, or any SUSTAINED suppressed critical makes `ACCEPT` forbidden: write `REJECT`, or obtain a DIRECTED/escalation resolution before the verdict.
+Before writing any M/L verdict, the manager MUST verify that the current iteration's pre-human **Consilium fidelity/provenance cross-check** exists in `acceptance-log.md` and is reconciled. A missing or unreconciled fidelity/provenance flag, any constituent `REJECT`/`rework_required`, any SUSTAINED suppressed critical, or `validation incomplete` makes `ACCEPT` forbidden: write `REJECT`, or obtain a DIRECTED/escalation resolution before the verdict. `validation incomplete` includes an HTTP-surface deliverable lacking HTTP-contract exercised proof of the assembled request path, and any rendered-screen deliverable lacking its required exercised proof; it cannot be downgraded to a documented non-blocking deferral.
 
 `engagement/acceptance-log.md` (append, never overwrite). M/L tier verdicts MUST include the **Adversary findings adjudication** section with explicit markers per consilium signal — `director-verdict-check.py` enforces this mechanically.
 

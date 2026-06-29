@@ -2,8 +2,8 @@
 
 # agentic-workflow
 
-> Многоагентная система-фреймворк для Claude Code: 59 агентов, 46
-> методологических skills, 17 + 3 Python-скриптов оркестрации, 2 Workflow
+> Многоагентная система-фреймворк для Claude Code: 60 агентов, 46
+> методологических skills, 18 + 3 Python-скриптов оркестрации, 3 Workflow
 > движка оркестрации + 2 LangGraph движка human-gate, tier-aware
 > acceptance (S/M/L), filesystem-isolated adversary review, cross-family
 > второе мнение через Codex MCP, человек как supreme judge на критических
@@ -27,9 +27,9 @@
 ```mermaid
 flowchart TB
     H["Human layer<br/>Trigger phrase + supreme judge на M/L + SkillOpt commons-maintainer"]
-    A["Agents layer · 59 агентов<br/>managers / directors / leads / specialists / validators"]
+    A["Agents layer · 60 агентов<br/>managers / directors / leads / specialists / validators"]
     S["Skills layer · 46 skills<br/>методологии, протоколы, tool guides"]
-    O["Orchestration layer · 17 + 3 Python-скрипта<br/>mechanical gates, adversary, consilium, archival, event ledger"]
+    O["Orchestration layer · 18 + 3 Python-скрипта<br/>mechanical gates, adversary, consilium, archival, event ledger"]
     St["State layer<br/>engagement/ directory · whitelist · append-only логи"]
 
     H <--> A
@@ -102,7 +102,7 @@ Adjudication completeness проверяется механически — ка
    defend-bias), budget L: 4–6 патчей за цикл, ≤10 строк каждый.
 3. **Golden-set gate** — директор проверяет что правка не регрессит ни
    один сценарий в `system-optimization-protocol/golden/{domain}/` (по
-   3 на домен × 3 домена + 4-й dev-сценарий = 10 всего).
+   3 на домен × 3 домена + 4-й dev-сценарий = 11 всего).
 4. **Promote или reject** — passing правки попадают в корпус;
    отклонённые добавляются в `skill-rejected-edits.md` с причиной
    (читается перед следующим циклом).
@@ -204,12 +204,12 @@ Windows-пути, которые вложили бы worktree внутрь ре�
 
 ## Что внутри
 
-### Agents (59)
+### Agents (60)
 
 | Категория | Количество | Роли |
 |---|---|---|
 | **Managers** | 3 | `dev-manager`, `design-manager`, `marketing-manager` — per-engagement acceptor (judge между producer + adversary) |
-| **Directors** | 3 | `dev-director`, `design-director`, `marketing-director` — out-of-band system-optimizer (SkillOpt loop) |
+| **Directors** | 4 | `dev-director`, `design-director`, `marketing-director`, `harness-director` — out-of-band system-optimizer (SkillOpt-цикл + harness-evolution-цикл) |
 | **Leads** | 3 | `dev-lead`, `design-lead`, `marketing-lead` — только планирование (шаг `lead:plan` в engagement-workflow; они планируют волны, специалистов диспатчит Workflow) |
 | **Specialists** | 20 | backend, frontend, fullstack, devops, qa, tech-architect, product-analyst, technical-writer; ux, ui, visual, brand-strategist, presentation; copywriter, banner-designer, seo, ppc, keyword-researcher, web-analyst, ai-visibility |
 | **Validators** | 30 | code-reviewer, security-auditor, accessibility, performance, migration, test-reviewer, reality-checker, skeptic, completeness, task/tech-spec/user-spec validators, infra/deploy reviewers, pre/post-deploy QA, anti-pattern detector, ux-review, render-eval, skill-checker, 3 researchers (code/brand/design-system), product-context-validator, и т.д. |
@@ -232,11 +232,12 @@ Frontmatter-теги для router'а: `[PROTOCOL]`, `[METHODOLOGY]`, `[TOOL]`.
 `references/{topic}.md` — последние подгружаются on-demand. См. v0.2.1
 в CHANGELOG.
 
-### Scripts (17 main + 3 optional)
+### Scripts (18 main + 3 optional)
 
-Два Workflow-движка оркестрации (`workflows/`):
+Три Workflow-движка оркестрации (`workflows/`):
 - `engagement-workflow.js` — **pre-gate каскад**, который проводит главный цикл: discovery (`lead:plan`) → decompose (gated) → deliver (волны специалистов в изолированных git-worktree, per-task review→rework, консолидация по волне: код = octopus-merge / артефакт = manifest-verify) → validate (валидаторы параллельно + adversarial-verify каждого finding) → handoff → gate. Останавливается на шве handoff; волна жёстко стопорится, если задача заблокирована / провалила review / план некорректен (без молчаливого продолжения). Возобновляется через journal прогонов Workflow (`resumeFromRunId`). Opt-in activation-флаги (`args.A`, все default-OFF) добавляют per-task contract handshake, bounded replan, детект репозитория, guard консолидации, artefact render-eval и cheap-model tiering — см. [Engine activation flags](#engine-activation-flags).
 - `skillopt-workflow.js` — SkillOpt-цикл директора как Workflow (harvest накопленных сигналов → Codex предлагает bounded edits → golden-set gate → promote / reject).
+- `harnessopt-workflow.js` — цикл harness-evolution как Workflow (harvest harness-ready сигналов → Codex пишет patch-бандлы → executable gate → promote / escalate / reject); peer `skillopt-workflow.js` для слоя скриптов/движка.
 
 Два LangGraph-движка (human-gate, после шва):
 - `adversary_lg.py` — LangGraph adversary bridge: 5 reviewer-ролей, two-pass curated-view изоляция, `Send`-based parallel fan-out, SQLite-checkpointed `--resume`, native HITL через `interrupt()`, event ledger подключён

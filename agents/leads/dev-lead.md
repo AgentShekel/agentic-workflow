@@ -113,6 +113,7 @@ The Workflow script replaces the old mid-lead dispatch tree — you do NOT route
 - `security-auditor` — if it touches auth / data / external APIs / secrets / dependencies.
 - `anti-pattern-detector` — on any code-producing engagement (skipped tests, dead code, hidden-tab "fixes", default-true flags, no-op commits).
 - `ux-review` — if `ux_heavy: true` (validates `screens/` + `traces/` + §6 Exercised).
+- HTTP-contract exercised endpoint test — if the deliverable is an HTTP surface (route/controller/API endpoint), regardless of `ux_heavy`; it must drive the assembled request path with supertest/TestClient/equivalent, not necessarily a browser.
 - `pre-deploy-qa` / `post-deploy-qa` — if the engagement deploys.
 - `reality-checker`, `skeptic`, `completeness-validator` — on spec-heavy L work (tech-spec / task claims to verify).
 

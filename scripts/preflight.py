@@ -112,10 +112,46 @@ TOOL_CHECKS = {
 }
 
 
+_DEFAULT_COMPOSE = ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml")
+_NONDEFAULT_COMPOSE_GLOBS = ("docker-compose.*.yml", "docker-compose.*.yaml",
+                             "compose.*.yml", "compose.*.yaml")
+
+
+def _find_compose_files(cwd: Path) -> tuple[list[str], list[str]]:
+    """(defaults_present, nondefaults_present) compose filenames in cwd."""
+    defaults = [f for f in _DEFAULT_COMPOSE if (cwd / f).exists()]
+    nondefaults: list[str] = []
+    for pat in _NONDEFAULT_COMPOSE_GLOBS:
+        for p in sorted(cwd.glob(pat)):
+            if p.name not in defaults and p.name not in nondefaults:
+                nondefaults.append(p.name)
+    return defaults, nondefaults
+
+
+def _compose_file_to_inject(cwd: Path):
+    """COMPOSE_FILE to set for a `docker compose` call when docker would NOT auto-find
+    the project's compose file. Existing COMPOSE_FILE env -> None (respect it); a default
+    filename present -> None (docker finds it, behaviour unchanged); only a non-default file
+    (docker-compose.dev.yml, compose.<env>.yml) present -> return it. Generalises the
+    per-service pg/redis docker-exec probes so a repo on a non-default compose filename
+    (a field engagement docker-compose.dev.yml:55432, 2026-06-25) resolves without a manual COMPOSE_FILE."""
+    if os.environ.get("COMPOSE_FILE"):
+        return None
+    defaults, nondefaults = _find_compose_files(cwd)
+    if defaults or not nondefaults:
+        return None
+    return nondefaults[0]
+
+
+def _any_compose_file(cwd: Path) -> bool:
+    d, nd = _find_compose_files(cwd)
+    return bool(d or nd)
+
+
 def auto_fix(name: str) -> tuple[bool, str]:
     """Attempt a SAFE auto-recovery for a failed tool. Return (success, message)."""
     cwd = Path.cwd()
-    has_compose = any((cwd / f).exists() for f in ["docker-compose.yml", "docker-compose.yaml", "compose.yml"])
+    has_compose = _any_compose_file(cwd)
 
     if name == "docker_compose_up" and has_compose:
         ok, out = run_cmd(["docker", "compose", "up", "-d"])
@@ -191,9 +227,14 @@ def run_cmd(cmd: list[str]) -> tuple[bool, str]:
     """Run a command, return (success, stderr/stdout snippet)."""
     if not shutil.which(cmd[0]):
         return False, f"command not found: {cmd[0]}"
+    env = None
+    if cmd[:2] == ["docker", "compose"]:
+        cf = _compose_file_to_inject(Path.cwd())
+        if cf:
+            env = {**os.environ, "COMPOSE_FILE": cf}
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=10
+            cmd, capture_output=True, text=True, timeout=10, env=env,
         )
         if result.returncode == 0:
             out = (result.stdout or result.stderr or "").strip().splitlines()

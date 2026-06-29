@@ -33,7 +33,7 @@ to guard.}
 inspired the scenario, if any.}
 ```
 
-## Initial set (2026-05-28, dry-run seed)
+## Initial set (2026-05-28, initial dry-run seed)
 
 | # | Slug | Class | What it guards |
 |---|---|---|---|
@@ -46,6 +46,26 @@ characterize failure modes before a real cycle runs against real signals.
 Marker `dryrun: true` is set in their accompanying signals (in
 `skill-evolution-log.md`) so the director's reflect step skips them when a
 real cycle runs.
+
+## Real-signal scenarios
+
+| # | Slug | Class | What it guards |
+|---|---|---|---|
+| 04 | manager-catches-mis-rendered-consilium | rule_missing | acceptance-protocol manager diffs `consilium-summary.md` against raw `{role}-iter-N` JSON + ledger verdicts before adjudicating; a softened or unbacked adversary REJECT cannot become a false ACCEPT premise at the human gate |
+| 05 | http-endpoint-accepted-on-unit-green | rule_wrong | exercised-verification trigger covers HTTP surfaces, not only `ux_heavy: true`; a `POST /…` endpoint deliverable cannot be ACCEPTED on green unit+integration alone with its real-HTTP test deferred as a "narrow residual" — caught at the validation-pipeline matrix + acceptance verdict layers |
+
+Scenario 04 derived from the live dev `acceptance-protocol / rule_missing × 3`
+cluster (an engagement ×2: provenance gate + cross-repo paths;
+an engagement ×1: fidelity-diff). NOT `dryrun` — guards a real cluster
+that is DUE for a cycle; this scenario is its acceptance test + post-edit
+regression floor.
+
+Scenario 05 derived from the live dev verification-coverage cluster — signal ①
+(a field engagement, 2026-06-25), the 3rd hit of the "non-exercised proof
+accepted where real exercise is required" meta-class in ~48h (diary-1.3 →
+front-fidelity → 1.1.3). NOT `dryrun` — guards the HTTP-surface mechanism of that
+meta-class; it is the acceptance test for the `validation-pipeline` +
+`acceptance-protocol` (+ `dev-lead` plan-time) edit and the regression floor.
 
 ## Adding new scenarios
 

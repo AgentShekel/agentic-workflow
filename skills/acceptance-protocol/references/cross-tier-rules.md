@@ -36,6 +36,7 @@ ux_heavy never makes acceptance lighter; only tier does that.
 ## Validator selection
 
 Determined by domain + ux_heavy + scope, NOT by tier:
+- HTTP surface deliverable → HTTP-contract exercised endpoint test that drives the assembled request path (router/guards/validation/controller/serializer) via supertest/TestClient/equivalent; independent of ux_heavy and not a browser requirement
 - backend code touched → security-auditor + code-reviewer
 - UI surfaces touched → critique + accessibility-validator + ux-review (if ux_heavy)
 - migrations → migration-validator
@@ -57,7 +58,7 @@ After writing the verdict (ACCEPT or REJECT) on every M/L engagement, the manage
 - the failure points at a specific `skill: X` or `agent: Y` rule that should change, AND
 - you can classify it as `rule_missing` / `rule_wrong` / `rule_ignored` (the SkillOpt taxonomy).
 
-**`target` semantics (load-bearing).** Point `target` at the skill/agent whose
+**`target` semantics (the initial dry-run finding F2 — load-bearing).** Point `target` at the skill/agent whose
 CONTENT must change to ENFORCE the catch (the rule/validator that would PRODUCE the catching
 artefact), NOT at the agent that produced the buggy output. A wrong target sends the optimizer's
 edit to the wrong file (right pattern, wrong place → gate-rejected, wasted cycle). If the real fix
