@@ -50,7 +50,7 @@ It authored neither the skills nor the proposed edits, so it carries zero defend
 | **Author** edit patches to skills/agents | **Codex** (via `codex-bridge`) — never the director |
 | Judge a proposed patch (accept/reject) | director-optimizer |
 | Run the gate (golden-set) | director-optimizer (dispatches `skill-testing`) |
-| Promote `~/.claude` → releases mirror | director-optimizer (domain files) / human (commons) |
+| Promote `~/.claude` → releases mirror | director stages a **draft MR** (branch + reasoning + gate evidence); **human merges** = ship (owned = audit-merge; commons = human decides content) |
 | Decide a commons-protocol edit | **human** (commons maintainer) — director only proposes |
 
 If the director ever writes an edit itself, defend-bias returns and the gate loses its
@@ -147,11 +147,27 @@ exists, so the gate verdict is rubric-judged: **Codex proposes a pass/fail read,
 director adjudicates** (mirror of adversary → supreme-judge). FAIL → the edit goes to
 `skill-rejected-edits.md` with what broke.
 
-### 4. Promote
+### 4. Promote (draft-MR seam — the human merges = "ship")
 
-- **Domain-owned files** that pass the gate: director promotes `~/.claude/X` →
-  `C:\releases\agentic-workflow\` (the blessed `best_skill`).
-- **Commons files** (see governance): director cannot self-promote — escalates to human.
+A gate-passed edit is applied to the live `~/.claude` working corpus, then the mirror side is
+staged as a **draft MR** for the human to review and merge — never a silent copy onto the
+mirror's `main`:
+
+- **Domain-owned files** (gate-passed): the director opens a promotion branch on the blessed
+  mirror (`C:\releases\agentic-workflow\`, `skillopt/<domain>-<ts>`), applies the SAME change
+  there as a surgical delta (preserve the file's line-endings; edit in place rather than
+  copying the whole file over), and writes an **MR body** (reasoning + the batch pattern closed
+  + per-edit gate evidence + slow-update buckets + a Codex-authored/director-judged line) as the
+  review artefact. It does NOT merge and does NOT `git push`. The human reviews `git diff main..<branch>`
+  + the MR body and merges = the publish/ship decision; owned MRs are gate-blessed, so the merge
+  is an audit + ship gate.
+- **Commons files** (see governance): the director cannot self-promote — it escalates the SAME
+  reviewable artefact as a **proposal** (the exact edit + gate verdict + a one-line ask); the
+  human decides the content, optionally pulling the other directors for cross-impact.
+
+This is the SkillOpt equivalent of "the loop opens a draft PR with its reasoning attached; the
+human owns the merge" — it fits the no-auto-push / review-before-merge rule and turns a silent
+working-tree copy into a reviewable diff.
 
 ### 5. Slow-update (anti-forgetting, high-blast cycles only)
 
@@ -239,7 +255,8 @@ manager/director agent definitions.
 - **Don't fire on a single failure.** Wait for a ≥3 common pattern. Single = noise.
 - **Don't run a full auto epoch×batch loop.** No auto-scorer, low volume, expensive. Event-driven only.
 - **Don't gate trivial edits.** Tier by blast radius.
-- **Don't self-promote a commons edit.** Escalate to human.
+- **Don't self-promote a commons edit.** Escalate the reviewable proposal to the human.
+- **Don't copy onto the mirror's `main` in place.** Promotion is a draft MR (branch + reasoning + gate evidence); the human merges = ship. The loop never merges or `git push`es.
 - **Don't grow `skill-evolution-meta.md` unbounded.** Cap ~150 lines (like MEMORY.md); prune.
 - **Don't touch per-engagement acceptance.** That's the manager's job — different role, different cadence.
 - **Don't pool domain CONTENT errors across domains.** Only process-meta is shared.

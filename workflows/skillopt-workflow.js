@@ -3,7 +3,7 @@ export const meta = {
   description: 'SkillOpt / director skill-evolution cycle as a workflow: harvest due signals -> Codex AUTHORS bounded edits -> director SELECTS (rejection-buffer + edit_budget) -> per-edit golden GATE (Codex proposes pass/fail, director adjudicates) -> PROMOTE(domain-owned) | ESCALATE(commons = human seam) | REJECT(buffer) -> SLOW-UPDATE(high-blast only). Codex authors; the director judges (never the same brain). dryRun-safe (zero corpus/mirror/buffer writes). Out-of-band; NOT routed through agency-intake.',
   phases: [
     { title: 'harvest' }, { title: 'reflect' }, { title: 'select' },
-    { title: 'gate' }, { title: 'promote' }, { title: 'slow-update' },
+    { title: 'gate' }, { title: 'promote' }, { title: 'slow-update' }, { title: 'stage-mr' },
   ],
 }
 
@@ -107,6 +107,17 @@ const PROMOTE_SCHEMA = {
     ownership: { type: 'string', enum: ['owned', 'commons'] },
     paths_written: { type: 'array', items: { type: 'string' } },
     rationale: { type: 'string' },
+  },
+}
+const DRAFTMR_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['staged', 'branch', 'body_path', 'files', 'detail'],
+  properties: {
+    staged: { type: 'boolean' },
+    branch: { type: 'string' },
+    body_path: { type: 'string' },
+    files: { type: 'array', items: { type: 'string' } },
+    detail: { type: 'string' },
   },
 }
 const SLOWUPDATE_SCHEMA = {
@@ -230,8 +241,8 @@ log(`gate: ${passed.length}/${gatedClean.length} edit(s) passed`)
 
 // ===========================================================================
 // PHASE 5 — promote / escalate / reject (dry-run-aware).
-//   owned + PASS    -> apply to ~/.claude + blessed mirror (real) | report (dry)
-//   commons + PASS  -> HUMAN SEAM: write escalation note, never self-apply
+//   owned + PASS    -> apply to ~/.claude live corpus; mirror side -> draft MR (stage-mr) | report (dry)
+//   commons + PASS  -> HUMAN SEAM: draft-MR proposal note (edit+gate), never self-apply
 //   FAIL            -> append to rejection buffer (real) | report (dry)
 // ===========================================================================
 phase('promote')
@@ -247,21 +258,20 @@ Gate verdict: ${JSON.stringify(v)}`,
       { label: `reject:${g.edit.target}`, phase: 'promote', schema: PROMOTE_SCHEMA })
   }
   if (g.edit.ownership === 'commons') {
-    if (DRY) return Promise.resolve({ target: g.edit.target, decision: 'escalate-human', applied: false, ownership: 'commons', paths_written: [], rationale: 'commons edit passed the gate (dry-run: would write a human-escalation note; commons is NEVER self-promoted)' })
+    if (DRY) return Promise.resolve({ target: g.edit.target, decision: 'escalate-human', applied: false, ownership: 'commons', paths_written: [], rationale: 'commons edit passed the gate (dry-run: would write a draft-MR proposal note; commons is NEVER self-promoted)' })
     return agent(
-      `You are the ${DIRECTOR}. This COMMONS edit PASSED the gate, but per system-optimization-protocol governance you CANNOT self-promote a commons file. Write a human-escalation note to ${MEMORY}/skillopt-escalation-${DOMAIN}-${TS}.md containing: the proposed edit (op/target/content), the gate verdict, and a one-line ask that the human commons-maintainer decides. Do NOT modify the commons file or the mirror. Return per schema (decision:'escalate-human', applied:true, ownership:'commons', paths_written:[the note path], rationale).
+      `You are the ${DIRECTOR}. This COMMONS edit PASSED the gate, but per system-optimization-protocol governance you CANNOT self-promote a commons file. Write a DRAFT-MR PROPOSAL note to ${MEMORY}/skillopt-escalation-${DOMAIN}-${TS}.md — the same reviewable shape as an owned MR body: a ## title, a Summary of the pattern, an "Ownership: commons (proposal — the human decides the content)" line, the exact proposed edit (op/target/content), the gate verdict, and a one-line ask that the human commons-maintainer review and apply. Do NOT modify the commons file or the mirror. Return per schema (decision:'escalate-human', applied:true, ownership:'commons', paths_written:[the note path], rationale).
 Edit: ${JSON.stringify(g.edit)}
 Gate verdict: ${JSON.stringify(v)}`,
       { label: `escalate:${g.edit.target}`, phase: 'promote', schema: PROMOTE_SCHEMA })
   }
-  if (DRY) return Promise.resolve({ target: g.edit.target, decision: 'promote', applied: false, ownership: 'owned', paths_written: [], rationale: `domain-owned + gate PASS (dry-run: would apply ${g.edit.op} to ${CLAUDE}/${g.edit.target} and mirror to ${MIRROR}/${g.edit.target})` })
+  if (DRY) return Promise.resolve({ target: g.edit.target, decision: 'promote', applied: false, ownership: 'owned', paths_written: [], rationale: `domain-owned + gate PASS (dry-run: would apply ${g.edit.op} to ${CLAUDE}/${g.edit.target} live; mirror side staged as a draft MR in the stage-mr phase)` })
   return agent(
-    `You are the ${DIRECTOR}. This DOMAIN-OWNED edit PASSED the gate. Apply it and promote to the blessed mirror:
+    `You are the ${DIRECTOR}. This DOMAIN-OWNED edit PASSED the gate. Apply it to the LIVE working corpus ONLY — do NOT touch the mirror here; the mirror side is staged as a draft MR later (stage-mr phase):
 1. Apply ${g.edit.op} to ${CLAUDE}/${g.edit.target}. For insert_after/replace/delete the target carries "::<exact anchor>" — match it EXACTLY (Edit). For append, append to file end. For a brand-new heading use insert_after on an existing anchor.
-2. Promote the SAME change to ${MIRROR}/${g.edit.target} (the blessed best_skill). PRESERVE that file's existing line-endings (CRLF vs LF) — match the committed blob, do not reflow the whole file.
-3. Read back both edited regions to confirm.
+2. Read back the edited region to confirm.
 Edit: ${JSON.stringify(g.edit)}
-Return per schema (decision:'promote', applied:true, ownership:'owned', paths_written:[the 2 files], rationale).`,
+Return per schema (decision:'promote', applied:true, ownership:'owned', paths_written:[the ~/.claude file], rationale).`,
     { label: `promote:${g.edit.target}`, phase: 'promote', schema: PROMOTE_SCHEMA })
 }))).filter(Boolean)
 const nProm = promotions.filter(p => p.decision === 'promote').length
@@ -290,6 +300,37 @@ Return per schema: ran:true, buckets {regressed,persistent_fail,improved,stable_
 }
 log(`slow-update: ran=${slowUpdate.ran} blocked=${slowUpdate.blocked}`)
 
+// ===========================================================================
+// PHASE 5.5 — stage-mr: reroute OWNED promotions from a silent mirror-main copy
+// to a reviewable DRAFT MR (promotion branch on the mirror + MR body). NEVER
+// merges or pushes — the human reviews `git diff main..<branch>` + the body
+// and merges = the publish/ship decision. dry-run stages nothing.
+// ===========================================================================
+phase('stage-mr')
+const ownedPassed = gatedClean.filter(g => g.verdict && g.verdict.verdict === 'pass' && g.edit.ownership === 'owned')
+let draftMR = { staged: false, branch: '', body_path: '', files: [], detail: 'no owned promotion this cycle — no MR staged' }
+if (ownedPassed.length) {
+  const BR = `skillopt/${DOMAIN}-${TS}`
+  const BODY = `${MEMORY}/promotions/${TS}-${DOMAIN}.md`
+  if (DRY) {
+    draftMR = { staged: false, branch: BR, body_path: BODY, files: ownedPassed.map(g => g.edit.target), detail: `dry-run: would stage ${ownedPassed.length} owned edit(s) as a draft MR (branch ${BR} on ${MIRROR} + MR body ${BODY}); no merge/push` }
+  } else {
+    draftMR = await agent(
+      `You are the ${DIRECTOR} staging this cycle's DOMAIN-OWNED gate-passed edits as a DRAFT MR on the blessed mirror ${MIRROR} (a git repo). Do NOT merge, do NOT git-push — publication is the human's step. Your job: leave a reviewable branch + an MR body.
+Run git via Bash (always with \`git -C ${MIRROR}\`):
+1. \`git -C ${MIRROR} checkout -B ${BR}\` — promotion branch off current HEAD; main is left untouched.
+2. For EACH edit below, apply the SAME op as a surgical delta to ${MIRROR}/<target> (match "::<exact anchor>" via Edit; append = file end). PRESERVE the mirror file's line-endings (CRLF vs LF); edit in place rather than copying the whole file over. If a mirror path is absent, note it and skip (create no stray files).
+3. \`git -C ${MIRROR} add -A && git -C ${MIRROR} commit -m "skillopt(${DOMAIN}): draft ${TS}"\`, then \`git -C ${MIRROR} checkout main\` so main's working tree is clean (the delta lives on ${BR}).
+4. Write the MR body to ${BODY} (create ${MEMORY}/promotions/ if absent) — the review note (reasoning attached): a ## title, a Summary of the batch pattern closed, the signals addressed, an "Ownership: owned" line, a Files+ops list, the per-edit golden-gate verdict, the slow-update buckets, a "Codex-authored / ${DIRECTOR}-judged" line, and a one-line merge-ask for the human.
+5. Confirm with \`git -C ${MIRROR} log --oneline -1 ${BR}\`.
+Owned edits: ${JSON.stringify(ownedPassed.map(g => ({ edit: g.edit, gate: g.verdict })))}
+Slow-update buckets: ${JSON.stringify(slowUpdate.buckets)}
+Return per schema: staged:true, branch:"${BR}", body_path:"${BODY}", files:[the mirror paths written], detail.`,
+      { label: 'stage-mr', phase: 'stage-mr', schema: DRAFTMR_SCHEMA }) || draftMR
+  }
+}
+log(`stage-mr: staged=${draftMR.staged} branch=${draftMR.branch || '(none)'}`)
+
 // ---- SEAM ----
 // Commons edits that passed the gate STOP here for the human commons-maintainer
 // (mirror of the engagement handoff seam — consistent with Decision B). The
@@ -308,5 +349,6 @@ return {
   gate: gatedClean.map(g => ({ target: g.edit.target, blast: g.edit.blast, ownership: g.edit.ownership, skipped: !!g.skipped, gate_codex_ran: g.proposal ? g.proposal.codex_ran : null, verdict: g.verdict && g.verdict.verdict, regression_risk: g.verdict && g.verdict.regression_risk, targeted_failure_closed: g.verdict && g.verdict.targeted_failure_closed })),
   promotions,
   slowUpdate,
+  draftMR,
   humanSeam: promotions.filter(p => p.decision === 'escalate-human'),
 }

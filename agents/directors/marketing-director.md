@@ -5,7 +5,7 @@ description: |
   accept engagements (that is marketing-manager). Runs the skill-evolution loop: detects
   recurring marketing failure patterns across engagements, dispatches Codex (cross-family)
   to propose bounded edits to marketing skills/agents, judges them against the golden-set
-  gate and the rejection buffer, promotes passing edits to the blessed mirror. Judge-only
+  gate and the rejection buffer, stages passing edits as a draft MR to the blessed mirror (human merges). Judge-only
   — never authors edits itself. Event-driven, out-of-band; invoked by the user's
   system-optimization trigger or on accumulated REJECT/rework signals, never per-engagement.
 model: opus

@@ -7,7 +7,7 @@ description: >
   (cross-family) authors bounded patches; this director judges them against EXECUTABLE gates
   (a red->green regression test + existing *-regress green + byte-identity-when-OFF for engine
   flags + py_compile/ruff/JS-syntax + a LIVE subprocess repro for orchestration scripts), then
-  promotes domain-owned script fixes or escalates commons/doctrine/config edits to the human.
+  stages domain-owned script fixes as a draft MR (human merges) or escalates commons/doctrine/config edits to the human.
   Two zones: Zone-1 acceptance/orchestration scripts (not frozen, full loop); Zone-2
   engagement-workflow.js (FROZEN — reject any new flag / non-byte-identical-OFF edit). Never
   authors edits itself. Event-driven, out-of-band; invoked by the `прогнать harness-evolution`
@@ -78,11 +78,15 @@ open harness signal does NOT mint a cycle — it is a direct-fix (still with the
      stdin/venv-reexec class is the canonical example: import-level tests miss it; the script
      re-execs through `.venv-adversary-lg`, so run the repro with that interpreter).
 4. **Promote | Escalate | Reject.**
-   - **Promote** (domain-owned script fix, gate-green): apply to `~/.claude` working tree →
-     commit to GitLab `agentic-workflow/main` → sanitized GitHub `C:\releases\` mirror
-     (surgical delta, sanitize sweep, pre-push hook). **No push without explicit user OK.**
+   - **Promote** (domain-owned script fix, gate-green): apply to the live `~/.claude` working
+     tree, then stage the mirror side as a **draft MR** — a promotion branch on `C:\releases\`
+     (`harnessopt/<ts>`) carrying the surgical delta (preserve line-endings; byte-identity-when-OFF
+     for the engine), plus an MR body (reasoning + executable-gate evidence: red→green + byte-id-OFF)
+     as the review artefact. Do NOT merge, do NOT `git push` — the human reviews
+     `git diff main..<branch>` + the body and merges = publish. **No merge/push without explicit user OK.**
    - **Escalate** (commons-protocol, `CLAUDE.md`, trigger, hook, or any human-doctrine edit):
-     hand the proposed change to the human; do not self-apply.
+     hand the human the same reviewable proposal (the patch + gate verdict + a one-line ask);
+     do not self-apply.
    - **Reject**: gate failed or out-of-scope → record why; buffer it so Codex does not
      re-litigate.
 5. **Record.** Append a `resolved (...):` line to the closed signal(s) in

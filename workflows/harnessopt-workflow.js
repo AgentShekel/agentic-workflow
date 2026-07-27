@@ -3,7 +3,7 @@ export const meta = {
   description: 'Harness-evolution loop as a workflow — the peer of skillopt-workflow for the SCRIPT/ENGINE layer SkillOpt excludes (scripts/*.py, scripts/lib/precheck/*, workflows/engagement-workflow.js). harvest harness-ready clusters -> Codex AUTHORS patch BUNDLES (test_patch red->green + fix_patch) -> harness-director SELECTS (zone-aware: Zone-2 engine rejects new-flag / default-changing edits; rejection-buffer; edit_budget) -> EXECUTABLE gate (throwaway temp copies: red->green regression + existing *-regress + py_compile/ruff or AsyncFunction-compile + a LIVE subprocess repro + byte-identity-when-OFF for Zone-2) -> PROMOTE(owned script/engine fix) | ESCALATE(commons-protocol / CLAUDE.md / trigger / hook = human) | REJECT(buffer) -> RECORD (resolved lines + cycle note). Codex authors; the director judges (never the same brain). dryRun-safe (gate writes only temp; promote/reject/record write nothing in dry-run; never auto-pushes). Out-of-band; NOT routed through agency-intake.',
   phases: [
     { title: 'harvest' }, { title: 'reflect' }, { title: 'select' },
-    { title: 'gate' }, { title: 'promote' }, { title: 'record' },
+    { title: 'gate' }, { title: 'promote' }, { title: 'stage-mr' }, { title: 'record' },
   ],
 }
 
@@ -97,6 +97,17 @@ const PROMOTE_SCHEMA = {
   type: 'object', additionalProperties: false,
   required: ['target', 'decision', 'applied', 'ownership', 'paths_written', 'rationale'],
   properties: { target: { type: 'string' }, decision: { type: 'string', enum: ['promote', 'escalate-human', 'reject'] }, applied: { type: 'boolean' }, ownership: { type: 'string', enum: ['owned', 'escalate'] }, paths_written: { type: 'array', items: { type: 'string' } }, rationale: { type: 'string' } },
+}
+const DRAFTMR_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['staged', 'branch', 'body_path', 'files', 'detail'],
+  properties: {
+    staged: { type: 'boolean' },
+    branch: { type: 'string' },
+    body_path: { type: 'string' },
+    files: { type: 'array', items: { type: 'string' } },
+    detail: { type: 'string' },
+  },
 }
 const RECORD_SCHEMA = {
   type: 'object', additionalProperties: false,
@@ -215,8 +226,8 @@ log(`gate: ${passed.length}/${gatedClean.length} patch(es) passed the executable
 
 // ===========================================================================
 // PHASE 5 — promote / escalate / reject (dry-run-aware; NEVER auto-pushes).
-//   owned + PASS    -> apply to ~/.claude + sanitized mirror (no push) | report (dry)
-//   escalate + PASS -> human seam: write escalation note, never self-apply
+//   owned + PASS    -> apply to ~/.claude live; mirror side -> draft MR (stage-mr) | report (dry)
+//   escalate + PASS -> human seam: draft-MR proposal note, never self-apply
 //   FAIL            -> append to rejection buffer | report (dry)
 // ===========================================================================
 phase('promote')
@@ -231,26 +242,55 @@ Gate verdict: ${JSON.stringify(g.verdict)}`,
       { label: `reject:${tgt}`, phase: 'promote', schema: PROMOTE_SCHEMA })
   }
   if (g.sel.ownership === 'escalate') {
-    if (DRY) return Promise.resolve({ target: tgt, decision: 'escalate-human', applied: false, ownership: 'escalate', paths_written: [], rationale: 'passed gate but touches commons/doctrine/config (dry-run: would write a human-escalation note)' })
+    if (DRY) return Promise.resolve({ target: tgt, decision: 'escalate-human', applied: false, ownership: 'escalate', paths_written: [], rationale: 'passed gate but touches commons/doctrine/config (dry-run: would write a draft-MR proposal note)' })
     return agent(
-      `You are the ${DIRECTOR}. This patch PASSED the gate but touches commons protocol / CLAUDE.md / a trigger / a hook / config — you CANNOT self-apply. Write a human-escalation note to ${MEMORY}/harnessopt-escalation-${TS}.md with the patch, the gate verdict, and a one-line ask. Modify nothing else. Return per schema (decision:'escalate-human', applied:true, ownership:'escalate', paths_written:[the note]).
+      `You are the ${DIRECTOR}. This patch PASSED the gate but touches commons protocol / CLAUDE.md / a trigger / a hook / config — you CANNOT self-apply. Write a DRAFT-MR PROPOSAL note to ${MEMORY}/harnessopt-escalation-${TS}.md — a reviewable artefact: the patch (target/anchor/content), the executable-gate verdict (red→green + byte-id-OFF), and a one-line ask that the human review and apply. Modify nothing else. Return per schema (decision:'escalate-human', applied:true, ownership:'escalate', paths_written:[the note]).
 Patch: ${JSON.stringify(g.sel.patch)}`,
       { label: `escalate:${tgt}`, phase: 'promote', schema: PROMOTE_SCHEMA })
   }
-  if (DRY) return Promise.resolve({ target: tgt, decision: 'promote', applied: false, ownership: 'owned', paths_written: [], rationale: `owned + gate PASS (dry-run: would apply fix_patch to ${CLAUDE}/${tgt} and mirror to ${MIRROR}/${tgt}; NO push)` })
+  if (DRY) return Promise.resolve({ target: tgt, decision: 'promote', applied: false, ownership: 'owned', paths_written: [], rationale: `owned + gate PASS (dry-run: would apply fix_patch to ${CLAUDE}/${tgt} live; mirror side staged as a draft MR in the stage-mr phase; NO push)` })
   return agent(
-    `You are the ${DIRECTOR}. This OWNED harness patch PASSED the executable gate. Apply it:
+    `You are the ${DIRECTOR}. This OWNED harness patch PASSED the executable gate. Apply it to the LIVE ${CLAUDE} working tree ONLY — do NOT touch the mirror here; the mirror side is staged as a draft MR later (stage-mr phase):
 1. Apply fix_patch to ${CLAUDE}/${tgt} (match the "::<exact anchor>" EXACTLY via Edit; for the engine preserve byte-identity-when-OFF).
-2. Promote the SAME change to ${MIRROR}/${tgt} (sanitized mirror) — PRESERVE its line-endings (CRLF vs LF); apply a SURGICAL delta, never blind-copy. If the mirror path does not exist, note it and skip (do not create stray files).
-3. Read back both regions to confirm. Do NOT git-push (publication is the user's explicit step).
+2. Read back the edited region to confirm.
 Patch: ${JSON.stringify(g.sel.patch)}
-Return per schema (decision:'promote', applied:true, ownership:'owned', paths_written:[files], rationale).`,
+Return per schema (decision:'promote', applied:true, ownership:'owned', paths_written:[the ~/.claude file], rationale).`,
     { label: `promote:${tgt}`, phase: 'promote', schema: PROMOTE_SCHEMA })
 }))).filter(Boolean)
 const nProm = promotions.filter(p => p.decision === 'promote').length
 const nEsc = promotions.filter(p => p.decision === 'escalate-human').length
 const nRej = promotions.filter(p => p.decision === 'reject').length
 log(`promote: ${nProm} promote, ${nEsc} escalate-human, ${nRej} reject (dryRun=${DRY})`)
+
+// ===========================================================================
+// PHASE 5.5 — stage-mr: reroute OWNED promotions from a silent mirror copy to a
+// reviewable DRAFT MR (promotion branch on the mirror + MR body). NEVER
+// merges or pushes; the human reviews `git diff main..<branch>` + the body and
+// merges = publish. Byte-identity-when-OFF is preserved for the engine.
+// ===========================================================================
+phase('stage-mr')
+const ownedPassed = gatedClean.filter(g => g.verdict && g.verdict.verdict === 'pass' && g.sel.ownership === 'owned')
+let draftMR = { staged: false, branch: '', body_path: '', files: [], detail: 'no owned promotion this cycle — no MR staged' }
+if (ownedPassed.length) {
+  const BR = `harnessopt/${TS}`
+  const BODY = `${MEMORY}/promotions/${TS}-harness.md`
+  if (DRY) {
+    draftMR = { staged: false, branch: BR, body_path: BODY, files: ownedPassed.map(g => g.sel.target), detail: `dry-run: would stage ${ownedPassed.length} owned patch(es) as a draft MR (branch ${BR} on ${MIRROR} + MR body ${BODY}); no merge/push` }
+  } else {
+    draftMR = await agent(
+      `You are the ${DIRECTOR} staging this cycle's OWNED gate-passed patches as a DRAFT MR on the blessed mirror ${MIRROR} (a git repo). Do NOT merge, do NOT git-push — publication is the human's step. Leave a reviewable branch + an MR body.
+Run git via Bash (always with \`git -C ${MIRROR}\`):
+1. \`git -C ${MIRROR} checkout -B ${BR}\` — promotion branch off current HEAD; main untouched.
+2. For EACH patch below, apply the SAME fix as a surgical delta to ${MIRROR}/<target> (match "::<exact anchor>" via Edit). PRESERVE line-endings (CRLF vs LF); for the engine (workflows/engagement-workflow.js) PRESERVE byte-identity-when-OFF; edit in place rather than copying the whole file over. If a mirror path is absent, note it and skip (no stray files).
+3. \`git -C ${MIRROR} add -A && git -C ${MIRROR} commit -m "harnessopt: draft ${TS}"\`, then \`git -C ${MIRROR} checkout main\` (main's working tree clean; the delta lives on ${BR}).
+4. Write the MR body to ${BODY} (create ${MEMORY}/promotions/ if absent) — the review note (reasoning attached): a ## title, a Summary of the defect class closed, the (script x class) signals addressed, an "Ownership: owned" line, a Files+patches list, the executable-gate evidence (red->green proven + existing *-regress green + byte-id-OFF for the engine), a "Codex-authored / ${DIRECTOR}-judged" line, and a one-line merge-ask.
+5. Confirm with \`git -C ${MIRROR} log --oneline -1 ${BR}\`.
+Owned patches: ${JSON.stringify(ownedPassed.map(g => ({ target: g.sel.target, zone: g.sel.zone, patch: g.sel.patch, gate: g.verdict, run: g.run })))}
+Return per schema: staged:true, branch:"${BR}", body_path:"${BODY}", files:[the mirror paths written], detail.`,
+      { label: 'stage-mr', phase: 'stage-mr', schema: DRAFTMR_SCHEMA }) || draftMR
+  }
+}
+log(`stage-mr: staged=${draftMR.staged} branch=${draftMR.branch || '(none)'}`)
 
 // ===========================================================================
 // PHASE 6 — record: append a "resolved (...)" line to each closed signal in the
@@ -281,6 +321,7 @@ return {
   dropped,
   gate: gatedClean.map(g => ({ target: g.sel.target, zone: g.sel.zone, ownership: g.sel.ownership, verdict: g.verdict && g.verdict.verdict, red_green: g.run && g.run.red_green_proven, byteid_off: g.run && g.run.byteid_off_pass })),
   promotions,
+  draftMR,
   record,
   humanSeam: promotions.filter(p => p.decision === 'escalate-human'),
 }
