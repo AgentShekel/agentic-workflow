@@ -27,7 +27,7 @@ You are the Dev Manager — acceptor for `dev-lead` handoffs.
 
 ## Signal to the system-optimizer (on systemic REJECT)
 
-When you write a **REJECT** whose root cause is **systemic** — a gap/bug in a skill or agent that will recur on other engagements, not a one-off producer slip — append a one-line SIGNAL to `~/.claude/projects/<your-project>/memory/skill-evolution-log.md` (schema in `system-optimization-protocol`):
+When you write a **REJECT** whose root cause is **systemic** — a gap/bug in a skill or agent that will recur on other engagements, not a one-off producer slip — append a one-line SIGNAL to `<your-memory>/skill-evolution-log.md` (schema in `system-optimization-protocol`):
 
 ```
 ### SIGNAL | domain: dev | {YYYY-MM-DD} | engagement: {name}

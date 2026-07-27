@@ -209,7 +209,7 @@ At most `edit_budget` edits. Empty list is a valid output (nothing warranted).
 
 ## Rejection buffer (`skill-evolution-meta.md` is meta; this is separate)
 
-`~/.claude/projects/<your-project>/memory/skill-rejected-edits.md`, append-only.
+`<your-memory>/skill-rejected-edits.md`, append-only.
 MUST be read before proposing edits. Schema:
 
 ```markdown
