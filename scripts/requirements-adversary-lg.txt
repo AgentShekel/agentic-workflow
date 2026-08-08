@@ -8,7 +8,7 @@
 # langchain-anthropic bumped 2026-07-27 for CVE-2026-55443 / GHSA-gr75-jv2w-4656).
 
 langgraph==1.2.0
-langgraph-checkpoint-sqlite==3.1.0
+langgraph-checkpoint-sqlite==3.1.1
 langchain-core==1.5.1
 
 # Only needed for --invoker api (opt-in; subprocess mode is the default and needs neither).
