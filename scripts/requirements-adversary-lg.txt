@@ -5,10 +5,12 @@
 #
 # adversary_lg.py re-execs itself under that venv automatically.
 # Pinned to the versions verified on Python 3.14 (2026-05-14; langchain-core +
-# langchain-anthropic bumped 2026-07-27 for CVE-2026-55443 / GHSA-gr75-jv2w-4656).
+# langchain-anthropic bumped 2026-07-27 for CVE-2026-55443 / GHSA-gr75-jv2w-4656;
+# langgraph-checkpoint-sqlite bumped 2026-09-06 for CVE-2026-71433 /
+# GHSA-47pj-3jcm-6whg, namespace prefix matching in the Postgres/SQLite stores).
 
 langgraph==1.2.0
-langgraph-checkpoint-sqlite==3.1.0
+langgraph-checkpoint-sqlite==3.1.1
 langchain-core==1.5.1
 
 # Only needed for --invoker api (opt-in; subprocess mode is the default and needs neither).
