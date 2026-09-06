@@ -85,7 +85,25 @@ line under it. `skillopt-ready.py` then drops it from the readiness count, exact
 the checker already treats a log twin (same engagement + taxonomy) as authoritative and skips the
 reflection, so the log's `resolved:` covers both.
 
-**Zero reflections is a valid outcome** — a clean engagement with nothing to change should leave `engagement-reflections.md` empty (file may not exist at all). Inventing reflections to look productive corrupts the signal.
+**Success reflections (`- worked:`) — 0–2 per engagement, same file.** Everything above records a failure. That asymmetry is structural: the optimizer only ever sees what went wrong, so every edit it authors makes the corpus more suspicious and nothing pulls the other way. A `worked:` bullet is the counterweight — a behaviour that demonstrably CARRIED this engagement, so a future cycle has something to reinforce and not only something to forbid.
+
+**Strict constraint — write one ONLY when:**
+- a specific `skill: X` or `agent: Y` rule is what produced the good outcome, AND
+- you can point at the artefact that shows it (the same evidence bar as a gap), AND
+- it would generalise. A behaviour that worked because of this engagement's specifics is not a rule.
+
+**Discard:** praise ("the plan was solid", "waves ran smoothly", "good coverage"). A success bullet that names no rule and cites no artefact is flattery, and it is worse than a missing one — a cycle will read it as evidence and edit a file on the strength of it.
+
+```
+- worked: {skill: X | agent: Y}
+  class: {short reinforcement slug, e.g. evidence-before-claims}
+  observation: {1–2 lines — what the rule caused, and what it prevented}
+  evidence: {artefact path that shows it}
+```
+
+Two bullets sharing a `target × class` make that pattern available as reinforcement fuel (Channel C, threshold 2). They never trigger a cycle on their own, and inside a cycle a corrective edit beats a reinforcement edit on every conflict.
+
+**Zero reflections is a valid outcome** — a clean engagement with nothing to change and no rule worth naming should leave `engagement-reflections.md` empty (file may not exist at all). Inventing reflections of either kind to look productive corrupts the signal.
 
 These cluster by `target × class` and trigger SkillOpt cycles at cluster size ≥3 (or on Langfuse trend Δ — see `system-optimization-protocol` §"Trigger" Layer 3). `skillopt-ready.py` harvests them automatically (Channel B): it surfaces a due reflection cluster through the same SessionStart reminder as the log channel, so this no longer waits on a manual monthly sweep — the director's pass is now the deeper review over what the checker surfaces.
 

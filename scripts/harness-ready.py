@@ -51,9 +51,15 @@ ENG_RE = re.compile(r"engagement:\s*([A-Za-z0-9._-]+)", re.IGNORECASE)
 CLASS_RE = re.compile(r"^Failure class:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
 TRACED_RE = re.compile(r"^Traced to:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
 DRYRUN_RE = re.compile(r"^dryrun:\s*true\b", re.IGNORECASE | re.MULTILINE)
-# Broader than skillopt-ready's `^resolved:` — harness signals carry partial-resolved lines
-# ("resolved (SCRIPT half):", "resolved (PREFLIGHT half):", "resolved (ENGINE root, ...):").
-RESOLVED_RE = re.compile(r"^resolved\b", re.IGNORECASE | re.MULTILINE)
+# Broad, because harness signals carry partial-resolved lines ("resolved (SCRIPT half):",
+# "resolved (PREFLIGHT half):", "resolved (ENGINE root, ...):") — but NOT so broad that it
+# swallows the SKILL loop's half-marker.
+#
+# `resolved (SKILL half):` means the skill half is fixed and the SCRIPT half is still open,
+# so this checker must keep counting the signal. Without the lookahead the broad `^resolved`
+# closed it, silently dropping the still-open script half out of the >=2 cluster — the mirror
+# image of skillopt-ready closing on `resolved (SCRIPT half):`, which it likewise must not do.
+RESOLVED_RE = re.compile(r"^resolved\b(?!\s*\(SKILL)", re.IGNORECASE | re.MULTILINE)
 PLATFORM_RE = re.compile(r"platform-limitation|status:\s*PLATFORM-LIMITATION", re.IGNORECASE)
 
 # Harness target extraction from a `Traced to:` line.

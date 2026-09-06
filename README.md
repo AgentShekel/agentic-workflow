@@ -95,15 +95,29 @@ accumulated REJECT / rework signals from `skill-evolution-log.md`. Fires
 only at **≥3 same-class signals** clustered by `target × class`
 (`rule_missing` / `rule_wrong` / `rule_ignored`). Cycle:
 1. **Reflect** — director clusters manager-emitted signals by target +
-   class, reads `skill-rejected-edits.md` (negative memory).
+   class, reads `skill-rejected-edits.md` (negative memory) and the
+   optimizer memory left by the previous cycle. A second, conservative
+   channel reads `- worked:` reflections — behaviours that carried an
+   engagement — so a cycle can reinforce as well as forbid. Success never
+   opens a cycle on its own; a corrective edit beats a reinforcement one
+   on every conflict.
 2. **Codex proposes bounded edits** — cross-family (kills defend-bias),
    budget L: 4–6 patches per cycle, ≤10 lines each.
 3. **Golden-set gate** — director verifies the edit doesn't regress any
-   scenario in `system-optimization-protocol/golden/{domain}/` (3 per domain
-   × 3 domains + a 4th dev scenario = 11 total).
-4. **Promote or reject** — passing edits land in the corpus; rejected
-   edits append to `skill-rejected-edits.md` with reason (read before
-   next cycle).
+   scenario in `system-optimization-protocol/golden/{domain}/`
+   (7 dev + 4 design + 4 marketing = 15 total). Each domain includes a
+   non-rejection scenario the gate must also pass, so an edit cannot buy a
+   catch by making the corpus more suspicious.
+4. **Promote or reject** — passing edits land in the corpus behind a
+   pre-edit snapshot; rejected edits append to `skill-rejected-edits.md`
+   with reason (read before next cycle).
+5. **Verify what landed** — a diff guard checks the cycle wrote only
+   where it declared, slow-update re-reads the golden set over every
+   promotion, and a regression restores the snapshot and blocks the
+   draft MR. A check that could not run counts as failed, not passed.
+6. **Record** — signals a promotion closed get `resolved:`; a cycle that
+   produced no edit writes `adjudicated:`, so the trigger clears either
+   way and never fires forever on a cluster nobody can close.
 
 Judge-only — never authors edits itself. Never per-engagement. The human
 is commons-maintainer for cross-domain promotions.

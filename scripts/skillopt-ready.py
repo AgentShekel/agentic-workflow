@@ -13,6 +13,22 @@ Counts LIVE same-class signals across BOTH input channels and reports whether th
               (domain, target, class) per protocol §Trigger Layer-3 — reflections name
               a specific target, so a finer key avoids firing on 3 unrelated gaps that
               merely share a class.
+  Channel C — SUCCESS patterns: `- worked:` bullets in the same reflection files. Every
+              other channel here records a FAILURE, so every edit the loop has ever
+              authored made the corpus more suspicious and nothing ever ratcheted back.
+              The gate's false-positive floor is the downstream brake; this is the
+              upstream counterweight — what a clean engagement actually did right, so
+              reinforcement edits have a source. Clustered like B, but at a LOWER
+              threshold (2): a success edit reinforces existing wording rather than
+              adding a new rule, so it carries less risk than a corrective one.
+              It shares Channel B's recency window (`--reflection-window-days`), because
+              a behaviour that carried an engagement months ago is a claim about a
+              corpus that has since been edited many times.
+
+Channel C never makes a cycle DUE on its own. A loop that fires because things went well
+would spend a cycle with no defect to close; success patterns are fuel for a cycle that
+some failure already earned, exactly as SkillOpt runs success-analysis alongside (never
+instead of) failure-analysis. `ready` is therefore computed from A/B only.
 
 Channel B counts ONLY *orphan* reflections — those with NO twin SIGNAL in the log for
 the same (engagement, class). The log is the authoritative channel: once an issue is
@@ -58,6 +74,13 @@ from pathlib import Path
 from typing import Optional
 
 THRESHOLD = 3
+# Channel C (success) fires at 2, not 3. A corrective edit adds a rule the corpus did not
+# have and can misfire on cases nobody sampled, so it has to earn a repeat plus a repeat.
+# A reinforcement edit tightens wording that is already there and already passing, so the
+# blast radius of being wrong is smaller. SkillOpt draws the same line: its success analyst
+# is told to encode patterns seen across MULTIPLE trajectories, while its merge step gives
+# failure patches priority over success ones on every conflict.
+SUCCESS_THRESHOLD = 2
 REFLECTION_WINDOW_DAYS = 90  # Channel-B recency window (protocol §Trigger: "last 30-60 days")
 # Where engagements (and their engagement-reflections.md) live. Overridable via
 # --reflection-root / env SKILLOPT_REFLECTION_ROOTS. Missing roots are skipped, so a
@@ -74,7 +97,16 @@ CLASS_RE = re.compile(r"^Failure class:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILI
 TAXON_RE = re.compile(r"\b(rule_missing|rule_wrong|rule_ignored)\b", re.IGNORECASE)
 TRACED_RE = re.compile(r"^Traced to:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
 DRYRUN_RE = re.compile(r"^dryrun:\s*true\b", re.IGNORECASE | re.MULTILINE)
-RESOLVED_RE = re.compile(r"^resolved:", re.IGNORECASE | re.MULTILINE)
+# Closes on a full `resolved:` OR on THIS loop's own half-marker `resolved (SKILL half):`,
+# and deliberately NOT on the harness loop's `resolved (SCRIPT half):` / `resolved (ENGINE ...):`.
+#
+# The two checkers must disagree here, and in opposite directions, or a mixed signal is lost.
+# A mixed signal has a skill half and a script half; whichever loop closes its own half writes
+# a half-marker, and ONLY that loop may stop counting the signal. A narrow `^resolved:` here
+# with a broad `^resolved` in harness-ready would invert both halves at once: the harness loop
+# would close a signal whose script half is still open, while this loop kept re-firing a
+# cluster it had already closed.
+RESOLVED_RE = re.compile(r"^resolved\s*(?:\(SKILL[^)]*\))?\s*:", re.IGNORECASE | re.MULTILINE)
 DATE_SUFFIX_RE = re.compile(r"-?\d{4}-\d{2}-\d{2}$")
 
 # Channel B (reflection) parsing. Header separators may be em-dash (canonical) or a
@@ -85,6 +117,10 @@ REFL_HEADER_RE = re.compile(
     re.IGNORECASE,
 )
 REFL_TARGET_RE = re.compile(r"^\s*-\s*target:\s*(?P<target>.+?)\s*$", re.IGNORECASE)
+# Channel C bullet. Deliberately a DIFFERENT bullet key rather than a flag on `- target:`:
+# an older reflection file has no `- worked:` lines at all, so the success channel reads as
+# empty on historical data instead of mis-reading a gap as a success.
+REFL_WORKED_RE = re.compile(r"^\s*-\s*worked:\s*(?P<target>.+?)\s*$", re.IGNORECASE)
 REFL_CLASS_RE = re.compile(r"^\s*class:\s*(?P<cls>.+?)\s*$", re.IGNORECASE)
 REFL_RESOLVED_RE = re.compile(r"^\s*resolved:", re.IGNORECASE)
 REFL_DRYRUN_RE = re.compile(r"^\s*dryrun:\s*true\b", re.IGNORECASE)
@@ -131,6 +167,38 @@ def class_key(failure_class: str) -> str:
         return m.group(1).lower()
     # Otherwise the whole class string is its own identity (e.g. "token-drift").
     return s.lower()
+
+
+def norm_eng(name: Optional[str]) -> str:
+    """Normalize an engagement name for cross-channel matching — lowercase and drop a
+    trailing ISO date (`-2026-05-28`) so a log `engagement:` and a reflection header
+    referring to the same engagement match even if one carries the date suffix."""
+    n = (name or "").strip().lower()
+    return DATE_SUFFIX_RE.sub("", n)
+
+
+def classify_target(text: str) -> str:
+    """Map a 'Traced to' / reflection 'target' string to a coarse target class.
+    skill/agent -> loop fuel; script -> direct-fix; else other."""
+    t = (text or "").lower()
+    if "agents/" in t or "skills/" in t or "skill:" in t or "agent:" in t:
+        return "skill_agent"
+    if "scripts/" in t or "script:" in t:
+        return "script"
+    return "other"
+
+
+def extract_target_names(target_raw: str) -> list:
+    names = [m.group(1).strip(" /") for m in TARGET_NAME_RE.finditer(target_raw or "")]
+    return names or [(target_raw or "?").strip()[:40]]
+
+
+def primary_target(target_raw: str) -> str:
+    """The single target a reflection bucket keys on — the first named skill/agent
+    (so '... vs scripts/x.py' keys on the skill, not the script). Falls back to the
+    first token / a trimmed prefix when no skill/agent is named."""
+    names = extract_target_names(target_raw)
+    return names[0] if names else (target_raw or "?").strip()[:40]
 
 
 def parse_signals(text: str) -> list:
@@ -197,8 +265,9 @@ def resolve_domain(reflection_path: Path) -> str:
 
 def parse_reflection_file(text: str) -> list:
     """Parse one engagement-reflections.md into reflection records. Each `- target:`
-    bullet is one record; class/resolved/dryrun are read from its indented lines;
-    engagement+date come from the enclosing `## Reflection — …` header."""
+    (kind="gap", Channel B) or `- worked:` (kind="worked", Channel C) bullet is one
+    record; class/resolved/dryrun are read from its indented lines; engagement+date
+    come from the enclosing `## Reflection — ...` header."""
     records = []
     cur_eng, cur_date = None, None
     cur = None
@@ -216,15 +285,18 @@ def parse_reflection_file(text: str) -> list:
             cur_eng, cur_date = h.group("eng").strip(), h.group("date").strip()
             continue
         t = REFL_TARGET_RE.match(ln)
-        if t:
+        w = None if t else REFL_WORKED_RE.match(ln)
+        if t or w:
             flush()
+            m = t or w
             cur = {
                 "engagement": cur_eng,
                 "date": cur_date,
-                "target_raw": t.group("target").strip(),
+                "target_raw": m.group("target").strip(),
                 "class_raw": None,
                 "resolved": False,
                 "dryrun": False,
+                "kind": "gap" if t else "worked",
             }
             continue
         if HEADER_RE.match(ln):  # any other header ends the current record
@@ -258,6 +330,7 @@ def reflection_to_signal(rec: dict, domain: str) -> dict:
         "dryrun": bool(rec.get("dryrun")),
         "resolved": bool(rec.get("resolved")),
         "source": "reflection",
+        "kind": rec.get("kind", "gap"),
         "engagement": rec.get("engagement"),
         "date": rec.get("date"),
     }
@@ -341,7 +414,8 @@ def analyze_reflections(signals, log_twin_keys):
 
     live = [
         s for s in signals
-        if not s["dryrun"] and not s["resolved"] and not _has_twin(s)
+        if s.get("kind", "gap") == "gap"
+        and not s["dryrun"] and not s["resolved"] and not _has_twin(s)
     ]
     buckets = defaultdict(list)
     for s in live:
@@ -353,6 +427,59 @@ def analyze_reflections(signals, log_twin_keys):
             due.append((dom, tgt, ck, len(sigs)))
     due.sort(key=lambda x: -x[3])
     return live, buckets, due
+
+
+def analyze_success(signals):
+    """Channel C: cluster `- worked:` reflections by (domain, primary_target, class_key).
+
+    No twin-exclusion runs here. Twin logic exists because Channel B and the log describe the
+    same failure twice and double-counting would inflate a gate; there is no success log, so a
+    worked bullet has nothing to be a twin of.
+
+    Returns (live, buckets, due) with due at SUCCESS_THRESHOLD. `due` is an OFFER, not a
+    trigger — main() keeps it out of `ready` on purpose.
+    """
+    live = [
+        s for s in signals
+        if s.get("kind") == "worked" and not s["dryrun"] and not s["resolved"]
+    ]
+    buckets = defaultdict(list)
+    for s in live:
+        buckets[(s["domain"], s["primary_target"], s["class_key"])].append(s)
+    due = []
+    for (dom, tgt, ck), sigs in buckets.items():
+        # Same rule as everywhere else: the loop edits skills/agents, so a success pattern
+        # traced to a script is a note for the human, not reinforcement fuel.
+        loop_actionable = any(s["target"] == "skill_agent" for s in sigs)
+        if len(sigs) >= SUCCESS_THRESHOLD and loop_actionable:
+            due.append((dom, tgt, ck, len(sigs)))
+    due.sort(key=lambda x: -x[3])
+    return live, buckets, due
+
+
+def success_payload(live, due, domain=None):
+    """The success records belonging to DUE clusters, ready to hand to the reflect step.
+
+    Channel A/B signals are re-read from the log by the workflow's harvest agent; success
+    records are spread across many reflection files, so they are emitted here instead of
+    making the agent walk the tree a second time.
+    """
+    keys = {(d, t, c) for d, t, c, _ in due if domain is None or d == domain}
+    out = []
+    for s in live:
+        if (s["domain"], s["primary_target"], s["class_key"]) not in keys:
+            continue
+        out.append({
+            "domain": s["domain"],
+            "engagement": s.get("engagement"),
+            "date": s.get("date"),
+            "pattern_class": s["failure_class"],
+            "class_key": s["class_key"],
+            "target": s["traced"],
+            "primary_target": s["primary_target"],
+            "source_file": s.get("source_file"),
+        })
+    return out
 
 
 def _refl_bucket_detail(buckets) -> dict:
@@ -376,9 +503,13 @@ def main() -> int:
     ap.add_argument("--reflection-root", action="append", default=None,
                     help="root dir to scan for engagement-reflections.md (repeatable)")
     ap.add_argument("--reflection-window-days", type=int, default=REFLECTION_WINDOW_DAYS,
-                    help=f"Channel-B recency window in days (default {REFLECTION_WINDOW_DAYS}; 0 = no limit)")
+                    help=f"recency window in days for BOTH reflection channels, B and C "
+                         f"(default {REFLECTION_WINDOW_DAYS}; 0 = no limit)")
     ap.add_argument("--no-reflections", action="store_true",
                     help="disable Channel B (log signals only)")
+    ap.add_argument("--no-success", action="store_true",
+                    help="disable Channel C (skip the `- worked:` success harvest)")
+    ap.add_argument("--domain", help="restrict the emitted success payload to one domain")
     args = ap.parse_args()
 
     log = find_log(args.log)
@@ -407,6 +538,10 @@ def main() -> int:
     roots = args.reflection_root or default_reflection_roots()
     refl_signals = [] if args.no_reflections else scan_reflections(roots, args.reflection_window_days)
     refl_live, refl_buckets, refl_due = analyze_reflections(refl_signals, log_twin_keys)
+    succ_signals = [] if (args.no_reflections or args.no_success) else refl_signals
+    succ_live, succ_buckets, succ_due = analyze_success(succ_signals)
+    # Channel C is deliberately absent from `ready`. See the module docstring: a loop that
+    # fires because things went well has no defect to close.
     ready = bool(due) or bool(refl_due)
 
     if args.hook:
@@ -420,6 +555,11 @@ def main() -> int:
                 lines.append(f"- {dom}/{ck}: {n} live log signals -> run `прогнать skill-evolution {dom}`")
             for dom, tgt, ck, n in refl_due:
                 lines.append(f"- {dom}/{tgt}/{ck}: {n} live reflections -> run `прогнать skill-evolution {dom}`")
+            # Mentioned only alongside a real trigger — a success cluster is reinforcement
+            # fuel for a cycle something else earned, never a reason to open one.
+            for dom, tgt, ck, n in succ_due:
+                lines.append(f"- (success fuel — {dom}/{tgt}/{ck}: {n} `worked:` reflections "
+                             f"available to reinforce if you run that domain's cycle)")
             print(json.dumps({
                 "hookSpecificOutput": {
                     "hookEventName": "SessionStart",
@@ -441,6 +581,13 @@ def main() -> int:
             "reflection_due": [
                 {"domain": d, "target": t, "class": c, "count": n} for d, t, c, n in refl_due
             ],
+            "success_threshold": SUCCESS_THRESHOLD,
+            "success_count": len(succ_live),
+            "success_buckets": _refl_bucket_detail(succ_buckets),
+            "success_due": [
+                {"domain": d, "target": t, "class": c, "count": n} for d, t, c, n in succ_due
+            ],
+            "success_signals": success_payload(succ_live, succ_due, args.domain),
             "ready": ready,
         }, ensure_ascii=False, indent=2))
         return 1 if ready else 0
@@ -468,6 +615,17 @@ def main() -> int:
             flag = "  <<< DUE" if actionable else ""
             engs = sorted({s.get("engagement") for s in v if s.get("engagement")})
             print(f"    {d}/{tgt}/{c}: {len(v)}  [{', '.join(engs)}]{flag}")
+
+    print(f"  Channel C — success patterns (`worked:` bullets, {len(succ_live)} live, "
+          f">={SUCCESS_THRESHOLD} = reinforcement fuel; never a trigger):")
+    if not succ_buckets:
+        print("    none recorded.")
+    else:
+        for (d, tgt, c), v in sorted(succ_buckets.items(), key=lambda kv: -len(kv[1])):
+            actionable = len(v) >= SUCCESS_THRESHOLD and any(s["target"] == "skill_agent" for s in v)
+            flag = "  <<< available" if actionable else ""
+            engs = sorted({s.get("engagement") for s in v if s.get("engagement")})
+            print(f"    {d}/{tgt}/{c}: {len(v)}  [{', '.join(engs)}]{flag}")
     print()
 
     if ready:
@@ -476,6 +634,8 @@ def main() -> int:
             print(f"  -> прогнать skill-evolution {d}   (log: {c}, {n} signals)")
         for d, tgt, c, n in refl_due:
             print(f"  -> прогнать skill-evolution {d}   (reflections: {tgt}/{c}, {n})")
+        for d, tgt, c, n in succ_due:
+            print(f"  -> reinforcement fuel available in {d}: {tgt}/{c} ({n} worked-reflections)")
         return 1
     print("VERDICT: not yet — no (domain,class) bucket has >=3 loop-actionable live signals.")
     return 0

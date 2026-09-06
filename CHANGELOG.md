@@ -2,6 +2,42 @@
 
 All notable changes to agentic-workflow.
 
+## v0.6.0 — 2026-09-06 (Success channel + loop gates that fail closed)
+
+The skill-evolution loop now learns from what worked, not only from what broke, closes the signals it acted on, and every gate guarding it fails closed instead of open.
+
+### SkillOpt — the success channel (Channel C)
+
+- **`- worked:` reflection bullets** are harvested by `skillopt-ready.py` alongside the existing gap bullets and cluster at 2 on one `(target, class)`. Every other input to the loop records a failure, so every edit it authored made the corpus more suspicious and nothing pulled the other way; this is the counterweight at the source. Channel C never makes a cycle DUE on its own — a cycle authors an edit against a defect, and opening one because things went well leaves the proposer nothing to close.
+- **Two-channel reflect in `skillopt-workflow.js`.** A corrective and a reinforcement proposal run side by side and merge failure-first: where both touch the same region, the corrective edit wins, and a reinforcement edit that merely restates what the target file already says is dropped. The golden gate judges each channel by its own test — a reinforcement edit has no "targeted failure" to close, so it is judged neutral-or-better plus non-redundant instead.
+- **The budget cut is ranked, not asserted.** Selection now ranks on stated criteria (how much of the batch backs the edit, whether it fills a gap or duplicates, generality, actionability) and reports the reasoning, so a cut can be audited after the fact.
+- **`acceptance-protocol`** states the evidence bar: a success bullet must name the rule that produced the outcome and cite the artefact showing it. One that names no rule and cites no artefact is flattery, and a later cycle would edit a file on the strength of it.
+
+### SkillOpt — the cycle closes its own signals
+
+- **New `record` phase.** A successful cycle used to write nothing back to `skill-evolution-log.md`, so the cluster it had just closed stayed live and the readiness checker re-fired it every session. It now writes `resolved:` for what a promotion actually closed, and `adjudicated:` when a cycle produced no edit at all — deliberately not `resolved:`, since nothing was fixed and the signal must keep counting.
+- **Optimizer memory is wired in.** `skill-evolution-meta.md` was a path the script declared and never read. It is now read by the reflect and select steps and written at the end of a cycle, capped, so a cycle stops repeating an editing mistake the previous one already paid for.
+
+### Both loops — gates that fail closed
+
+- **Pre-edit snapshot and a real rollback.** Slow-update could report a regression while the offending edit stayed on disk and the draft MR staged anyway. Both loops now copy every file they are about to edit, refuse to edit at all without that restore point, and on a regression restore it and record the edit as retracted so it cannot be re-proposed.
+- **Diff guard.** Newly-changed files (post-promote working-tree state minus a pre-promote baseline) must all be declared targets or known side-effect paths. A cycle that wrote outside what it declared has broken the premise the gate judged under, so it rolls back and publishes nothing.
+- **Slow-update covers every owned promotion.** The blast tier still skips the *pre*-gate for a low-blast edit, which is the intended overhead trade — but it also used to skip the *post*-check, so such an edit could reach publication without one scenario ever being read against it. Coverage no longer scales with the tier; only rigour does.
+- **A missing check is not a passing check.** These gates are driven by sub-agent calls that can return nothing. Each one now defaults to blocked rather than clean, publication is gated on the decision instead of the executor's own report, only edits actually applied can be staged, and a required rollback that does not complete stops the run outright.
+
+### Golden sets
+
+- **Four non-rejection scenarios** ship (dev, design, marketing, plus an escalation-quality case), taking the golden set to 15. Every catch-the-defect scenario rewards finding something, so without them each accepted edit ratcheted the corpus toward suspicion with nothing ratcheting back. An edit that closes its target but trips the non-rejection scenario is a reject.
+
+### Fixes
+
+- **`skillopt-ready.py` raised `NameError` on any log containing a signal.** Four helpers (`classify_target`, `extract_target_names`, `primary_target`, `norm_eng`) were referenced but not defined, so both the readiness report and the JSON mode aborted. Restored.
+- **The partial-resolved half-markers were read in opposite directions.** `resolved (SKILL half):` means the script half is still open, and `resolved (SCRIPT half):` means the skill half is; each checker must honour its own marker and ignore the other's. The two regexes were tuned against the other loop's marker, so a SKILL-half marker closed the harness signal and left the skill signal re-firing forever. Each checker now closes on a full `resolved:` and on its own half-marker only.
+
+### Counts
+
+60 agents (Managers 3 · Directors 4 · Leads 3 · Specialists 20 · Validators 30) · 46 skills · 18 main + 3 optional Python scripts · 3 Workflow engines + 2 LangGraph engines.
+
 ## v0.5.0 — 2026-06-29 (Harness-evolution loop + four new engine flags + verification-coverage hardening)
 
 Adds a second self-improvement loop — a peer of the existing skill-evolution (SkillOpt) loop — that owns the orchestration/acceptance **script + engine** layer the skill loop deliberately excludes. Four new opt-in engine activation flags land (each default-OFF and byte-inert when off), and the verification methodology gains an HTTP-surface exercised-test mandate so an API endpoint can no longer be accepted on green unit tests alone.

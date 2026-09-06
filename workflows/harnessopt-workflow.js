@@ -1,6 +1,6 @@
 export const meta = {
   name: 'harnessopt-workflow',
-  description: 'Harness-evolution loop as a workflow — the peer of skillopt-workflow for the SCRIPT/ENGINE layer SkillOpt excludes (scripts/*.py, scripts/lib/precheck/*, workflows/engagement-workflow.js). harvest harness-ready clusters -> Codex AUTHORS patch BUNDLES (test_patch red->green + fix_patch) -> harness-director SELECTS (zone-aware: Zone-2 engine rejects new-flag / default-changing edits; rejection-buffer; edit_budget) -> EXECUTABLE gate (throwaway temp copies: red->green regression + existing *-regress + py_compile/ruff or AsyncFunction-compile + a LIVE subprocess repro + byte-identity-when-OFF for Zone-2) -> PROMOTE(owned script/engine fix) | ESCALATE(commons-protocol / CLAUDE.md / trigger / hook = human) | REJECT(buffer) -> RECORD (resolved lines + cycle note). Codex authors; the director judges (never the same brain). dryRun-safe (gate writes only temp; promote/reject/record write nothing in dry-run; never auto-pushes). Out-of-band; NOT routed through agency-intake.',
+  description: 'Harness-evolution loop as a workflow — the peer of skillopt-workflow for the SCRIPT/ENGINE layer SkillOpt excludes (scripts/*.py, scripts/lib/precheck/*, workflows/engagement-workflow.js). harvest harness-ready clusters -> Codex AUTHORS patch BUNDLES (test_patch red->green + fix_patch) -> harness-director SELECTS (zone-aware: Zone-2 engine rejects new-flag / default-changing edits; rejection-buffer; edit_budget) -> EXECUTABLE gate (throwaway temp copies: red->green regression + existing *-regress + py_compile/ruff or AsyncFunction-compile + a LIVE subprocess repro + byte-identity-when-OFF for Zone-2) -> SNAPSHOT (pre-apply copies = the restore point; no snapshot, no apply) -> PROMOTE(owned script/engine fix) | ESCALATE(commons-protocol / CLAUDE.md / trigger / hook = human) | REJECT(buffer) -> DIFF-GUARD (declared-targets allowlist over the working tree; a proven violation ROLLS BACK from the snapshot + buffers the patch, and either a violation or an unreportable guard blocks the MR and the record) -> RECORD (resolved lines + cycle note). Codex authors; the director judges (never the same brain). dryRun-safe (gate writes only temp; promote/reject/record write nothing in dry-run; never auto-pushes). Out-of-band; NOT routed through agency-intake.',
   phases: [
     { title: 'harvest' }, { title: 'reflect' }, { title: 'select' },
     { title: 'gate' }, { title: 'promote' }, { title: 'stage-mr' }, { title: 'record' },
@@ -25,6 +25,7 @@ const DRY = !!A.dryRun                                // dry-run: gate still run
 const LOG = A.logPath || (MEMORY + '/skill-evolution-log.md')
 const EDIT_BUDGET = A.editBudget || 2                 // lower than SkillOpt — executable gates are heavy
 const BUFFER = `${MEMORY}/harness-rejected-edits.md`
+const SNAPSHOTS = `${MEMORY}/harnessopt-snapshots/${TS}`   // pre-apply copies = the rollback target
 const DIRECTOR = 'harness-director'                   // agentType for the judge-only steps
 const BYTEID_HARNESS = `${SCRIPTS}/harness/engine-byteid-harness.cjs`
 const ENGINE_REL = 'workflows/engagement-workflow.js'
@@ -114,6 +115,33 @@ const RECORD_SCHEMA = {
   required: ['ran', 'resolved_signals', 'cycle_note_path', 'detail'],
   properties: { ran: { type: 'boolean' }, resolved_signals: { type: 'array', items: { type: 'string' } }, cycle_note_path: { type: ['string', 'null'] }, detail: { type: 'string' } },
 }
+const SNAPSHOT_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['taken', 'dir', 'files', 'baseline_dirty', 'detail'],
+  properties: {
+    taken: { type: 'boolean' },
+    dir: { type: 'string' },
+    files: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['target', 'copy'], properties: { target: { type: 'string' }, copy: { type: 'string' } } } },
+    baseline_dirty: { type: 'array', items: { type: 'string' }, description: 'files already modified in ~/.claude BEFORE this cycle touched anything' },
+    detail: { type: 'string' },
+  },
+}
+const ROLLBACK_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['ran', 'restored', 'detail'],
+  properties: { ran: { type: 'boolean' }, restored: { type: 'array', items: { type: 'string' } }, detail: { type: 'string' } },
+}
+const DIFFGUARD_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['ran', 'clean', 'newly_touched', 'violations', 'detail'],
+  properties: {
+    ran: { type: 'boolean' },
+    clean: { type: 'boolean', description: 'true iff every newly-touched path was a declared target or an allowed side-effect' },
+    newly_touched: { type: 'array', items: { type: 'string' } },
+    violations: { type: 'array', items: { type: 'string' } },
+    detail: { type: 'string' },
+  },
+}
 
 // ===========================================================================
 // PHASE 1 — harvest: harness-ready.py clusters open harness signals by
@@ -160,7 +188,55 @@ Then RELAY Codex's bundles into the schema faithfully — do NOT author/expand/f
 const proposed = (reflect && reflect.patches) ? reflect.patches : []
 log(`reflect: codex_ran=${reflect && reflect.codex_ran}; ${proposed.length} patch(es) proposed`)
 if (!proposed.length) {
-  return { ok: true, status: 'no-patches-proposed', dryRun: DRY, codex_ran: reflect && reflect.codex_ran, reflect: reflect || null }
+  // A null cycle MUST leave a trace. Before this, "Codex looked and found nothing
+  // actionable" was byte-identical to "nobody ever ran a cycle": the loop returned,
+  // wrote nothing, and harness-ready.py re-fired the same cluster DUE forever, on a
+  // cluster the Zone-2 freeze meant it structurally could not close. A trigger that is
+  // always on stops being read, and the real ones go with it.
+  //
+  // `adjudicated:` is deliberately NOT `resolved:` (nothing was fixed) and NOT
+  // platform-limitation (the constraint is ours — a freeze we chose). It records that
+  // a cycle judged the signal unactionable at this layer, on a date, for a stated
+  // reason. harness-ready.py keeps adjudicated signals in the bucket and still counts
+  // them toward the threshold, so ONE new signal joining the cluster re-fires it on
+  // the first hit: a want judged speculative that then actually occurs earns a fresh
+  // look immediately, without waiting for a second occurrence.
+  let adjudication = { ran: false, resolved_signals: [], cycle_note_path: null, detail: 'dry-run or no due cluster — no log writes' }
+  if (!DRY && harvest.due.length) {
+    adjudication = await agent(
+      `You are the ${DIRECTOR} closing a NULL harness-evolution cycle in ${LOG}.
+
+Codex proposed zero patches for the due cluster(s). That verdict has to land in the log, or the
+readiness trigger keeps firing on this same cluster forever.
+
+For EACH signal belonging to a due cluster below, append ONE line to its signal block:
+
+  adjudicated: <YYYY-MM-DD from ${TS}> | harnessopt cycle ${TS} | no-patch. <why THIS signal was
+  judged unactionable, from Codex's reasoning>. <one clause on what would reopen it>.
+
+Rules:
+- Do NOT write \`resolved:\` — nothing was fixed and the want still stands.
+- Do NOT write platform-limitation — the constraint is ours (a freeze we chose), not the platform's.
+- Append only. Do not edit, soften or delete anything already in the log.
+- Use Codex's ACTUAL reasoning. If one reason covers several signals, say that rather than
+  inventing a distinct-sounding reason per signal.
+- Modify only ${LOG}.
+
+Due clusters: ${JSON.stringify(harvest.due)}
+Signals: ${JSON.stringify(harvest.signals, null, 2)}
+Codex reasoning (verbatim): ${JSON.stringify((reflect && reflect.reasoning) || '')}
+
+Return per schema: ran:true, resolved_signals[] (the signals you marked adjudicated),
+cycle_note_path:null, detail.`,
+      { label: 'adjudicate:director', phase: 'record', schema: RECORD_SCHEMA }) || adjudication
+  }
+  log(`null cycle: adjudication ran=${adjudication.ran}`)
+  return {
+    ok: true, status: 'no-patches-proposed', dryRun: DRY,
+    codex_ran: reflect && reflect.codex_ran,
+    due: harvest.due, adjudication,
+    reflect: reflect || null,
+  }
 }
 
 // ===========================================================================
@@ -231,6 +307,49 @@ log(`gate: ${passed.length}/${gatedClean.length} patch(es) passed the executable
 //   FAIL            -> append to rejection buffer | report (dry)
 // ===========================================================================
 phase('promote')
+// Snapshot + baseline BEFORE anything is applied.
+//
+// The executable gate proves each patch red->green in throwaway copies, which is a much
+// stronger pre-check than the skill loop's rubric gate. What neither proves is that the APPLY
+// step then edits only the file it declared, and until now this loop had no way back if it
+// did: a diff-guard violation blocked the MR and the record but left the unexpected writes on
+// disk with no restore point, and wrote no rejection-buffer entry, so the same patch could be
+// re-proposed next cycle. That is the parity gap with skillopt-workflow.
+//
+// File copies rather than a git tag, for the same reason as the skill loop: ~/.claude is
+// routinely dirty, so `git reset --hard` would take unrelated in-flight work with it.
+const ownedGatePassed = gatedClean.filter(g =>
+  g.verdict && g.verdict.verdict === 'pass' && g.sel.ownership === 'owned')
+let snapshot = { taken: false, dir: SNAPSHOTS, files: [], baseline_dirty: [], detail: 'no owned gate-passed patch — nothing to snapshot' }
+if (ownedGatePassed.length) {
+  snapshot = await agent(
+    `You are taking the PRE-APPLY SNAPSHOT for a harness-evolution cycle. Mechanical, no judgement (Bash + Read/Write).
+
+1. BASELINE (always, read-only): run \`git -C ${CLAUDE} status --porcelain\` and list every path already modified or untracked BEFORE this cycle writes anything. That is baseline_dirty, and it is what lets the diff guard tell this cycle's writes from work already in flight. If ${CLAUDE} is not a git work tree, say so in detail and return an empty list.
+${DRY
+      ? `2. DRY-RUN: copy nothing. Return taken:false, files:[] and a detail naming the files that WOULD be snapshotted into ${SNAPSHOTS}.`
+      : `2. COPY: create ${SNAPSHOTS} and copy the CURRENT bytes of each file below from ${CLAUDE}/<path> into it, flattening the path into the filename (scripts/lib/precheck/x.py -> scripts__lib__precheck__x.py). Preserve bytes exactly, line endings included — this copy is the only restore source. Skip a path that does not exist and say so. Return taken:true and files[] mapping target -> copy path.`}
+
+Files this cycle intends to write (the union of every owned patch's files_touched):
+${JSON.stringify([...new Set(ownedGatePassed.flatMap(g => (g.sel.patch && g.sel.patch.files_touched) || [g.sel.target]))])}
+
+Return per schema.`,
+    { label: 'snapshot', phase: 'promote', schema: SNAPSHOT_SCHEMA }) || snapshot
+}
+const baseline = { captured: !!snapshot.taken || DRY, dirty: snapshot.baseline_dirty || [], detail: snapshot.detail }
+log(`snapshot: taken=${snapshot.taken} files=${(snapshot.files || []).length} baseline_dirty=${(snapshot.baseline_dirty || []).length}`)
+
+// No snapshot, no apply. A cycle that can detect an unexpected write and cannot undo it is
+// strictly worse than one that never ran: the guard's verdict would read as enforcement.
+if (!DRY && ownedGatePassed.length && !(snapshot.taken && (snapshot.files || []).length)) {
+  log('ABORT: snapshot missing — refusing to apply patches with no restore point')
+  return {
+    ok: false, status: 'snapshot-failed', dryRun: DRY,
+    error: 'the pre-apply snapshot did not complete, so a diff-guard violation could not be rolled back; no patch was applied',
+    snapshot, selected: selected.length,
+    gate: gatedClean.map(g => ({ target: g.sel.target, verdict: g.verdict && g.verdict.verdict })),
+  }
+}
 const promotions = (await parallel(gatedClean.map(g => () => {
   const isPass = g.verdict && g.verdict.verdict === 'pass'
   const tgt = g.sel.target
@@ -262,6 +381,79 @@ const nEsc = promotions.filter(p => p.decision === 'escalate-human').length
 const nRej = promotions.filter(p => p.decision === 'reject').length
 log(`promote: ${nProm} promote, ${nEsc} escalate-human, ${nRej} reject (dryRun=${DRY})`)
 
+// Diff guard: newly-touched = post-promote dirty MINUS baseline, so pre-existing
+// in-flight work never reads as a violation. A violation means the cycle wrote outside
+// what it declared, which invalidates the premise the gate judged under — so it blocks
+// the MR and the record step, and the signals stay open for a human to look at.
+// Declared = what promote REPORTED writing, not what passed the gate. A gate-passed patch with
+// ownership "escalate" is one the loop is forbidden to apply at all (commons / CLAUDE.md / a
+// trigger / a hook / the frozen engine), so putting its files on the allowlist would whitelist
+// exactly the write the guard exists to catch.
+const declaredFiles = promotions.filter(p => p.applied).flatMap(p => p.paths_written || [])
+const allowedSideEffects = [BUFFER, LOG, `${MEMORY}/promotions`, `${MEMORY}/harnessopt-escalation-`]
+const anythingApplied = promotions.some(p => p.applied)
+let diffGuard = { ran: false, clean: true, newly_touched: [], violations: [], detail: 'dry-run: nothing was written, so there is nothing to guard' }
+if (!DRY && anythingApplied) {
+  // Fail CLOSED in a live run: a guard that did not report is not a guard that passed.
+  const guardFailedClosed = {
+    ran: false, clean: false, newly_touched: [],
+    violations: ['diff-guard did not report'],
+    detail: 'the diff-guard agent returned nothing; treated as UNCLEAN because a missing check is not a passing check',
+  }
+  diffGuard = await agent(
+    `You are running the DIFF GUARD for a harness-evolution cycle. Mechanical, read-only (Bash), no judgement — report only, fix nothing.
+
+1. Run \`git -C ${CLAUDE} status --porcelain\`. Its paths are REPO-RELATIVE with forward slashes.
+2. Normalise the allowlist to the same shape: strip a leading "${CLAUDE}/" from any absolute path below and convert backslashes to forward slashes. Compare normalised-to-normalised. git collapses an untracked DIRECTORY into one \`?? dir/\` entry — treat it as covering everything beneath it.
+3. newly_touched = every listed path NOT in the pre-promote baseline: ${JSON.stringify(baseline.dirty || [])}
+4. A newly-touched path is ALLOWED if it equals a declared write, or is at-or-under an allowed side-effect path. Everything else is a VIOLATION.
+   - declared (what promote reported writing): ${JSON.stringify(declaredFiles)}
+   - allowed side-effects (prefixes): ${JSON.stringify(allowedSideEffects)}
+5. If ${CLAUDE} is not a git work tree or the baseline was never captured (captured=${baseline.captured}), set ran:false, clean:false and say so — do NOT guess a pass.
+
+Return per schema: ran, clean (violations.length === 0), newly_touched[], violations[], detail.`,
+    { label: 'diff-guard', phase: 'promote', schema: DIFFGUARD_SCHEMA }) || guardFailedClosed
+}
+// A PROVEN violation earns a restore. A guard that could not report proves nothing, so it does
+// not revert a healthy cycle — but it still stops publication, because an unverified cycle is
+// not a reviewed one. Both block the MR and the record.
+const guardViolation = diffGuard.ran === true && diffGuard.clean === false
+const publishBlocked = !DRY && anythingApplied && diffGuard.clean !== true
+log(`diff-guard: ran=${diffGuard.ran} clean=${diffGuard.clean} violations=${(diffGuard.violations || []).length} publishBlocked=${publishBlocked}`)
+
+// Rollback: restore from the snapshot and buffer the patch, so the same one cannot come back
+// next cycle. Without the buffer entry a reverted patch is re-proposable forever, which is the
+// half of the parity gap that a blocked MR alone did not close.
+let rollback = { ran: false, restored: [], detail: guardViolation ? 'rollback required' : 'no diff-guard violation — nothing to roll back' }
+if (guardViolation) {
+  rollback = await agent(
+    `You are the ${DIRECTOR} performing a ROLLBACK of this harness-evolution cycle. Reason: the diff guard found writes outside the declared targets.
+
+1. RESTORE: for each snapshot pair below, copy the snapshot copy back over ${CLAUDE}/<target>, byte for byte, and read each back to confirm it matches. If a snapshot copy is missing for a target, say so in detail and leave it OUT of restored[] — never report a restore you did not perform.
+   Snapshots: ${JSON.stringify(snapshot.files || [])}
+2. BUFFER: append one entry per rolled-back patch to ${BUFFER} (append-only; create if absent): "## <summary> | target: <target> | <YYYY-MM-DD from ${TS}>", "Tried:", "Reverted because: diff-guard violation — <the unexpected paths>", "Status: RETRACTED".
+3. Do NOT touch ${MIRROR} — no MR was staged. Do NOT revert paths outside the declared targets; name them and leave them for the human.
+   Unexpected writes the guard reported: ${JSON.stringify(diffGuard.violations || [])}
+
+Rolled-back patches: ${JSON.stringify(ownedGatePassed.map(g => ({ target: g.sel.target, zone: g.sel.zone })))}
+
+Return per schema: ran (true only if you actually restored files), restored[], detail.`,
+    { label: 'rollback', phase: 'promote', schema: ROLLBACK_SCHEMA }) || rollback
+}
+log(`rollback: required=${guardViolation} ran=${rollback.ran} restored=${(rollback.restored || []).length}`)
+
+// Gate on the DECISION, never the executor's self-report: if the rollback agent dies, its
+// `ran:false` must not read as "no rollback was needed".
+if (guardViolation && !rollback.ran) {
+  log('ABORT: rollback was required and did not complete — the working tree may still carry the unexpected writes')
+  return {
+    ok: false, status: 'rollback-failed', dryRun: DRY,
+    error: 'the diff guard proved writes outside the declared targets and the rollback did not complete; restore by hand from the snapshot dir before running another cycle.',
+    snapshotDir: snapshot.dir, snapshot, diffGuard, rollback,
+    promotions, humanSeam: promotions.filter(p => p.decision === 'escalate-human'),
+  }
+}
+
 // ===========================================================================
 // PHASE 5.5 — stage-mr: reroute OWNED promotions from a silent mirror copy to a
 // reviewable DRAFT MR (promotion branch on the mirror + MR body). NEVER
@@ -269,8 +461,22 @@ log(`promote: ${nProm} promote, ${nEsc} escalate-human, ${nRej} reject (dryRun=$
 // merges = publish. Byte-identity-when-OFF is preserved for the engine.
 // ===========================================================================
 phase('stage-mr')
-const ownedPassed = gatedClean.filter(g => g.verdict && g.verdict.verdict === 'pass' && g.sel.ownership === 'owned')
-let draftMR = { staged: false, branch: '', body_path: '', files: [], detail: 'no owned promotion this cycle — no MR staged' }
+// Only patches actually APPLIED to the live tree may reach the mirror. Keying on the gate
+// verdict alone let a promote agent die (agent() -> null, nothing written) while its patch was
+// still staged onto the promotion branch, leaving the mirror with a change ~/.claude never got.
+const appliedTargets = new Set(
+  promotions.filter(p => p.applied && p.decision === 'promote').map(p => p.target))
+const ownedPassed = publishBlocked
+  ? []
+  : gatedClean.filter(g => g.verdict && g.verdict.verdict === 'pass'
+      && g.sel.ownership === 'owned'
+      && (DRY || appliedTargets.has(g.sel.target)))
+let draftMR = {
+  staged: false, branch: '', body_path: '', files: [],
+  detail: publishBlocked
+    ? 'the diff guard reported writes outside the declared targets, or could not report at all — no MR staged; a human reviews the working tree first'
+    : 'no owned patch applied this cycle — no MR staged',
+}
 if (ownedPassed.length) {
   const BR = `harnessopt/${TS}`
   const BODY = `${MEMORY}/promotions/${TS}-harness.md`
@@ -301,7 +507,9 @@ log(`stage-mr: staged=${draftMR.staged} branch=${draftMR.branch || '(none)'}`)
 phase('record')
 let record = { ran: false, resolved_signals: [], cycle_note_path: null, detail: 'dry-run or nothing promoted — no log writes' }
 const promotedReal = promotions.filter(p => p.applied && p.decision === 'promote')
-if (!DRY && promotedReal.length) {
+if (publishBlocked) {
+  record = { ran: false, resolved_signals: [], cycle_note_path: null, detail: 'diff guard violated or inconclusive — signals deliberately left open pending human review' }
+} else if (!DRY && promotedReal.length) {
   record = await agent(
     `You are the ${DIRECTOR} RECORDING a harness-evolution cycle in ${LOG}. For each PROMOTED patch below, append a partial-resolved line under its source signal block: \`resolved (SCRIPT half): ${'${'}YYYY-MM-DD from ${TS}${'}'} — <what was fixed; runtime red->green; py_compile/ruff/live-repro/byte-id status>\` for a script, or \`resolved (ENGINE...):\` for ${ENGINE_REL}. NEVER a bare "resolved:" on a mixed script+skill signal (it would hide the still-open skill half from SkillOpt). Then append a short cycle note. Modify only ${LOG}.
 Promoted: ${JSON.stringify(promotedReal)}
@@ -320,7 +528,11 @@ return {
   selected: selected.length,
   dropped,
   gate: gatedClean.map(g => ({ target: g.sel.target, zone: g.sel.zone, ownership: g.sel.ownership, verdict: g.verdict && g.verdict.verdict, red_green: g.run && g.run.red_green_proven, byteid_off: g.run && g.run.byteid_off_pass })),
+  snapshot,
   promotions,
+  diffGuard,
+  rollback: { ...rollback, required: guardViolation },
+  publishBlocked,
   draftMR,
   record,
   humanSeam: promotions.filter(p => p.decision === 'escalate-human'),
