@@ -4,6 +4,7 @@ domain: meta
 triggers:
   - "loaded by every *-director agent via skills frontmatter"
   - "≥3 same-class signals accumulated in skill-evolution-log.md"
+  - "≥6 loop-actionable live signals in one domain (domain-backlog trigger → triage, not a cycle)"
   - "monthly reflection sweep over engagement-reflections.md (Layer 3)"
   - "user explicitly invokes skill-evolution cycle"
   - "drafting / judging bounded edits to skills or agents"
@@ -70,6 +71,14 @@ Fire only when ONE of:
 - An engagement needed **>1 rework round** in this domain.
 - `anti-pattern-detector` fired on a wave in this domain.
 - **≥3 engagements** in this domain show the *same* failure class accumulated in the log.
+- **≥6 loop-actionable live signals in one domain**, whatever their classes (the
+  domain-backlog trigger, `BACKLOG_THRESHOLD` in `skillopt-ready.py`). This fires a TRIAGE,
+  not a cycle — see the next section. The recurrence trigger above asks whether a specific
+  failure repeated, which is the right question for telling a systemic gap from prompt drift.
+  It is blind to a domain producing many DIFFERENT one-off failures. Measured 2026-08-27
+  across the whole log: 28 signals, 25 classes, 23 of them singletons, and exactly one class
+  ever reached 3. On that shape a recurrence-only loop waits for a repeat the corpus does not
+  produce, and stays silent while material piles up.
 - **Reflection sweep pathway:** the `engagement/engagement-reflections.md` files
   (last 30–60 days, this domain) are clustered by **`target × class`**; a cycle fires
   on **cluster size ≥3** OR (once event ledger lands) Langfuse trend Δ thresholds:
@@ -95,7 +104,39 @@ proposer with nothing to close — and `skillopt-ready.py` keeps `ready` compute
 alone for that reason. What the channel changes is what a cycle that some failure already
 earned is allowed to do: without it, every edit this loop has ever authored made the corpus
 more suspicious and nothing ratcheted back. The gate's false-positive floor is the brake on
-that drift; this is the counterweight at the source.
+that drift; this is the counterweight at the source. Emit one with
+`reflect-emit.py --kind worked`.
+
+## Triage (what a domain backlog earns, and why it is not a cycle)
+
+A cycle authors one bounded edit against a **common pattern**. A pile of unrelated signals has
+no common pattern to author against, so firing a cycle on a backlog would ask Codex to write a
+patch for a cause that does not exist. A cross-family review made exactly this objection, and
+it is correct. What a backlog earns instead is a **triage**: a read, not an edit.
+
+Run it before any cycle, and run it on its own when only the backlog trigger fired.
+
+For each live signal in the domain, decide one of four things:
+
+1. **Stale.** The world moved and the signal's premise no longer holds. Append
+   `resolved: <date> - STALE, not fixed. <what changed>` and move on. This is not bookkeeping:
+   an unclosed stale signal inflates every future count.
+2. **Superseded.** Something already closed it, often a direct fix that never came back to
+   update the log. Append `resolved: <date> - <what closed it, with the evidence path>`.
+3. **Belongs to the other loop.** The live half is a script or the engine. Leave it for
+   `harness-ready.py`; the skill half stays here only if a skill genuinely misled someone.
+4. **Still live.** Re-read the failure class against the current corpus and re-key it if the
+   original wording was the reason it never clustered.
+
+Then look again. If the survivors now contain a ≥3 same-class cluster, that is a real cycle
+trigger and the loop proceeds normally. If they do not, the triage IS the deliverable: the log
+is honest again and the loop stays quiet until it has something to optimise on.
+
+**Measured on the first firing, 2026-08-27.** The trigger reported 6 loop-actionable signals in
+dev. Triage closed 2: one pointed at the mid-lead dispatch doctrine retired 2026-06-05, the
+other asked for a consilium-provenance gate that had since been built and validated. Four
+survived, no cluster fell out, and no cycle was warranted. The trigger did its job by saying
+"look here"; calling that look a cycle was the error.
 
 ## The loop
 
@@ -194,7 +235,7 @@ director adjudicates** (mirror of adversary → supreme-judge). FAIL → the edi
   file does not already say*. Judging a success edit by "did it close the failure" would
   fail every one of them for a reason that does not apply.
 
-**False-positive floor (mandatory).** Every gate run also judges the domain's
+**False-positive floor (mandatory, 2026-08-20).** Every gate run also judges the domain's
 non-rejection scenario — `dev/scenario-06`, `design/scenario-04`, `marketing/scenario-04` —
 plus `dev/scenario-07` when the edit touches escalation, dispatch or task-contract rules.
 
@@ -205,7 +246,9 @@ rejects are noise and stops reading them. No catch-the-defect scenario can detec
 
 Adjudication rule: **an edit that closes the targeted failure but fails the false-positive
 floor is a REJECT, not a trade-off to argue in prose.** Record it in `skill-rejected-edits.md`
-naming the floor scenario it broke.
+naming the floor scenario it broke. The runtime counterpart lives in `scripts/metrics.py`: the
+same drift reads as agreement rate falling while override rate climbs, so a floor failure at
+gate time and that metric pair moving together are one signal seen from two sides.
 
 ### 4. Promote (snapshot → apply → diff guard → draft-MR seam)
 
@@ -228,10 +271,11 @@ mirror's `main`:
 
 - **Domain-owned files** (gate-passed): the director opens a promotion branch on the blessed
   mirror (`C:\releases\agentic-workflow\`, `skillopt/<domain>-<ts>`), applies the SAME change
-  there as a surgical delta (preserve the file's line-endings; edit in place rather than
-  copying the whole file over), and writes an **MR body** (reasoning + the batch pattern closed
-  + per-edit gate evidence + slow-update buckets + a Codex-authored/director-judged line) as the
-  review artefact. It does NOT merge and does NOT `git push`. The human reviews `git diff main..<branch>`
+  there as a surgical, already-sanitized delta (preserve line-endings; never blind-copy
+  `~/.claude` — it carries un-scrubbed labels the mirror has cleaned), and writes an **MR body**
+  (reasoning + the batch pattern closed + per-edit gate evidence + slow-update buckets +
+  a Codex-authored/director-judged line) as a *private* review artefact — not committed to the
+  mirror. It does NOT merge and does NOT `git push`. The human reviews `git diff main..<branch>`
   + the MR body and merges = the publish/ship decision; owned MRs are gate-blessed, so the merge
   is an audit + ship gate.
 - **Commons files** (see governance): the director cannot self-promote — it escalates the SAME
@@ -317,7 +361,7 @@ At most `edit_budget` edits. Empty list is a valid output (nothing warranted).
 
 ## Rejection buffer (`skill-evolution-meta.md` is meta; this is separate)
 
-`<your-memory>/skill-rejected-edits.md`, append-only.
+`~/.claude/projects/C--work-projects/memory/skill-rejected-edits.md`, append-only.
 MUST be read before proposing edits. Schema:
 
 ```markdown
@@ -364,7 +408,9 @@ manager/director agent definitions.
 ## Anti-patterns
 
 - **Don't author edits as the director.** Codex authors; you judge. (Kills defend-bias.)
-- **Don't fire on a single failure.** Wait for a ≥3 common pattern. Single = noise.
+- **Don't fire a CYCLE on a single failure, or on a backlog.** A cycle needs a ≥3 common
+  pattern. A backlog earns a triage; a cycle only follows if the triage uncovers a cluster.
+  Single = noise.
 - **Don't run a full auto epoch×batch loop.** No auto-scorer, low volume, expensive. Event-driven only.
 - **Don't pre-gate trivial edits.** Tier by blast radius. But every promotion is post-checked by slow-update — cheaper rigour, not zero coverage.
 - **Don't self-promote a commons edit.** Escalate the reviewable proposal to the human.

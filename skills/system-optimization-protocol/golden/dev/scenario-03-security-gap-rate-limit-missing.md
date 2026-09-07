@@ -19,7 +19,7 @@ predicate fires).
 - The finding cites the file path + route name verbatim
   (`/api/v1/auth/refresh-token`).
 - Methodology field is non-empty (security-auditor is in
-  `_NUMERICAL_VALIDATORS` — must carry methodology per validator_lg).
+  `_NUMERICAL_VALIDATORS` — must carry methodology per the canonical validator envelope).
 
 ## Failure mode it must catch
 
@@ -42,4 +42,4 @@ brute-force.
 
 ## Reference artefacts
 
-(synthetic — no real engagement on record yet; dry-run seed)
+(synthetic — no real engagement on record yet; initial dry-run seed)

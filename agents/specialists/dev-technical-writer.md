@@ -10,6 +10,7 @@ color: green
 skills:
   - documentation-writing
   - engagement-contract
+  - human-voice
 allowed-tools:
   - Read
   - Write

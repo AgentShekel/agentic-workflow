@@ -9,6 +9,12 @@ color: yellow
 skills:
   - pre-deploy-qa
   - testing-methodology
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+  - Write
 ---
 
 Follow the pre-deploy-qa skill methodology loaded above.

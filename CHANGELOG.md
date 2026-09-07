@@ -36,7 +36,7 @@ The skill-evolution loop now learns from what worked, not only from what broke, 
 
 ### Counts
 
-60 agents (Managers 3 · Directors 4 · Leads 3 · Specialists 20 · Validators 30) · 46 skills · 18 main + 3 optional Python scripts · 3 Workflow engines + 2 LangGraph engines.
+60 agents (Managers 3 · Directors 4 · Leads 3 · Specialists 20 · Validators 30) · 46 skills · 23 main + 3 optional Python scripts · 3 Workflow engines + 2 LangGraph engines.
 
 ## v0.5.0 — 2026-06-29 (Harness-evolution loop + four new engine flags + verification-coverage hardening)
 
@@ -61,7 +61,7 @@ Adds a second self-improvement loop — a peer of the existing skill-evolution (
 
 ### Counts
 
-60 agents (Managers 3 · Directors 4 · Leads 3 · Specialists 20 · Validators 30) · 46 skills · 18 main + 3 optional Python scripts · 3 Workflow engines + 2 LangGraph engines.
+60 agents (Managers 3 · Directors 4 · Leads 3 · Specialists 20 · Validators 30) · 46 skills · 23 main + 3 optional Python scripts · 3 Workflow engines + 2 LangGraph engines.
 
 ## v0.4.0 — 2026-06-11 (Engine activation flags + acceptance-protocol split + precheck hardening + conductor ledger)
 

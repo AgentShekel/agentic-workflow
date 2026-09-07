@@ -10,6 +10,10 @@ color: yellow
 skills:
   - post-deploy-qa
   - testing-methodology
+tools-unrestricted: >
+  Drives live verification through whatever MCP the project provides (Playwright, Telegram,
+  curl over Bash). Enumerating those tool names here would couple the agent to the MCP roster
+  and break silently whenever it changes. Declared exception, reviewed 2026-08-27.
 ---
 
 Follow the post-deploy-qa skill methodology loaded above.

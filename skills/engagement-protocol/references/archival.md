@@ -3,7 +3,7 @@
 > Loaded on demand by the manager (acceptor) when writing ACCEPT verdict
 > on an engagement, OR by any session that needs to retry a previously-
 > failed archival. Carved out of the main engagement-protocol body in
-> v0.2.
+> v0.2 (the reference split).
 
 After the manager writes ACCEPT in `acceptance-log.md`, the engagement directory is archived to free the slot for the next engagement. Without archival, leftover artefacts pollute whitelist scans and create cross-engagement confusion (old screens look like current ones, stale plan.md misleads new lead).
 

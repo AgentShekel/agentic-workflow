@@ -1,6 +1,6 @@
 # Project Structure (dev-methodology reference)
 
-Cold reference split out of `dev-methodology/SKILL.md` hot path. Load when you
+Cold reference split out of `dev-methodology/SKILL.md` (S8e skill diet, 2026-06-10). Load when you
 need the on-disk layout of project knowledge, work items, engagement items, or `~/.claude/`. The
 planning hot-path (Development Pipeline + Key Principles) stays in SKILL.md.
 

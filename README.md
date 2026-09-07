@@ -3,7 +3,7 @@
 # agentic-workflow
 
 > Multi-agent framework for Claude Code: 60 agents, 46 methodology
-> skills, 18 + 3 Python orchestration scripts, 3 Workflow orchestration
+> skills, 23 + 3 Python orchestration scripts, 3 Workflow orchestration
 > engines + 2 LangGraph human-gate engines, tier-aware acceptance
 > (S/M/L), filesystem-isolated adversary review, cross-family second
 > opinion via Codex MCP, human as supreme judge at critical transitions.
@@ -28,7 +28,7 @@ flowchart TB
     H["Human layer<br/>Trigger phrase + supreme judge on M/L acceptance + SkillOpt commons-maintainer"]
     A["Agents layer · 60 agents<br/>managers / directors / leads / specialists / validators"]
     S["Skills layer · 46 skills<br/>methodologies, protocols, tool guides"]
-    O["Orchestration layer · 18 + 3 Python scripts<br/>mechanical gates, adversary, consilium, archival, event ledger"]
+    O["Orchestration layer · 23 + 3 Python scripts<br/>mechanical gates, adversary, consilium, archival, event ledger"]
     St["State layer<br/>engagement/ directory · whitelist · append-only logs"]
 
     H <--> A

@@ -58,16 +58,16 @@ engagement/
 ├── screens/                    # MANDATORY for ux_heavy=true — Playwright captures
 │   └── {iteration}/{theme}/    # e.g. iter-1/dark/dashboard.png
 ├── traces/                     # MANDATORY for ux_heavy=true — exercised flow logs (+ ux-review drive-mode evidence)
-│   └── {iteration}/{flow}.json # producer flow traces; ALSO {iteration}/ux-review-{flow}.json (ux-review-authored in drive mode)
+│   └── {iteration}/{flow}.json # producer flow traces; ALSO {iteration}/ux-review-{flow}.json (ux-review-authored in drive mode — S1)
 ├── deploy-log.md               # dev only when deploy boundary crossed
 ├── docs-diff.md                # docs pipeline only
 ├── handoff.md                  # lead, REPLACED per iteration
 ├── acceptance-log.md           # director, append-only
 ├── engagement-reflections.md   # manager, append-only on M/L verdict — ≤3 actionable lessons targeting skill/agent rules (see acceptance-protocol §"Per-engagement reflection")
-└── events.jsonl                # append-only event ledger — lifecycle facts emitted by lib/ledger.py: phase transitions, validator runs, interrupts, verdicts, reflections, replan. Schema in scripts/lib/ledger.py. Forward-only; pre-ledger engagements get a synthetic legacy_import event at first write.
+└── events.jsonl                # append-only event ledger — lifecycle facts emitted by lib/ledger.py: phase transitions, validator runs, interrupts, verdicts, reflections, replan (S3 replan hatch). Schema in scripts/lib/ledger.py. Forward-only; pre-ledger engagements get a synthetic legacy_import event at first write.
 ```
 
-**Per-task contract (gated `A.contracts`, M/L only):** `tasks/{id}.md` MAY additionally carry a `## Contract (co-signed)` section (the per-task acceptance contract). On M/L the engine MAY create a contract-only `tasks/{id}.md` even when `decompose=false` — it is a whitelisted path, not a new artefact type, so this is not a whitelist violation. S-tier never creates contracts. Full schema below (§"`tasks/{id}.md` → `## Contract (co-signed)`").
+**Per-task contract (S2 — gated `A.contracts`, M/L only):** `tasks/{id}.md` MAY additionally carry a `## Contract (co-signed)` section (the per-task acceptance contract). On M/L the engine MAY create a contract-only `tasks/{id}.md` even when `decompose=false` — it is a whitelisted path, not a new artefact type, so this is not a whitelist violation. S-tier never creates contracts. Full schema below (§"`tasks/{id}.md` → `## Contract (co-signed)`").
 
 ### Forbidden (do NOT create)
 
@@ -195,11 +195,11 @@ Pre-flight failure → secretary records the blocking tool in `criteria.md` "out
 - Artefact passed: {path}
 ```
 
-### `plan.md` replan appendix (gated `A.replan`)
+### `plan.md` replan appendix (S3 — gated `A.replan`)
 
 `plan.md` is "mutable until first dispatch, then frozen". ONE exception: when `A.replan` is enabled and a wave hard-stops, the engine appends a `## Replan N — {reason}` section describing the re-planned remaining-waves graph, and emits one `replan` event to `events.jsonl`. This is the only permitted post-first-dispatch mutation of `plan.md` — append-only and audit-logged. Completed waves are locked and never re-scheduled; replanned task ids are suffixed `-r{n}` and must not collide with any prior id. Max one replan per run; a second hard-stop returns the existing error contract.
 
-### `tasks/{id}.md` → `## Contract (co-signed)` (per-task contract, M/L only)
+### `tasks/{id}.md` → `## Contract (co-signed)` (per-task contract, M/L only — S2)
 
 When `A.contracts` is enabled, before a task is implemented the owner proposes ≥1 checkable assertion per cited `crit_ref` (IN-BAND — writes no engagement file), a neutral reviewer amends/accepts AND writes the converged contract into `tasks/{id}.md`, and the owner may contest. Format — one line per assertion: `- {id} [{crit_ref}] ({status}): {assertion} — check_how: {check_how}`.
 
@@ -583,7 +583,7 @@ The only acceptable form of "deferral" is something already listed in `criteria.
 
 ## UX-heavy engagements
 
-Detail moved to **`references/ux-heavy.md`** in v0.2 — load that file when `criteria.md` frontmatter has `ux_heavy ∈ {minor, true}` OR the engagement plan introduces a UI surface. Hot-path summary:
+Detail moved to **`references/ux-heavy.md`** in v0.2 (the reference split) — load that file when `criteria.md` frontmatter has `ux_heavy ∈ {minor, true}` OR the engagement plan introduces a UI surface. Hot-path summary:
 
 - `ux_heavy` is a 3-level gradient: `false` (no UI artefacts), `minor` (one screenshot per touched surface, single theme, traces optional), `true` (Playwright screens both themes + structured trace JSON per flow).
 - Set by secretary at intake from visual / layout / typography / color signals. Lead may promote `false → minor → true` via `scope-sync.md`; never demote.
@@ -594,7 +594,7 @@ Detail moved to **`references/ux-heavy.md`** in v0.2 — load that file when `cr
 
 ## Dangerous operations registry
 
-Detail moved to **`references/dangerous-ops.md`** in v0.2 — load that file when `danger-scan.py` produces a non-empty finding OR when the engagement diff touches schema / migrations / production deploy / secret rotation. Hot-path summary:
+Detail moved to **`references/dangerous-ops.md`** in v0.2 (the reference split) — load that file when `danger-scan.py` produces a non-empty finding OR when the engagement diff touches schema / migrations / production deploy / secret rotation. Hot-path summary:
 
 - 9 operation classes always require explicit user OK (DROP TABLE, force-push, prod deploy, secret rotation, public publish, recursive delete on parents, bulk DELETE without WHERE, migration without rollback, infra teardown).
 - Lead runs `danger-scan.py` before handoff; `handoff-precheck.py` calls it as a sub-check.
@@ -605,7 +605,7 @@ Detail moved to **`references/dangerous-ops.md`** in v0.2 — load that file whe
 
 ## Engagement abort (user pulls the plug mid-engagement)
 
-Detail moved to **`references/abort.md`** in v0.2 — load that file when the user issues an explicit abort directive. Hot-path summary:
+Detail moved to **`references/abort.md`** in v0.2 (the reference split) — load that file when the user issues an explicit abort directive. Hot-path summary:
 
 - Trigger: explicit "стоп / забей / закрой / отменяю / не делай это". NOT triggered by "не уверен / подожди / давай по-другому" (those are scope clarification → loop-to-intake or lead-redispatch).
 - Floor-holder writes stub `acceptance-log.md` with `### Verdict: ABORTED` + verbatim user quote + state snapshot.
@@ -616,7 +616,7 @@ Detail moved to **`references/abort.md`** in v0.2 — load that file when the us
 
 ## Engagement archival (after ACCEPT)
 
-Detail moved to **`references/archival.md`** in v0.2 — load that file when writing ACCEPT verdict OR retrying a previously-failed archival. Hot-path summary:
+Detail moved to **`references/archival.md`** in v0.2 (the reference split) — load that file when writing ACCEPT verdict OR retrying a previously-failed archival. Hot-path summary:
 
 - Order is strict: **verdict → user-facing summary → archival LAST**.
 - Run `python ~/.claude/scripts/engagement-archive.py` (idempotent). Never hand-roll `mv`.
@@ -672,7 +672,7 @@ In the actual `landing-hybrid-header-hero` test we ran: a 200-line dispatch prom
 
 ## Resume policy (interrupted iterations)
 
-Detail moved to **`references/resume.md`** in v0.2 — load that file when resuming an iteration that was interrupted (Task tool cancelled, context compaction, manual user stop). Hot-path summary:
+Detail moved to **`references/resume.md`** in v0.2 (the reference split) — load that file when resuming an iteration that was interrupted (Task tool cancelled, context compaction, manual user stop). Hot-path summary:
 
 - Inspect existing engagement state first; prior-session artefacts are neither automatically valid nor automatically invalid.
 - Heartbeat at resume point MUST list which artefacts you reuse vs regenerate vs delete.
@@ -757,7 +757,7 @@ Omit `--resolution` for a **blocking** conflict — it emits `verdict=REJECT`; y
 
 ### Token budget guard + size auto-promote (Tier 14)
 
-Detail moved to **`references/budget.md`** in v0.2 — load that file when entering Phase 4 (costly subagent waves) or running a heartbeat thereafter. Hot-path summary:
+Detail moved to **`references/budget.md`** in v0.2 (the reference split) — load that file when entering Phase 4 (costly subagent waves) or running a heartbeat thereafter. Hot-path summary:
 
 - Per-tier per-iter budget: S=100k, M=500k, L=1.5M tokens (lead + director combined).
 - Run `python ~/.claude/scripts/token-budget.py engagement/ --json` after each Phase-4+ heartbeat. Exit 1 = over budget; lead chooses auto-promote / scope-sync escalation / accept-partial.
@@ -853,7 +853,7 @@ The individual sub-scripts (`preflight.py`, `handoff-paths-check.py`) can also b
 
 ## Cross-domain handoff
 
-Two-domain engagements (primary + secondary). Detail moved to **`references/cross-domain.md`** in v0.2 — load that file when an engagement crosses domains. Hot-path summary:
+Two-domain engagements (primary + secondary). Detail moved to **`references/cross-domain.md`** in v0.2 (the reference split) — load that file when an engagement crosses domains. Hot-path summary:
 
 - Primary in `engagement/`; secondary in `engagement-secondary/{domain}/` to avoid state collision.
 - Workflow: primary lead → primary director ACCEPT → primary lead initiates secondary (manual) → secondary runs its own full cycle → unified user message after both ACCEPT.
@@ -902,7 +902,7 @@ When two sources of behavior disagree (e.g., agent body says X, loaded skill say
 
 1. **Normative precedence (highest → lowest):**
    `CLAUDE.md` > explicit judge decision > `criteria.md` > PROTOCOL skills > METHODOLOGY skills > agent body > frontmatter.
-2. **criteria.md may add scope / quality bars / preferences, but may not waive mandatory PROTOCOL gates** unless an explicit judge decision records the waiver (logged via §"Dangerous operations registry" or human-directive.md). Likewise a co-signed per-task contract may TIGHTEN the per-task review rubric but may NOT waive a `criteria.md` bar or a PROTOCOL gate — the validate phase / consilium / manager always judge against `criteria.md`, not the contract.
+2. **criteria.md may add scope / quality bars / preferences, but may not waive mandatory PROTOCOL gates** unless an explicit judge decision records the waiver (logged via §"Dangerous operations registry" or human-directive.md). Likewise a co-signed per-task contract (S2) may TIGHTEN the per-task review rubric but may NOT waive a `criteria.md` bar or a PROTOCOL gate — the validate phase / consilium / manager always judge against `criteria.md`, not the contract.
 3. **Frontmatter has zero behavioral authority** — it only declares what must be loaded. Skill `description:` text is not enforceable behavior.
 4. **Agent body may specialize role behavior only where loaded skills are silent.** It never overrides a loaded skill on the same topic; if it appears to, the skill wins.
 5. **Between same-tier skills (two PROTOCOLs, two METHODOLOGYs), the narrower scope wins** unless it weakens a mandatory check; then the stricter rule wins.
@@ -911,7 +911,7 @@ When two sources of behavior disagree (e.g., agent body says X, loaded skill say
 
 **Cross-references:** §"Dangerous operations registry" for protocol-gate waivers. CLAUDE.md §"Anti-patterns" for top-level overrides.
 
-**Producers (wiring landed 2026-05-28):**
+**Producers:**
 
 ```python
 from lib.ledger import EventLedger

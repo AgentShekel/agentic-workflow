@@ -39,6 +39,18 @@ If the plan skips decomposition on a size: L engagement, the handoff gate fails
 - `engagement/tasks/{NN}-{slug}.md` — one file per atomic task
 - `engagement/tasks/INDEX.md` — manifest with wave grouping (optional but recommended for L)
 
+## Integrity rules (read before drafting tasks)
+
+Domain-neutral rules for keeping intent intact across the conversion:
+[decomposition-integrity.md](~/.claude/skills/task-decomposition/references/decomposition-integrity.md).
+
+Non-negotiable subset: every task names its **Source** (the `crit-N` or the `plan.md` section it
+comes from) and repeats the **Common objective**; the source wins on any conflict with task
+wording; a requirement that exists because of a risk carries that risk into `## Non-goals / must
+not break` — in marketing that is usually the claim that must stay backed by data, or the traffic
+the change must not lose; small same-shape edits batch into ONE task instead of one specialist
+seat each; the coverage check in §6 runs before the set goes to the workflow.
+
 ## Atomic task = one of these shapes
 
 A task is "atomic" when it can be re-run in isolation without re-running
@@ -59,7 +71,7 @@ adjacent work. Marketing atoms by domain:
 
 If you can't write a measurable acceptance bullet for the task, it's not atomic — split further.
 
-## Per-task contract (when `A.contracts` is enabled)
+## Per-task contract (S2 — when A.contracts is enabled)
 
 On M/L engagements run with `A.contracts` on, each `tasks/{NN}.md` ALSO carries a `## Contract (co-signed)` section (the per-task acceptance rubric). You do NOT author it — leave it for the engine's contract handshake (owner proposes assertions in-band → reviewer co-signs and writes the section). Schema: `engagement-protocol` §"`tasks/{id}.md` → `## Contract (co-signed)`". It binds the per-task review only and never waives `criteria.md`.
 

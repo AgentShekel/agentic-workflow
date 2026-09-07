@@ -85,18 +85,20 @@ unrelated reason. The rule must catch the gap at TWO layers:
 
 ## Reference artefacts
 
-Derived from a recurring real-world dev failure class, generalized (not a verbatim transcript):
+Derived from the real dev signal ① (2026-06-25), generalized to a class (not mirrored
+verbatim):
 
-- An acceptance log that ACKNOWLEDGED + DEFERRED a "no HTTP-layer e2e test" finding as a
-  "narrow residual" — the same gap then shipped a `POST` endpoint returning 400 on every call
-  (a method-level validation pipe validated the wrong object against the body schema; a large
-  unit + integration suite never drove the real assembled controller path).
-- A follow-up engagement whose exercised HTTP-contract test (a supertest endpoint spec) is what
-  finally caught it — the proof this static edit now makes mandatory for an HTTP surface.
-- Meta-class priors (same theme, different mechanism): a rendered-screen deliverable accepted as
-  "1:1 verified" via DOM/value inspection against a real-width render, and a consilium REJECT
-  for an unexercised interaction in a trace plus a hardcoded value diverging from its configured
-  source.
+- An acceptance log where "no HTTP-layer e2e test" was ACKNOWLEDGED and DEFERRED as a
+  "narrow residual". The same gap then shipped a `POST` endpoint that returned 400 on every
+  call: a method-level validation pipe validated the injected current-user object against the
+  request schema, and 92 unit and integration tests never drove the real controller path.
+- The NEXT engagement's exercised verification is what finally caught it, and the fix was the
+  missing supertest HTTP-layer spec.
+- Meta-class priors, same theme and a different mechanism (context only, not this scenario's
+  fixture): a "1:1 verified" claim made by DOM/value inspection rather than a real
+  narrow-viewport render, and a consilium-fidelity REJECT over an interaction left unexercised
+  in the trace and a value hardcoded instead of read from the model.
 
-These illustrate the class the gate must make unrepresentable: an exercisable surface accepted
-on non-exercised proof.
+> Note: these reference paths are project-local, useful for the director running the gate
+> against real artefacts. If the golden set is ever mirrored to the public repo, this section
+> needs the same sanitization pass as the rest of the commons doc-sync.

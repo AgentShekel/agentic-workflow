@@ -14,6 +14,18 @@ Decompose tech-spec Implementation Tasks into individual task files with paralle
 **Output:** `work/{feature}/tasks/*.md` (validated)
 **Language:** Task files in English, communication in Russian
 
+## Integrity rules (read before Phase 1)
+
+Decomposition is a lossy migration of intent, not a summary. The rules that keep meaning intact
+across the conversion live in one shared file:
+[decomposition-integrity.md](references/decomposition-integrity.md).
+
+Load it before creating tasks. Non-negotiable subset: every task names its **Source** and repeats
+the **Common objective**; the source wins on any conflict with task wording; requirements that
+exist because of a risk carry that risk into `## Non-goals / must not break`; small same-shape
+edits batch into ONE task instead of one seat each; the coverage check in §6 runs before the set
+is handed over.
+
 ## Phase 1: Create Tasks
 
 1. Ask user for feature name if not provided.
@@ -101,7 +113,7 @@ After individual validation passes, run a final cross-task check:
 - [ ] User approved task decomposition
 - [ ] Approval committed
 
-## Per-task contract (when `A.contracts` is enabled)
+## Per-task contract (S2 — when A.contracts is enabled)
 
 On M/L engagements run with `A.contracts` on, each `tasks/{id}.md` ALSO carries a `## Contract (co-signed)` section (the per-task acceptance rubric). You do NOT author it — leave it for the engine's contract handshake (owner proposes assertions in-band → reviewer co-signs and writes the section). Schema: `engagement-protocol` §"`tasks/{id}.md` → `## Contract (co-signed)`". It binds the per-task review only and never waives `criteria.md`.
 

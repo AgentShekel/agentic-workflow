@@ -3,7 +3,7 @@
 # agentic-workflow
 
 > Многоагентная система-фреймворк для Claude Code: 60 агентов, 46
-> методологических skills, 18 + 3 Python-скриптов оркестрации, 3 Workflow
+> методологических skills, 23 + 3 Python-скриптов оркестрации, 3 Workflow
 > движка оркестрации + 2 LangGraph движка human-gate, tier-aware
 > acceptance (S/M/L), filesystem-isolated adversary review, cross-family
 > второе мнение через Codex MCP, человек как supreme judge на критических
@@ -29,7 +29,7 @@ flowchart TB
     H["Human layer<br/>Trigger phrase + supreme judge на M/L + SkillOpt commons-maintainer"]
     A["Agents layer · 60 агентов<br/>managers / directors / leads / specialists / validators"]
     S["Skills layer · 46 skills<br/>методологии, протоколы, tool guides"]
-    O["Orchestration layer · 18 + 3 Python-скрипта<br/>mechanical gates, adversary, consilium, archival, event ledger"]
+    O["Orchestration layer · 23 + 3 Python-скрипта<br/>mechanical gates, adversary, consilium, archival, event ledger"]
     St["State layer<br/>engagement/ directory · whitelist · append-only логи"]
 
     H <--> A

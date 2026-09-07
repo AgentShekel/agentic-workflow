@@ -42,4 +42,4 @@ since it expects `parseCommand`. Drift is discovered post-deploy.
 
 ## Reference artefacts
 
-(synthetic — no real engagement on record yet; dry-run seed)
+(synthetic — no real engagement on record yet; initial dry-run seed)

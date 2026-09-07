@@ -38,4 +38,4 @@ the test was supposed to cover.
 
 ## Reference artefacts
 
-(synthetic — no real engagement on record yet; dry-run seed)
+(synthetic — no real engagement on record yet; initial dry-run seed)

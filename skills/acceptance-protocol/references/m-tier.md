@@ -33,19 +33,19 @@
    > Read/Glob/Grep on the engagement. It is NOT a separate "director sub-process stack" and is NOT
    > "unavailable" inside an agent session. If a role errors on permissions/PATH/venv, that is a bug
    > to fix or escalate ONCE — **never silently skip the consilium or substitute independent-validator
-   > judgment for it** (this exact misdiagnosis once skipped the consilium on an engagement before
-   > the dispatch-gap fix).
+   > judgment for it** (this exact misdiagnosis skipped the consilium on every engagement before the
+   > 2026-06-01 dispatch-gap fix).
    >
-   > **The hang is fixed — "adversary_lg hangs" is NOT valid grounds to waive.** The
+   > **The hang is fixed — "adversary_lg hangs" is NOT valid grounds to waive (2026-06-02).** The
    > empty-timeout reviewer hang (a headless `claude -p`/`codex` blocking on inherited stdin) was
-   > fixed and field-confirmed: a real L engagement ran
+   > fixed and then field-confirmed: a later engagement ran
    > the full L consilium clean — 5/5 roles × 2 iterations, real per-role JSON + a script-generated
    > `consilium-summary.md`, and cross-family Codex caught a real path-traversal the validators
    > missed. A `criteria.md` §note that waives the consilium on "adversary_lg hangs / empty timeout"
    > grounds is now STALE and INVALID — the engine runs in-session; run it. (Cross-repo deliverables
    > — a donor->host transplant — need the host repo granted to the claude-family reviewers: set
-   > `criteria.md` `extra_roots:` or pass `adversary_lg.py --extra-add-dir <host-repo>` for cross-repo
-   > deliverables, do not waive.)
+   > `criteria.md` `extra_roots:` or pass `adversary_lg.py --extra-add-dir <host-repo>` per Finding B,
+   > do not waive.)
 
 5. **Synthesize:**
    ```bash

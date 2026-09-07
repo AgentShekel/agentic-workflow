@@ -22,6 +22,18 @@ These three are the seed set, mapped to the three SkillOpt failure classes
 (rule_ignored / rule_missing / rule_wrong). Population synced with dev:
 both domains now have ≥3 golden scenarios covering all three classes.
 
+## False-positive floor (2026-08-20)
+
+| # | Slug | Class | What it guards |
+|---|---|---|---|
+| 04 | documented-exception-must-not-be-flagged | rule_wrong (inverted) | a documented token exception (large-text-only pair at 3.4:1) and a documented focus-ring deviation still PASS: the size rule is applied, the README is read, severity is not inflated to force a change |
+
+Domain mirror of `golden/dev/scenario-06-clean-work-must-not-be-rejected.md`. Seeds 01-03 all
+reward flagging, so the predictable drift is a checker that reports any ratio under 4.5:1 and
+any deviation from the default component spec without reading the system's own documentation.
+A design system whose documented exceptions the validators cannot honour is a design system
+whose exceptions will be deleted.
+
 ## Adding new scenarios
 
 1. Write a markdown file matching the format in `golden/dev/README.md`.

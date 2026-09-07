@@ -3,7 +3,7 @@
 > Loaded on demand by leads/managers when `danger-scan.py` produces a
 > non-empty finding OR when the engagement diff touches schema /
 > migrations / production deploy / secrets. Carved out of the main
-> engagement-protocol body in v0.2.
+> engagement-protocol body in v0.2 (the reference split).
 
 Some operations have heavy / irreversible consequences (data loss, history rewrite, production damage, infra teardown). Validators check correctness, not authorisation. Authorisation is a separate axis: the user must explicitly OK these ops, even if they are technically clean.
 

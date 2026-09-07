@@ -33,7 +33,7 @@ to guard.}
 inspired the scenario, if any.}
 ```
 
-## Initial set (2026-05-28, initial dry-run seed)
+## Initial set (initial dry-run seed)
 
 | # | Slug | Class | What it guards |
 |---|---|---|---|
@@ -55,17 +55,33 @@ real cycle runs.
 | 05 | http-endpoint-accepted-on-unit-green | rule_wrong | exercised-verification trigger covers HTTP surfaces, not only `ux_heavy: true`; a `POST /…` endpoint deliverable cannot be ACCEPTED on green unit+integration alone with its real-HTTP test deferred as a "narrow residual" — caught at the validation-pipeline matrix + acceptance verdict layers |
 
 Scenario 04 derived from the live dev `acceptance-protocol / rule_missing × 3`
-cluster (an engagement ×2: provenance gate + cross-repo paths;
-an engagement ×1: fidelity-diff). NOT `dryrun` — guards a real cluster
+cluster (×2 provenance gate + cross-repo paths; ×1 fidelity-diff).
+NOT `dryrun` — guards a real cluster
 that is DUE for a cycle; this scenario is its acceptance test + post-edit
 regression floor.
 
-Scenario 05 derived from the live dev verification-coverage cluster — signal ①
-(a field engagement, 2026-06-25), the 3rd hit of the "non-exercised proof
-accepted where real exercise is required" meta-class in ~48h (diary-1.3 →
-front-fidelity → 1.1.3). NOT `dryrun` — guards the HTTP-surface mechanism of that
+Scenario 05 derived from the live dev verification-coverage cluster — the 3rd hit
+of the "non-exercised proof accepted where real exercise is required" meta-class
+inside ~48h. NOT `dryrun` — guards the HTTP-surface mechanism of that
 meta-class; it is the acceptance test for the `validation-pipeline` +
 `acceptance-protocol` (+ `dev-lead` plan-time) edit and the regression floor.
+
+## False-positive floor (2026-08-20)
+
+| # | Slug | Class | What it guards |
+|---|---|---|---|
+| 06 | clean-work-must-not-be-rejected | rule_wrong (inverted) | a genuinely clean deliverable still PASSES: no over-applied HTTP-exercise mandate on a non-HTTP module, no `validation incomplete` where the proof exists, no manufactured architecture objection rated above `info` |
+| 07 | escalation-quality-both-directions | rule_missing | an unresolvable ambiguity IS escalated and a repo-resolvable one is NOT — graded as one pair; a partial pass is a fail |
+
+Scenarios 01-05 all reward CATCHING a defect, so every accepted edit pushes the corpus
+toward suspicion and nothing pushes back. 06 is the missing half: an edit that raises the
+catch rate by failing 06 is a REJECT for the director, not a trade-off to argue in prose.
+Run it with the domain mirrors `design/scenario-04` and `marketing/scenario-04` whenever an
+edit touches validator severity or evidence rules.
+
+07 adds the fourth eval class (capability / regression / session-length / **escalation**).
+It grades both directions at once because a one-sided test rewards a degenerate agent: a
+never-escalate agent passes the second half, an always-escalate agent passes the first.
 
 ## Adding new scenarios
 

@@ -22,6 +22,18 @@ These three are the seed set, mapped to the three SkillOpt failure classes
 (rule_ignored / rule_missing / rule_wrong). Population synced with dev:
 all three domains now have ≥3 golden scenarios covering all three classes.
 
+## False-positive floor (2026-08-20)
+
+| # | Slug | Class | What it guards |
+|---|---|---|---|
+| 04 | sourced-claim-must-not-be-flagged | rule_wrong (inverted) | correctly sourced numeric claims still PASS: the citation is read before the claim is challenged, an honestly-labelled internal count is not held to third-party-audit proof, and readable rounding is not read as vagueness |
+
+Domain mirror of `golden/dev/scenario-06-clean-work-must-not-be-rejected.md`. Seeds 01-03 all
+reward catching under-delivery or unsupported claims; the drift that follows is a validator
+that treats every number as unsupported until it re-derives it personally. The domain-specific
+cost: a corpus that cannot pass sourced claims teaches the writer to strip numbers out of copy,
+and vague copy is the actual business loss.
+
 ## Adding new scenarios
 
 1. Write a markdown file matching the format in `golden/dev/README.md`.

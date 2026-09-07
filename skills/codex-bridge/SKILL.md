@@ -2,7 +2,8 @@
 name: codex-bridge
 domain: meta
 description: |
-  [TOOL] Direct MCP integration with Codex CLI as agency tool. Codex (GPT-5-class) is
+  [TOOL] Direct MCP integration with Codex CLI as agency tool. Codex (frontier OpenAI
+  coding model, currently GPT-6-Astra) is
   available as MCP server, exposing tools `mcp__codex__codex` (start session)
   and `mcp__codex__codex-reply` (continue). Use Codex for: image generation,
   UI mockups, vision/multimodal review, cross-family second opinion. Reference-
@@ -15,13 +16,30 @@ description: |
 
 ## What Codex is and what it brings
 
-Codex CLI (`codex` on PATH, or `%LOCALAPPDATA%\OpenAI\Codex\bin\codex.exe` on Windows; v0.129.0-alpha.15+) runs as an MCP server (`codex mcp-server`), connected to Claude Code via project-level `.mcp.json`. Authenticated via the user's ChatGPT subscription (no separate API key needed).
+Codex CLI runs as an MCP server (`codex mcp-server`), connected to Claude Code via project-level `.mcp.json` plus the user-level `mcpServers` entry in `~/.claude.json`. Authenticated via the user's ChatGPT subscription (no separate API key needed).
+
+**Binary path — one source of truth.** Both registrations MUST point at the npm-global install, the same binary `adversary_lg.py` resolves through `shutil.which("codex")`:
+
+```
+<npm-global>/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe
+```
+
+Resolve it once with `npm root -g` (or `where codex` / `which codex`) and use that same path in
+both registrations. Worth re-checking on a schedule: probe what the MCP client would actually
+launch (an `initialize` handshake plus `tools/list`), compare that binary's version against the one
+the consilium resolves through PATH, and confirm `codex login status`. A registration pointing at a
+binary that no longer matches is the failure this section exists to prevent.
+
+Do NOT point them at `%LOCALAPPDATA%\OpenAI\Codex\bin\codex.exe`. That is the Codex desktop app's launcher; it lags the app's real binary (which lives in a per-version hash subdirectory that changes on every update), so it silently rots into an old release that rejects config keys the current app writes. That divergence is the 2026-08-27 breakage: `codex exec` kept working on the npm binary while the MCP server died on the stale one, taking every visual specialist offline without touching the adversary consilium. See `memory/codex-mcp-config.md` for the diagnostic sequence.
 
 Through MCP, two tools are exposed:
 - `mcp__codex__codex` — start a Codex session with prompt + config
 - `mcp__codex__codex-reply` — continue a thread by id + new prompt
 
-Underlying model: GPT-5-based coding agent with capabilities:
+Underlying model: whatever `model` is set to in `~/.codex/config.toml` — currently
+`gpt-6-astra`. The agency deliberately does NOT pin a model at the call site (neither
+`adversary_lg.py` nor any workflow passes one), so one config line moves both the MCP
+and the `codex exec` path together. Capabilities:
 - **Image generation and editing** (DALL-E 3 / gpt-image-1 class)
 - Web lookup
 - PowerShell shell access (read-only by default, configurable)
@@ -102,23 +120,29 @@ Codex will:
 | `approval-policy` | uses Codex config | `"never"` for unattended automation; `"untrusted"` to require human approval per shell command |
 | `sandbox` | uses Codex config | `"workspace-write"` to write files in cwd; `"read-only"` for analysis-only; `"danger-full-access"` to lift sandbox (rarely needed) |
 | `cwd` | current dir | absolute path to engagement/ when generating engagement assets |
-| `model` | Codex default (uses ChatGPT subscription) | DO NOT pass `gpt-5` — not supported via ChatGPT subscription. Leave default. |
+| `model` | `~/.codex/config.toml` (rides the ChatGPT subscription) | Leave unset. The account gates which ids it will serve — an unavailable one fails the whole call. Change the model in the config, not here, so both Codex paths move together. |
 
 ### Multi-turn refinement
 
 For iterative work (refine output, generate variants):
 
 ```python
-# First call returns a thread_id in the response
+# First call returns a thread id in the response
 result = mcp__codex__codex({...})
 thread_id = parse_thread_id(result)
 
-# Subsequent refinements use codex-reply with thread_id
+# Subsequent refinements use codex-reply
 mcp__codex__codex-reply({
-    "thread_id": thread_id,
+    "threadId": thread_id,
     "prompt": "Variant 2: same composition but with a square mark instead of geometric inner shape."
 })
 ```
+
+The parameter is `threadId`. `conversationId` still works but its own schema marks it DEPRECATED.
+There is no `thread_id` argument: the schema declares only `prompt` as required, so a snake_case key
+is dropped silently and the call opens a session that never saw the first prompt. That reads as
+"Codex ignored the refinement", not as an error. Re-probe the live schema (`codex mcp-server`,
+`tools/list`) after a Codex update rather than trusting this line.
 
 ## Engagement integration: codex-outputs/ artefact
 
@@ -194,7 +218,8 @@ This is functionally equivalent to `adversary_lg.py --role codex-blind` but with
 
 ## Anti-patterns
 
-- **Don't pass `model: "gpt-5"`** — ChatGPT subscription rejects it. Leave model unset (Codex picks compatible default).
+- **Don't pass `model` at all.** The ChatGPT subscription serves only some ids, and a call naming one it does not serve fails outright. Set the model once in `~/.codex/config.toml`; every call inherits it.
+- **After changing the model, restart the session.** The MCP roster is fixed at session start, so a running session keeps the binary it started with — and a model newer than that binary fails per-invocation with "requires a newer version of Codex" even though the config is correct.
 - **Don't use sandbox `danger-full-access`** unless engagement explicitly requires write outside engagement/ (extremely rare).
 - **Don't generate images directly into `engagement/brand/` or `engagement/ui/`** — pair structure: generate to `engagement/codex-outputs/`, then specialist promotes to final location after verification.
 - **Don't skip the verification step** — agent must Read the generated image and confirm it roughly matches the prompt before integrating.
@@ -206,7 +231,7 @@ This is functionally equivalent to `adversary_lg.py --role codex-blind` but with
 
 If output doesn't satisfy criteria after first call:
 
-1. Call `mcp__codex__codex-reply` with thread_id and refinement prompt.
+1. Call `mcp__codex__codex-reply` with `threadId` and refinement prompt.
 2. Max 3 refinement rounds per asset before escalating to user (or trying alternative tool, e.g. Gemini).
 3. Each refinement round logged in validation-log.md with `## Refinement N` heading and brief delta.
 
@@ -228,10 +253,13 @@ Uses ChatGPT subscription quota. No separate billing if subscription is active. 
 
 ```
 Tool name (MCP):         mcp__codex__codex
-Continue same session:   mcp__codex__codex-reply (with thread_id)
+Continue same session:   mcp__codex__codex-reply (with threadId)
+Binary both paths use:   %APPDATA%\npm\node_modules\@openai\codex\...\bin\codex.exe (npm-global)
+Health check:            codex login status  →  "Logged in using ChatGPT", exit 0
+                         echo '{"jsonrpc":"2.0","id":1,"method":"initialize", ...}' | codex mcp-server
 
 Must-pass args:          prompt, approval-policy, sandbox, cwd
-Don't pass:              model: "gpt-5" (ChatGPT subscription rejects)
+Don't pass:              model (set it in ~/.codex/config.toml instead)
 
 Where outputs go:        engagement/codex-outputs/{slug}.png
 Audit log:               engagement/validation-log.md → ## codex-bridge invocations

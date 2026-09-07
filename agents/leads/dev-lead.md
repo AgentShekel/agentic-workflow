@@ -20,6 +20,7 @@ skills:
   - user-spec-planning
   - tech-spec-planning
   - task-decomposition
+  - human-voice
 allowed-tools:
   - Read
   - Write

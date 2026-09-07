@@ -65,7 +65,7 @@ Every Task-tool dispatch to a validator agent must end with the lead writing the
 
 If a validator returns text instead of JSON (older agent / human-readable mode) — wrap it: `{"format": "text", "verdict": "...", "raw": "..."}` and save. The wrapper is acceptable; missing file is not.
 
-**Per re-run, not just per validator.** A validator RE-RUN after rework at iteration N writes its OWN `{validator}-iter-N-{ts}.json` — a prior `iter-1` output does NOT satisfy an `iter-2` re-run. Every `(re-run)` entry in `validation-log.md` must cite that `output:` path. `handoff-precheck.py`'s per-validator freshness check WARNs on a `(re-run)` entry whose `{validator}-iter-N` output is missing (claimed-without-proof — a field engagement, 2026-06-26: a logged `test-reviewer (re-run)` with no `test-reviewer-iter-2` slipped past the old any-iter-N check).
+**Per re-run, not just per validator.** A validator RE-RUN after rework at iteration N writes its OWN `{validator}-iter-N-{ts}.json` — a prior `iter-1` output does NOT satisfy an `iter-2` re-run. Every `(re-run)` entry in `validation-log.md` must cite that `output:` path. `handoff-precheck.py`'s per-validator freshness check WARNs on a `(re-run)` entry whose `{validator}-iter-N` output is missing (claimed-without-proof, seen in the field: a logged `test-reviewer (re-run)` with no `test-reviewer-iter-2` slipped past the old any-iter-N check).
 
 ### Concurrency rules (preventing race corruption)
 
@@ -97,6 +97,14 @@ python ~/.claude/scripts/validator_lg.py engagement/ --auto --resume
 Anti-pattern: editing the JSON file by hand to "fix" it. Re-dispatch is the only valid recovery — hand-edits hide the original validator's actual finding.
 
 ## Domain matrix — mandatory validators
+
+### All domains, before the waves run
+
+| Condition | Validator | Owner |
+|---|---|---|
+| A `tasks/` set was produced (any domain) | `anti-pattern-detector` with `mode=tasks` | mandatory when `tasks/` exists |
+
+This one runs BEFORE dispatch, not after it, and it is the only entry in this file that does. A decomposition defect (umbrella task, missing source anchor or common objective, dropped non-goals, same-shape work split across one specialist seat each) costs one edit here and a whole wave once the specialists are already running. Rubric: `~/.claude/skills/task-decomposition/references/decomposition-integrity.md`. The `mode=diff` and `mode=executor-reports` runs of the same validator stay dev-only and stay after the waves; see the Dev table below.
 
 ### Marketing
 
@@ -197,7 +205,7 @@ The output contract is IDENTICAL across paths — the same `validation-outputs/{
    # Crash-resume after partial failure:
    python ~/.claude/scripts/validator_lg.py engagement/ --auto --resume
 
-   # M/L tier — pause for human directive on any critical finding (the critical-pause HITL, 2026-05-28):
+   # M/L tier — pause for human directive on any critical finding:
    python ~/.claude/scripts/validator_lg.py engagement/ --auto --interrupt-on-critical
    # Graph pauses at critical_check; prints thread_id + resume hint to stderr.
    # Manager / human inspects validation-outputs/ and resumes:
@@ -215,7 +223,7 @@ The output contract is IDENTICAL across paths — the same `validation-outputs/{
 
    Output contract is IDENTICAL to manual dispatch — `handoff-precheck.py` and director acceptance consume the same `validation-outputs/{validator}-iter-{N}-{ts}.json` files unchanged.
 
-   **the canonical-output envelope (Event-ledger layer, 2026-05-28):** every `validation-outputs/*.json` file written by `validator_lg.py` now carries a `canonical` block alongside the raw validator output. The canonical schema is the cross-validator stable shape that downstream consumers (manager, Langfuse, analytics) read:
+   **Canonical envelope:** every `validation-outputs/*.json` file written by `validator_lg.py` now carries a `canonical` block alongside the raw validator output. The canonical schema is the cross-validator stable shape that downstream consumers (manager, Langfuse, analytics) read:
 
    ```json
    {

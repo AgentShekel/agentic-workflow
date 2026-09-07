@@ -183,7 +183,7 @@ Tasks can be code, user-action, deploy, config, or verification — task nature 
 ## Project Structure
 
 On-disk layout (project knowledge, work items, engagement items, `~/.claude/`) moved to
-**`references/project-structure.md`** (extracted to a reference) — load it when you need the
+**`references/project-structure.md`** (S8e skill diet, 2026-06-10) — load it when you need the
 directory layout. Hot path: Project Knowledge = `.claude/skills/project-knowledge/references/`
 (project/architecture/patterns/deployment/ux-guidelines); work items under `work/{feature}/`;
 engagement items under `engagement/` (see `engagement-protocol`).
@@ -259,13 +259,13 @@ Current distribution: 15 opus / 35 sonnet / 8 haiku (58 agents). Validate with `
 
 ## Skills Ecosystem
 
-Per-category skill catalog (Planning / Execution / Quality & Review / Meta / Agency Cross-Cutting — ~22 skills, ~50 lines of one-liners) moved to **`references/skills-ecosystem.md`** in v0.2. Load that file when picking a specific skill to load for a sub-task.
+Per-category skill catalog (Planning / Execution / Quality & Review / Meta / Agency Cross-Cutting — ~22 skills, ~50 lines of one-liners) moved to **`references/skills-ecosystem.md`** in v0.2 (the reference split). Load that file when picking a specific skill to load for a sub-task.
 
 → Full per-category catalog: `references/skills-ecosystem.md`.
 
 ## Agents
 
-Per-role agent catalog (Dev Track Leadership / Validators / Reviewers / Engineers / Research / QA / Meta — ~33 agents, ~55 lines of one-liners) moved to **`references/agents.md`** in v0.2. Load that file when identifying which sibling agent to dispatch for a sub-task.
+Per-role agent catalog (Dev Track Leadership / Validators / Reviewers / Engineers / Research / QA / Meta — ~33 agents, ~55 lines of one-liners) moved to **`references/agents.md`** in v0.2 (the reference split). Load that file when identifying which sibling agent to dispatch for a sub-task.
 
 Agents are isolated subprocesses with fresh context: receive input, do one job, return structured output. The dev domain currently has 2 leadership roles (dev-lead planning + dev-tech-architect), 10 validators, 10 reviewers, 6 engineers, 1 researcher, 2 QA roles, and 1 meta validator.
 

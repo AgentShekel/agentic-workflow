@@ -101,7 +101,7 @@ reflection, so the log's `resolved:` covers both.
   evidence: {artefact path that shows it}
 ```
 
-Two bullets sharing a `target × class` make that pattern available as reinforcement fuel (Channel C, threshold 2). They never trigger a cycle on their own, and inside a cycle a corrective edit beats a reinforcement edit on every conflict.
+Two bullets sharing a `target × class` make that pattern available as reinforcement fuel (Channel C, threshold 2). They never trigger a cycle on their own, and inside a cycle a corrective edit beats a reinforcement edit on every conflict. Emit with `reflect-emit.py --kind worked` when hand-driving.
 
 **Zero reflections is a valid outcome** — a clean engagement with nothing to change and no rule worth naming should leave `engagement-reflections.md` empty (file may not exist at all). Inventing reflections of either kind to look productive corrupts the signal.
 

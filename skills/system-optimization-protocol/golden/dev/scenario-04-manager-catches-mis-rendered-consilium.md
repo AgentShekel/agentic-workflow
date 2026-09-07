@@ -65,12 +65,18 @@ ACCEPT* — is lost. The rule must catch both divergence sources:
 
 ## Reference artefacts
 
-Generalized from a real dev acceptance cluster (a failure class, not mirrored verbatim):
+Inspired by the real dev `acceptance-protocol / rule_missing × 3` cluster (generalized to
+a class, not mirrored verbatim):
 
-- **Fidelity case:** a `consilium-summary.md` "Manual peer-Opus pass" ("everything else
-  satisfied … no phantom claims") vs a raw `validation-outputs/peer-opus-iter-1-*.json`
-  (verdict `rework_required`, several findings, ≥2 confirmed critical) and an `events.jsonl`
-  `consilium_role_completed` verdict=REJECT. The manager catches it only by reading the raw
-  JSON (acceptance-log iter 1, the suppressed criticals SUSTAINED).
-- **Provenance variant:** `consilium-summary.md` present, backing adversary role-JSON absent
-  (a provenance gap) + cross-repo path verification.
+- The **fidelity** case: a `consilium-summary.md` describing a manual peer pass as
+  "everything else satisfied, no phantom claims", against a raw
+  `validation-outputs/peer-opus-iter-1-*.json` carrying verdict `rework_required`, nine
+  findings and two confirmed criticals, plus an `events.jsonl` `consilium_role_completed`
+  with verdict=REJECT. The manager caught it only by reading the raw JSON, and sustained
+  both criticals in the acceptance log.
+- The **provenance** variant: a consilium-summary present with no backing adversary JSON at
+  all, together with cross-repo path verification.
+
+> Note: these reference paths are project-local and useful for the director running the
+> gate against real artefacts. If the golden set is ever mirrored to the public repo, this
+> section needs the same sanitization pass as the rest of the commons doc-sync.

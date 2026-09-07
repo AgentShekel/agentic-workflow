@@ -8,6 +8,7 @@ color: green
 skills:
   - brand-methodology
   - engagement-contract
+  - human-voice
 allowed-tools:
   - Read
   - Write

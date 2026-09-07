@@ -20,6 +20,7 @@ skills:
   - yandex-analytics-methodology
   - ai-visibility-methodology
   - semantic-drift-methodology
+  - human-voice
 allowed-tools:
   - Read
   - Write

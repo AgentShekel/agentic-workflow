@@ -23,6 +23,7 @@ skills:
   - design-assets-guide
   - presentation-design
   - ui-styling-guide
+  - human-voice
 allowed-tools:
   - Read
   - Write

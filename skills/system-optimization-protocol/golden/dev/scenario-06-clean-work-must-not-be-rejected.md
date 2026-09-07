@@ -59,9 +59,9 @@ every catch-the-defect scenario.
 The `system-optimization-protocol` gate asks "does the edit still catch what it caught before".
 This scenario adds the missing half: "does the edit still let clean work through". An edit that
 raises the catch rate by lowering the pass rate on this scenario is a REJECT for the director,
-not a trade-off to be argued in prose. The runtime counterpart is the false-positive rate: a
-corpus whose validators cannot pass scenario 06 will show agreement rate falling while override
-rate climbs, which is the same drift seen from the metrics side.
+not a trade-off to be argued in prose. Pair it with the `false_positive_rate` reading in
+`scripts/metrics.py`: a corpus whose validators cannot pass scenario 06 will show agreement
+rate falling while override rate climbs, which is the same drift seen from the metrics side.
 
 ## Reference artefacts
 

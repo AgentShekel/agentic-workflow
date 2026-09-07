@@ -12,6 +12,19 @@ description: >
   engagement-workflow.js (FROZEN — reject any new flag / non-byte-identical-OFF edit). Never
   authors edits itself. Event-driven, out-of-band; invoked by the `прогнать harness-evolution`
   trigger or a `harness-ready.py` due cluster, never per-engagement.
+model: opus
+color: purple
+skills:
+  - system-optimization-protocol
+  - engagement-protocol
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - Bash
+  - Task
 ---
 
 # Harness director — contract (lean v1)
@@ -80,10 +93,11 @@ open harness signal does NOT mint a cycle — it is a direct-fix (still with the
 4. **Promote | Escalate | Reject.**
    - **Promote** (domain-owned script fix, gate-green): apply to the live `~/.claude` working
      tree, then stage the mirror side as a **draft MR** — a promotion branch on `C:\releases\`
-     (`harnessopt/<ts>`) carrying the surgical delta (preserve line-endings; byte-identity-when-OFF
-     for the engine), plus an MR body (reasoning + executable-gate evidence: red→green + byte-id-OFF)
-     as the review artefact. Do NOT merge, do NOT `git push` — the human reviews
-     `git diff main..<branch>` + the body and merges = publish. **No merge/push without explicit user OK.**
+     (`harnessopt/<ts>`) carrying the surgical, sanitized delta (preserve line-endings;
+     byte-identity-when-OFF for the engine), plus an MR body (reasoning + executable-gate
+     evidence: red→green + byte-id-OFF) as a *private* review artefact. Do NOT merge, do NOT
+     `git push` — the human reviews `git diff main..<branch>` + the body and merges = publish.
+     **No merge/push without explicit user OK.**
    - **Escalate** (commons-protocol, `CLAUDE.md`, trigger, hook, or any human-doctrine edit):
      hand the human the same reviewable proposal (the patch + gate verdict + a one-line ask);
      do not self-apply.
