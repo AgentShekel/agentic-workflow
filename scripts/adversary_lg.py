@@ -112,7 +112,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send, Command, interrupt
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-# Event-ledger layer — append-only event ledger. Optional dependency: graceful no-op
+# append-only event ledger. Optional dependency: graceful no-op
 # when lib.ledger import fails (so adversary_lg.py works on stripped installs).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
@@ -704,7 +704,7 @@ class SubprocessInvoker(Invoker):
         # runs in default permission mode where every Read is denied in -p mode, so
         # the role reports "permission_denied_all_engagement_files" and produces no
         # verdict — the dispatch-environment gap that silently skipped the consilium
-        # on every prior engagement (diagnosed an early engagement L impl, 2026-06-01).
+        # on every prior engagement (diagnosed in the field).
         # Read-only grant (Read/Glob/Grep): the reviewer inspects artefacts and
         # prints JSON; it never edits, runs Bash, or deploys.
         cmd = [claude, "-p", prompt, "--model", model,
@@ -716,7 +716,7 @@ class SubprocessInvoker(Invoker):
             # prompt arg; an inherited never-closing pipe in the orchestrator
             # subprocess context blocks it to the role timeout with empty stdout
             # (the consilium-reviewer empty-timeout hang, diagnosed
-            # an engagement 2026-06-01). DEVNULL = instant EOF,
+            # seen in the field). DEVNULL = instant EOF,
             # so it proceeds with the argv prompt instead of hanging.
             r = subprocess.run(cmd, capture_output=True, text=True,
                                encoding="utf-8", errors="replace",
@@ -739,7 +739,7 @@ class SubprocessInvoker(Invoker):
         # via ~/.codex/auth.json — no API key; sandbox read-only). --skip-git-repo-check
         # is REQUIRED: reviewers run in a curated temp dir that is not a git repo, and
         # without it codex exits 1 "Not inside a trusted directory" with empty stdout
-        # (the 2026-06-04 an engagement "codex unreachable" root cause — the CLI IS installed).
+        # (the observed "codex unreachable" root cause — the CLI IS installed).
         for variant in ([codex, "exec", "--skip-git-repo-check", prompt],
                         [codex, "exec", prompt], [codex, prompt]):
             try:
@@ -954,13 +954,13 @@ def _find_completed_roles(eng: Path, iter_n: int) -> set[str]:
 
 
 # Cross-repo reviewer access (Finding B — field-confirmed on
-# an early multi-wave engagement, 2026-06-02). A claude-family reviewer is
+# seen in the field). A claude-family reviewer is
 # granted --add-dir for the curated copy (Pass 1) and the engagement dir (Pass 2)
 # only. When a deliverable lives in a DIFFERENT repo than the engagement dir (a
 # donor->host transplant: engagement in the donor repo, D6 mirrored to the host
 # repo's docs/), the reviewer hits "path outside allowed working directories" on
 # the host repo and reviews it semi-blind (peer-opus + sonnet preliminary both
-# blinded on the host a project docs path  mirror; codex roles read it via codex
+# blinded on the host project's docs/ mirror; codex roles read it via codex
 # exec's broader fs access, so the consilium converged — but the claude-side blind
 # spot is real). _EXTRA_ADD_DIRS holds opt-in extra roots (criteria.md frontmatter
 # `extra_roots:` and/or CLI --extra-add-dir), appended to BOTH passes. Default []
@@ -1188,9 +1188,9 @@ class ConsiliumState(TypedDict, total=False):
     peer_findings: str
     # Reducer key — every role node appends here, results merge across the fan-out.
     results: Annotated[list[dict], operator.add]
-    # Auto-synth output (auto-synth): consilium-synth.py JSON result if it ran.
+    # Auto-synth output: consilium-synth.py JSON result if it ran.
     synth_result: dict
-    # the HITL pause — native HITL via interrupt():
+    # Native HITL via interrupt():
     # Whether to pause for human directive after auto-synth.
     interrupt_enabled: bool
     # Captured human directive once resumed (from Command(resume=...)).
@@ -1291,7 +1291,7 @@ def _make_finalize_node(auto_synth: bool):
         # downstream interrupt stalls and the operator kills the run, this is the
         # last line they see — a completed-but-unsynthed consilium then reads as
         # "roles ran, N FINALs written", not "never ran" (the mis-read behind two
-        # field substitutions: recent engagements 2026-06-01, a field engagement 2026-06-25).
+        # observed field substitutions).
         try:
             _done_sig = sorted(_find_completed_roles(Path(state["engagement"]), state["iter_n"]))
             print(f"[consilium] iter {state['iter_n']}: {len(_done_sig)} role FINAL(s) "
@@ -1379,7 +1379,7 @@ def _make_finalize_node(auto_synth: bool):
 
 
 def _present_node(state: ConsiliumState) -> dict:
-    """the HITL pause — invoke consilium-present.py to format chat-ready summary.
+    """Invoke consilium-present.py to format chat-ready summary.
 
     Runs only when interrupt is enabled AND synth produced a summary. Output
     goes to stderr so JSON stdout stays clean. The actual interrupt happens
@@ -1426,7 +1426,7 @@ def _present_node(state: ConsiliumState) -> dict:
 
 
 def _interrupt_apply_directive_node(state: ConsiliumState) -> dict:
-    """the HITL pause — native HITL pause via interrupt() + apply directive on resume.
+    """Native HITL pause via interrupt() + apply directive on resume.
 
     Pattern: graph pauses at interrupt(); operator runs:
 
@@ -1516,7 +1516,8 @@ def _interrupt_apply_directive_node(state: ConsiliumState) -> dict:
 
     try:
         r = subprocess.run(cmd, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=30)
+                           encoding="utf-8", errors="replace",
+                           stdin=subprocess.DEVNULL, timeout=30)
         if r.returncode == 0:
             _ledger_emit(
                 "human_directive_received",
@@ -1685,7 +1686,7 @@ def build_graph(invoker: Invoker, checkpointer, resume: bool = False,
     builder.add_node("barrier", _barrier_node)
     builder.add_node("note_skipped_ci", _note_skipped_ci_node)
     builder.add_node("finalize", finalize_node)
-    # the HITL pause: optional HITL pause-and-resume branch.
+    # Optional HITL pause-and-resume branch.
     builder.add_node("present", _present_node)
     builder.add_node("interrupt_apply_directive", _interrupt_apply_directive_node)
 
@@ -1699,7 +1700,7 @@ def build_graph(invoker: Invoker, checkpointer, resume: bool = False,
     )
     builder.add_edge("run_role_p2", "finalize")
     builder.add_edge("note_skipped_ci", "finalize")
-    # the HITL pause: route either to END (default) or through HITL branch.
+    # Route either to END (default) or through HITL branch.
     builder.add_conditional_edges(
         "finalize", _route_after_finalize, ["present", END],
     )
@@ -1786,7 +1787,7 @@ Invoker billing model
 
 
 def _resume_interrupted(args) -> int:
-    """the HITL pause — resume a graph paused at interrupt() with a human directive.
+    """Resume a graph paused at interrupt() with a human directive.
 
     Replays via Command(resume={...}). The graph picks up at
     _interrupt_apply_directive_node, validates the directive, invokes
@@ -1873,7 +1874,7 @@ def main() -> int:
                              "consilium-summary.md is written in the same command. --no-synth "
                              "restores the older two-step flow.")
     parser.add_argument("--interrupt", action="store_true",
-                        help="the HITL pause: pause after auto-synth for native HITL via interrupt(). "
+                        help="Pause after auto-synth for native HITL via interrupt(). "
                              "Graph runs roles → synth → presents chat summary to stderr → pauses. "
                              "Operator resumes with: --resume-interrupt <thread_id> "
                              "--decision PROCEED|REJECT|DIRECTED [--reasons ...] [--note ...] "
@@ -1907,7 +1908,7 @@ def main() -> int:
     if not args.engagement:
         parser.error("engagement path is required (unless --help-billing)")
 
-    # the HITL pause: resume-interrupt is its own short path — no need for --role/--consilium.
+    # resume-interrupt is its own short path — no need for --role/--consilium.
     if args.resume_interrupt:
         if not args.decision:
             parser.error("--resume-interrupt requires --decision PROCEED|REJECT|DIRECTED")
@@ -1920,7 +1921,7 @@ def main() -> int:
     if not args.role and not args.consilium:
         parser.error("one of --role or --consilium is required")
 
-    # the HITL pause: --interrupt only valid for consilium runs (single-role doesn't synth).
+    # --interrupt only valid for consilium runs (single-role doesn't synth).
     if args.interrupt and not args.consilium:
         parser.error("--interrupt requires --consilium {M|L} (single-role doesn't pause)")
     if args.interrupt and args.no_synth:
@@ -1952,7 +1953,7 @@ def main() -> int:
         roles = list(CONSILIUM[tier])
         label = f"consilium-{tier}"
 
-    # Event-ledger layer — initialize event ledger (no-op when lib.ledger import failed).
+    # initialize event ledger (no-op when lib.ledger import failed).
     global _RUN_LEDGER
     if _LEDGER_AVAILABLE:
         try:
@@ -2008,7 +2009,7 @@ def main() -> int:
             "interrupt_enabled": bool(args.interrupt),
         }
         final_state = graph.invoke(init_state, config)
-        # the HITL pause: if --interrupt was set, the graph paused at interrupt().
+        # If --interrupt was set, the graph paused at interrupt().
         # Detect by presence of an __interrupt__ key OR absence of human_directive_result.
         if args.interrupt:
             paused = bool(final_state.get("__interrupt__"))
@@ -2016,7 +2017,7 @@ def main() -> int:
             if paused or no_directive:
                 thread_id = config["configurable"]["thread_id"]
                 print("\n" + "=" * 70, file=sys.stderr)
-                print("GRAPH PAUSED for human directive (the HITL pause).", file=sys.stderr)
+                print("GRAPH PAUSED for human directive.", file=sys.stderr)
                 print(f"  thread_id: {thread_id}", file=sys.stderr)
                 print("  Resume command:", file=sys.stderr)
                 print(f"    python {Path(__file__).name} {eng} "

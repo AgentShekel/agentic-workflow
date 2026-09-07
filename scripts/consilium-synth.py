@@ -93,7 +93,7 @@ def load_outputs(eng: Path, iter_n: int) -> list[dict]:
 def text_similarity(a: str, b: str) -> float:
     # Empty / whitespace-only issue text is NOT evidence of sameness: SequenceMatcher
     # returns 1.0 for two empty strings, which degenerately collapses blank-issue findings
-    # into a single "1 blank MINOR" cluster (the real-engagement consilium-synth bug).
+    # into a single "1 blank MINOR" cluster (a real consilium-synth bug).
     # A missing description means "cannot judge similarity" -> keep the findings separate.
     if not a.strip() or not b.strip():
         return 0.0
@@ -322,7 +322,7 @@ def determine_aggregate_verdict(
         o["role"] for o in outputs if o["data"].get("verdict") == "rework_required"
     )
     # rework_required MUST dominate the softer director_review signals below: the aggregate
-    # may never be softer than the strongest constituent verdict (the real-engagement
+    # may never be softer than the strongest constituent verdict (the same
     # "aggregate softer than constituent" bug, where a real rework_required reviewer was
     # downgraded to director_review by a co-occurring naive-catch flag).
     if critical_convergent or rework_reviewers:

@@ -58,6 +58,7 @@ except Exception:
     pass
 
 import argparse
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -164,6 +165,47 @@ def build_directive_body(
     return "\n".join(lines).rstrip() + "\n"
 
 
+def emit_gate_decision(eng: Path, decision: str, iter_n: int,
+                       counts: dict | None = None) -> None:
+    """Record the human gate decision in the ledger. BEST-EFFORT.
+
+    Why here and not in the engine: the workflow script has no filesystem access
+    (it drives agents, it does not write), and this script is the one place every
+    human gate decision physically passes through. Before this, override rate was
+    recoverable only by hand-parsing acceptance-log prose, and only 11 of 15
+    engagements even carried a canonical verdict line to parse.
+
+    Never raises: an observability failure must not block a decision the human
+    has already made.
+    """
+    canonical = {
+        "PROCEED_TO_VERDICT": "PROCEED",
+        "REJECT_NOW": "REJECT",
+        "DIRECTED_VERDICT": "DIRECTED",
+    }.get(decision)
+    if not canonical:
+        return
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from lib.ledger import EventLedger
+
+        payload = {"decision": canonical, "gate": "human-directive",
+                   "raw_decision": decision, "iter": iter_n}
+        if counts:
+            payload.update(counts)
+        EventLedger(eng, agent="human").emit(
+            "gate_decision", node="gate:human-directive", payload=payload,
+            verdict=(canonical if canonical != "PROCEED" else None))
+    except Exception as e:  # noqa: BLE001 — observability never blocks the gate
+        print(f"WARNING: gate_decision not recorded ({e})", file=sys.stderr)
+
+
+def decision_from_body(body: str) -> str | None:
+    """Pull the canonical decision out of a --raw directive body."""
+    m = re.search(r"^\s*Decision:\s*([A-Z_]+)\s*$", body, re.M)
+    return m.group(1) if m else None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Scaffold human-directive.md from CLI args")
     parser.add_argument("engagement", help="Path to engagement/ directory")
@@ -208,6 +250,13 @@ def main() -> int:
         body = sys.stdin.read().rstrip() + "\n"
         target.write_text(body, encoding="utf-8")
         print(f"Wrote (raw mode): {target}")
+        raw_decision = decision_from_body(body)
+        if raw_decision:
+            emit_gate_decision(eng, raw_decision, iter_n, {"mode": "raw"})
+        else:
+            print("WARNING: raw directive has no canonical 'Decision: <X>' line — "
+                  "gate_decision not recorded, this run will be invisible to metrics",
+                  file=sys.stderr)
         return 0
 
     # Decision required
@@ -258,6 +307,11 @@ def main() -> int:
         target.write_text(body, encoding="utf-8")
         print(f"Wrote: {target} (Decision: {decision}, iter {iter_n})")
 
+    emit_gate_decision(eng, decision, iter_n, {
+        "reasons": len(reasons),
+        "signals_addressed": len(address),
+        "signals_overruled": len(overrides),
+    })
     return 0
 
 

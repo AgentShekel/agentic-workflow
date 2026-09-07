@@ -7,9 +7,9 @@ they cannot `import lib.ledger` to emit events the way the Python orchestrators
 gives them a one-line, best-effort emit path so the orchestration layer stops
 being invisible in `engagement/events.jsonl`.
 
-Without it only the Python orchestrators reach the ledger and the lead/
-specialist orchestration layer stays invisible. It also exposes the Authority
-rules 6/7 modes so markdown leads can
+Closes skill-evolution signal #3 (2026-05-28 S field test): "lead/specialist
+do NOT emit events to events.jsonl — only handoff-precheck + sub-engines."
+Extended 2026-05-29 with the Authority rules 6/7 modes so markdown leads can
 emit authority_conflict + skill snapshots (previously Python-API only).
 
 Three modes (exactly one required):
@@ -72,8 +72,9 @@ def main() -> int:
                     "(best-effort; never blocks real work).",
     )
     parser.add_argument("engagement", help="Path to engagement/ directory")
-    parser.add_argument("--agent", required=True,
-                        help="Emitting agent name, e.g. dev-lead")
+    parser.add_argument("--agent",
+                        help="Emitting agent name, e.g. dev-lead. Required for every "
+                             "emit mode; not needed by --verify, which writes nothing.")
 
     # --- mode selectors (exactly one required) ---
     parser.add_argument("--type", dest="payload_type",
@@ -85,6 +86,10 @@ def main() -> int:
     parser.add_argument("--authority-conflict", action="store_true",
                         help="Mode: emit an authority_conflict event (Authority rule 6). "
                              "Requires --conflict-kind.")
+    parser.add_argument("--verify", action="store_true",
+                        help="Mode: verify the v2 hash chain instead of emitting. "
+                             "Exits 1 on tamper (edited/removed past event); fork "
+                             "(concurrent writers) and a legacy v1 prefix are exit 0.")
 
     # --- shared / lifecycle flags ---
     parser.add_argument("--tier", choices=["S", "M", "L"],
@@ -102,6 +107,15 @@ def main() -> int:
                         help="Optional verdict field")
     parser.add_argument("--payload-json",
                         help="JSON object merged into payload (overrides convenience flags)")
+    parser.add_argument("--decision", choices=["PROCEED", "DIRECTED", "REJECT"],
+                        help="(--type gate_decision) the human gate decision. Sets "
+                             "payload.decision — required for that type, which is "
+                             "what makes override rate countable.")
+    parser.add_argument("--gate", help="(--type gate_decision) which gate: "
+                                       "human-directive | manager-verdict")
+    parser.add_argument("--tokens-json",
+                        help="Aggregate cost for the work this event closes, e.g. "
+                             "'{\"total\": 412000}'. AGGREGATES ONLY — no per-call traces.")
 
     # --- --snapshot-skills flags ---
     parser.add_argument("--skills-dir",
@@ -124,9 +138,14 @@ def main() -> int:
     args = parser.parse_args()
 
     # --- everything below is best-effort: soft-fail returns exit 0 ---
-    mode_count = sum([bool(args.payload_type), args.snapshot_skills, args.authority_conflict])
+    mode_count = sum([bool(args.payload_type), args.snapshot_skills,
+                      args.authority_conflict, args.verify])
     if mode_count != 1:
-        _warn("specify exactly one of --type / --snapshot-skills / --authority-conflict")
+        _warn("specify exactly one of --type / --snapshot-skills / "
+              "--authority-conflict / --verify")
+        return 0
+    if not args.verify and not args.agent:
+        _warn("--agent is required for every emit mode")
         return 0
 
     try:
@@ -139,6 +158,16 @@ def main() -> int:
     if not eng.exists() or not eng.is_dir():
         _warn(f"engagement directory not found: {eng}")
         return 0
+
+    # Mode: verify chain (a CHECK, not an emit — it may fail loudly) ---------
+    if args.verify:
+        rep = EventLedger.verify_chain(eng)
+        head = (f"chain {rep['status']}: {rep['events']} events "
+                f"({rep['chained']} chained, {rep['legacy_prefix']} legacy v1)")
+        print(head)
+        for p in rep["problems"][:20]:
+            print(f"  {p['kind']:6} line {p['line']} {p.get('event_id') or ''}: {p['detail']}")
+        return 1 if rep["status"] == "tamper" else 0
 
     try:
         led = EventLedger(eng, agent=args.agent, tier=args.tier)
@@ -185,6 +214,10 @@ def main() -> int:
             return 0
 
         payload: dict = {}
+        if args.decision:
+            payload["decision"] = args.decision
+        if args.gate:
+            payload["gate"] = args.gate
         if args.phase:
             payload["phase"] = args.phase
         if args.specialist:
@@ -203,12 +236,24 @@ def main() -> int:
             except json.JSONDecodeError as e:
                 _warn(f"--payload-json is invalid JSON ({e}); ignored")
 
+        tokens = None
+        if args.tokens_json:
+            try:
+                parsed = json.loads(args.tokens_json)
+                if isinstance(parsed, dict):
+                    tokens = parsed
+                else:
+                    _warn("--tokens-json is not a JSON object; ignored")
+            except json.JSONDecodeError as e:
+                _warn(f"--tokens-json is invalid JSON ({e}); ignored")
+
         node = args.node or (f"phase:{args.phase}" if args.phase else None)
         event_id = led.emit(
             args.payload_type,
             node=node,
             payload=payload,
             verdict=args.verdict,
+            tokens=tokens,
         )
     except Exception as e:
         _warn(f"emit failed ({e})")

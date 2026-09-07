@@ -92,7 +92,7 @@ LINE_SUFFIX = re.compile(r":\d+(?:-\d+)?$")
 # creates engagement-archived/{YYYY-MM-DD}-{name}/ only AFTER the manager
 # verdict, never at handoff time. A handoff that cites it (e.g. "will move to
 # engagement-archived/...") is forward-looking, not a phantom-evidence path.
-# (Hardened after an earlier field signal.)
+# Per skill-evolution signal #2 (2026-05-28 S field test).
 FUTURE_PATH_PATTERN = re.compile(r"^engagement-archived?(?:/|$)")
 
 # A cited `a/b`-shaped token is treated as an existence-checkable path ONLY if its
@@ -102,7 +102,7 @@ FUTURE_PATH_PATTERN = re.compile(r"^engagement-archived?(?:/|$)")
 # checker cannot resolve against the project root — it must NOT false-flag those as
 # "missing". Root-anchored evidence paths (engagement/…, frontend/…, api/…, src/…)
 # are still fully checked, so genuine phantom-evidence detection is unaffected.
-# Field signal: an L-tier redesign engagement had handoff-paths REJECT
+# Field signal: an L-tier redesign-impl engagement — handoff-paths REJECTed
 # `feature/redesign-impl` (a branch) + bare `pages/*.html` (template-relative) as
 # missing, forcing the lead to reword a correct handoff.
 KNOWN_ROOTS = frozenset({
@@ -139,11 +139,12 @@ def extract_paths(handoff_text: str) -> list[str]:
             if re.search(r"\{[\w\-_]+\}", clean):
                 continue
             # Skip the post-ACCEPT archive destination — created after handoff,
-            # not a phantom path (an earlier field signal).
+            # not a phantom path (skill-evolution signal #2, 2026-05-28).
             if FUTURE_PATH_PATTERN.match(clean):
                 continue
             # Only existence-check root-anchored paths; non-anchored tokens (git
             # refs, template-relative refs) are skipped rather than false-flagged.
+            # Field signal: an L-tier redesign-impl engagement.
             if clean.split("/", 1)[0].lower() not in KNOWN_ROOTS:
                 continue
             paths.add(clean)
@@ -181,7 +182,7 @@ def main() -> int:
     # Cross-repo build-target root (host repo). A transplant engagement keeps engagement/
     # in the DONOR repo but cites build-target paths that live in the HOST repo; resolving
     # those only against the donor root false-fired "phantom path" on a legitimate ACCEPT
-    # (an earlier field signal from a cross-repo transplant). CLI arg wins;
+    # (recorded in the skill-evolution log). CLI arg wins;
     # else honour a `build_target_root:` declaration inside the artefact.
     bt_root = None
     if args.build_target_root:

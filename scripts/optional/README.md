@@ -15,7 +15,7 @@ Promote back to `scripts/` when one of these gets used in ≥2 real engagements 
 The following optional scripts were removed in an earlier cleanup:
 
 - `cross-val-template.py` — never invoked in live skills; cross-val table is now written inline by the lead in handoff §4.
-- `director-sweep.py` — orphaned after the manager/director split; managers don't re-run validator sweeps (same brain = no new info).
+- `director-sweep.py` — orphaned after the manager/director split (2026-05-28); managers don't re-run validator sweeps (same brain = no new info).
 - `validator-retry.py` — logic absorbed into `validator_lg.py`'s retry edge.
 - `secondary-init.py` — was never wired into any cross-domain handoff flow.
 - `metrics-summary.py` — no live caller; retrospective metrics deferred to a future LangSmith dashboard.

@@ -1,10 +1,11 @@
 """Event ledger — append-only observability foundation.
 
-Replaces fragmented signal carriers (validation-log heartbeats prose /
-metrics.jsonl per-iter aggregates / per-script ad-hoc prints) with a
-single append-only JSONL stream of lifecycle facts per engagement.
+Recorded in project memory. Replaces the
+fragmented signal carriers (validation-log heartbeats prose / metrics.jsonl
+per-iter aggregates / per-script ad-hoc prints) with a single append-only
+JSONL stream of lifecycle facts per engagement.
 
-# Design choices
+# Design choices (Codex prescribed, see memory file)
 
 - Storage:           per-engagement `engagement/events.jsonl` (local, diffable,
                      portable). Not central SQLite — keeps the engagement
@@ -21,13 +22,31 @@ single append-only JSONL stream of lifecycle facts per engagement.
                      validator sub-detail. Ledger stores lifecycle facts and
                      replay handles, not a second filesystem.
 
-# Schema (v1)
+# Schema (v2 — additive over v1)
+
+v2 adds three fields and never changes v1 semantics. A v1 reader that ignores
+unknown keys keeps working; a v2 reader must tolerate v1 events (no chain, no
+`tokens`) because every existing ledger starts as a v1 prefix.
+
+    prev_hash    sha256 of the previous event's `event_hash`, or null for the
+                 first v2 event in a ledger (legacy v1 prefix is not rehashed —
+                 retroactive hashing would be fake integrity).
+    event_hash   sha256 over this event's canonical JSON with `event_hash`
+                 itself excluded. Chain = tamper-evidence for the append-only
+                 claim: editing or deleting a past line breaks every hash after
+                 it. See `verify_chain()`.
+    tokens       OPTIONAL aggregate cost of the work this event closes, e.g.
+                 {"total": 412000, "by_model": {"opus": 380000}}. AGGREGATES
+                 ONLY — the "no token traces" rule above still holds: per-call
+                 traces belong in the runner's own logs, not here. Without this
+                 field `scripts/optional/token-budget.py` has no data source
+                 and the Tier-14 budget guard is doctrine with nothing to read.
 
 Every event is a JSON object on one line in `engagement/events.jsonl`:
 
     {
-      "event_id":             "ledger-v1-{ts}-{8charhex}",
-      "event_schema_version": "1",
+      "event_id":             "ledger-v2-{ts}-{8charhex}",
+      "event_schema_version": "2",
       "engagement_id":        "<dir-name>",
       "run_id":               "<uuid>",            # one per process invocation
       "tier":                 "S|M|L",
@@ -41,7 +60,10 @@ Every event is a JSON object on one line in `engagement/events.jsonl`:
       "verdict":              "ACCEPT|REJECT|N/A", # optional
       "interrupt_state":      "none|paused|resumed",
       "parent_event_id":      "<event_id or null>",
-      "timestamp":            "2026-05-28T15:30:00.000000Z"
+      "timestamp":            "2026-05-28T15:30:00.000000Z",
+      "tokens":               {"total": 412000},          # optional (v2)
+      "prev_hash":            "sha256:..." | null,        # v2
+      "event_hash":           "sha256:..."                # v2
     }
 
 # Payload types (v1 — extend as new emit sites land)
@@ -75,6 +97,32 @@ Every event is a JSON object on one line in `engagement/events.jsonl`:
 - reflection_emitted     manager appended to engagement-reflections.md
 - signal_emitted         manager appended SIGNAL to skill-evolution-log.md
 - heartbeat              lead phase heartbeat (replaces prose in validation-log)
+
+# Payload types (v2 additions — the acceptance seam was invisible before)
+
+- wave_completed         engine/specialist closed a delivery wave. Already
+                         written in the field by an agent that bypassed this
+                         module seen in the field — legalised here
+                         rather than left as an unvalidated writer path.
+- gate_decision          the HUMAN gate decision, canonical and countable:
+                         payload {"decision": "PROCEED|DIRECTED|REJECT",
+                         "gate": "human-directive|manager-verdict",
+                         "signals_total": n, "signals_overruled": n}.
+                         Without it, override rate is only recoverable by
+                         hand-reading acceptance-log prose.
+- post_accept_defect     a defect found AFTER the verdict — the only honest
+                         input to a change-failure / agent-regression rate:
+                         payload {"engagement_ref", "severity", "introduced_by",
+                         "summary"}.
+- outcome_check          closing half of an outcome hypothesis:
+                         payload {"hypothesis", "metric", "baseline", "target",
+                         "observed", "result": "confirmed|not_confirmed|unknown"}.
+- session_resumed        a run continued after an interrupt/crash (feeds
+                         self-recovery rate; distinct from interrupt_resumed,
+                         which is the LangGraph human-gate resume).
+- budget_checkpoint      periodic cost checkpoint inside a long run:
+                         payload {"scope": "task|wave|engagement",
+                         "pct_of_budget": 0.8} + the `tokens` field.
 
 # Usage
 
@@ -119,9 +167,14 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 # Module-level constants
-EVENT_SCHEMA_VERSION = "1"
+EVENT_SCHEMA_VERSION = "2"
 DEFAULT_PAYLOAD_VERSION = "1"
 LEDGER_FILENAME = "events.jsonl"
+
+# Fields excluded from the hash preimage. `event_hash` obviously (self-
+# reference); nothing else — every other field, including prev_hash, is
+# covered, so reordering or retagging a past event breaks the chain.
+_HASH_EXCLUDED_FIELDS = ("event_hash",)
 
 # Known payload types — kept as a tuple so a typo at call site is caught early
 # via assert. New payload types are added here as emit sites land. Order is
@@ -156,11 +209,22 @@ KNOWN_PAYLOAD_TYPES: tuple[str, ...] = (
     "reflection_emitted",
     "signal_emitted",
     "heartbeat",
-    # engagement_lg.py
+    # the LangGraph engagement engine
     "engagement_completed",   # final lifecycle event (ACCEPT/REJECT/ABORTED + duration)
     "phase_skipped",          # e.g. consilium for tier=S, archive for ABORTED
     "dryrun_marker",          # skeleton-mode banner: this run did no real work
+    # V2 (2026-08-20) — acceptance seam + cost + recovery were unrecorded
+    "wave_completed",         # delivery wave closed (was written unvalidated in the field)
+    "gate_decision",          # human gate: PROCEED / DIRECTED / REJECT, countable
+    "post_accept_defect",     # defect found after the verdict
+    "outcome_check",          # outcome hypothesis confirmed / not confirmed
+    "session_resumed",        # run continued after interrupt or crash
+    "budget_checkpoint",      # periodic cost checkpoint (carries `tokens`)
 )
+
+# gate_decision payload values — kept explicit so a typo is caught at emit time
+# rather than silently producing an uncountable decision.
+ALLOWED_GATE_DECISIONS = {"PROCEED", "DIRECTED", "REJECT"}
 
 ALLOWED_VERDICTS = {"ACCEPT", "REJECT", "DIRECTED", "N/A", None}
 ALLOWED_INTERRUPT_STATES = {"none", "paused", "resumed"}
@@ -176,10 +240,23 @@ def _sha256_hex(text: str) -> str:
 
 
 def _make_event_id() -> str:
-    """Stable-looking ID: ledger-v1-{compact ts}-{8 hex}. Sortable by time."""
+    """Stable-looking ID: ledger-v{N}-{compact ts}-{8 hex}. Sortable by time."""
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
     rand = uuid.uuid4().hex[:8]
-    return f"ledger-v1-{ts}-{rand}"
+    return f"ledger-v{EVENT_SCHEMA_VERSION}-{ts}-{rand}"
+
+
+def canonical_event_hash(event: dict) -> str:
+    """sha256 over the event minus `event_hash`, with sorted keys.
+
+    Canonicalisation matters: the hash must be reproducible by anyone re-reading
+    the line, so key order and separators are pinned rather than inherited from
+    whatever dict order the writer happened to have.
+    """
+    preimage = {k: v for k, v in event.items() if k not in _HASH_EXCLUDED_FIELDS}
+    blob = json.dumps(preimage, ensure_ascii=False, sort_keys=True,
+                      separators=(",", ":"))
+    return "sha256:" + _sha256_hex(blob)
 
 
 class EventLedger:
@@ -244,12 +321,15 @@ class EventLedger:
         interrupt_state: str = "none",
         parent_event_id: Optional[str] = None,
         actor: Optional[str] = None,
+        tokens: Optional[dict] = None,
     ) -> str:
         """Append one event. Returns the new event_id.
 
         actor: override `self.agent` for this single event (use when one
                process writes events on behalf of multiple agents, e.g.
                validator_lg.py emits validator-attributed events).
+        tokens: OPTIONAL aggregate cost dict, e.g. {"total": 412000,
+               "by_model": {...}}. Aggregates only — see the module docstring.
         """
         assert payload_type in KNOWN_PAYLOAD_TYPES, (
             f"unknown payload_type {payload_type!r}; "
@@ -262,6 +342,15 @@ class EventLedger:
             f"interrupt_state must be one of {ALLOWED_INTERRUPT_STATES}, "
             f"got {interrupt_state!r}"
         )
+        if payload_type == "gate_decision":
+            decision = (payload or {}).get("decision")
+            assert decision in ALLOWED_GATE_DECISIONS, (
+                f"gate_decision payload needs decision in "
+                f"{ALLOWED_GATE_DECISIONS}, got {decision!r} — an uncountable "
+                f"gate decision is the exact gap this event type closes"
+            )
+        if tokens is not None:
+            assert isinstance(tokens, dict), "tokens must be a dict of aggregates"
 
         event_id = _make_event_id()
         event = {
@@ -282,10 +371,9 @@ class EventLedger:
             "parent_event_id": parent_event_id,
             "timestamp": _utc_now_iso(),
         }
-        line = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
-        with EventLedger._lock:
-            with self._path.open("a", encoding="utf-8") as f:
-                f.write(line + "\n")
+        if tokens is not None:
+            event["tokens"] = tokens
+        self._append_chained(event)
         return event_id
 
     # --------------------------------------------------------------- helpers
@@ -415,6 +503,69 @@ class EventLedger:
         return out
 
     @classmethod
+    def verify_chain(cls, engagement_path: os.PathLike | str) -> dict:
+        """Check the v2 hash chain. Returns a report dict, never raises.
+
+            {"status": "ok|no_ledger|legacy_only|fork|tamper",
+             "events": n, "chained": n, "legacy_prefix": n, "problems": [...]}
+
+        Three outcomes worth distinguishing, because conflating them makes the
+        check useless in practice:
+
+        - legacy_prefix: v1 events written before this module gained the chain.
+          They are NOT rehashed (retroactive hashing proves nothing) and are not
+          counted as breaks.
+        - fork: an event whose prev_hash names a hash that DOES exist earlier in
+          the file. Two processes appended concurrently. Benign.
+        - tamper: an event whose own content does not match its event_hash, or
+          whose prev_hash names a hash absent from the file. Someone edited,
+          reordered or deleted a past line.
+        """
+        p = Path(engagement_path).resolve() / LEDGER_FILENAME
+        if not p.exists():
+            return {"status": "no_ledger", "events": 0, "chained": 0,
+                    "legacy_prefix": 0, "problems": []}
+
+        events = cls.read(engagement_path)
+        seen_hashes: set[str] = set()
+        problems: list[dict] = []
+        chained = legacy = 0
+
+        for idx, e in enumerate(events):
+            own = e.get("event_hash")
+            if own is None:
+                legacy += 1
+                continue
+            chained += 1
+            recomputed = canonical_event_hash(e)
+            if recomputed != own:
+                problems.append({"kind": "tamper", "line": idx + 1,
+                                 "event_id": e.get("event_id"),
+                                 "detail": "content does not match event_hash"})
+            prev = e.get("prev_hash")
+            if prev is not None and prev not in seen_hashes:
+                problems.append({"kind": "tamper", "line": idx + 1,
+                                 "event_id": e.get("event_id"),
+                                 "detail": f"prev_hash {prev[:23]}… not found earlier "
+                                           f"(a preceding event was edited or removed)"})
+            elif prev is not None and idx and prev != events[idx - 1].get("event_hash"):
+                problems.append({"kind": "fork", "line": idx + 1,
+                                 "event_id": e.get("event_id"),
+                                 "detail": "chained off an older tail — concurrent writers"})
+            seen_hashes.add(own)
+
+        if not chained:
+            status = "legacy_only" if events else "ok"
+        elif any(x["kind"] == "tamper" for x in problems):
+            status = "tamper"
+        elif problems:
+            status = "fork"
+        else:
+            status = "ok"
+        return {"status": status, "events": len(events), "chained": chained,
+                "legacy_prefix": legacy, "problems": problems}
+
+    @classmethod
     def iter_(cls, engagement_path: os.PathLike | str) -> Iterable[dict]:
         """Iterator variant — useful for very long ledgers."""
         p = Path(engagement_path).resolve() / LEDGER_FILENAME
@@ -502,10 +653,51 @@ class EventLedger:
     def _raw_append(self, event: dict) -> None:
         """Bypass the assert checks — used internally for synthetic events
         whose `payload_type` is in KNOWN_PAYLOAD_TYPES by definition."""
-        line = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
+        self._append_chained(event)
+
+    def _append_chained(self, event: dict) -> None:
+        """Stamp the hash chain and append one line.
+
+        prev_hash is read and the line written under one lock so two threads
+        cannot both chain off the same tail. Cross-PROCESS concurrent emits can
+        still fork the chain (two events sharing a prev_hash); that is benign
+        and `verify_chain` reports it as `fork`, distinct from `tamper`.
+        """
         with EventLedger._lock:
+            event["prev_hash"] = self._tail_hash()
+            event["event_hash"] = canonical_event_hash(event)
+            line = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
             with self._path.open("a", encoding="utf-8") as f:
                 f.write(line + "\n")
+
+    def _tail_hash(self) -> Optional[str]:
+        """`event_hash` of the last line, or None (empty file / v1 tail).
+
+        Seeks the tail instead of reading the file: ledgers are append-only and
+        can grow without bound, and this runs on every single emit.
+        """
+        try:
+            size = self._path.stat().st_size
+        except OSError:
+            return None
+        if not size:
+            return None
+        try:
+            with self._path.open("rb") as f:
+                window = min(size, 8192)
+                f.seek(size - window)
+                chunk = f.read(window)
+        except OSError:
+            return None
+        for raw in reversed(chunk.decode("utf-8", errors="ignore").splitlines()):
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                return json.loads(raw).get("event_hash")
+            except json.JSONDecodeError:
+                return None  # corrupt tail: start a fresh chain segment
+        return None
 
 
 # Convenience module-level helper for one-shot emits (no instance reuse).

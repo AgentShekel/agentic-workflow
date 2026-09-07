@@ -147,7 +147,7 @@ def project_root_for_engagement(eng: Path, projects_root: Path) -> Path | None:
     # Engagement is typically at <project>/engagement/ — go up one level
     project_path = eng.parent.resolve()
     project_name = project_path.name
-    # ~/.claude/projects/ uses dash-encoded paths (e.g. C:\ws\my-app -> C--ws-my-app)
+    # ~/.claude/projects/ uses dash-encoded paths (e.g. C--work-projects-my-app)
     # so we try a few fallbacks
     candidates = [
         projects_root / project_name,  # exact name match

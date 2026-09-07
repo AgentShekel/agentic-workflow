@@ -2,12 +2,12 @@
 """Single entry point for all machine-checks before handoff.
 
 Hard-gate tier dispatch (tiered acceptance refactor):
-  - S-tier: 6 critical checks (criteria-frontmatter, whitelist, preflight,
+  - S-tier: 8 critical checks (criteria-frontmatter, whitelist, preflight,
     handoff-paths, danger-scan, verdict-canonical)
-  - M-tier: 13 checks (S + handoff-sections, self-acceptance-thinness,
+  - M-tier: 16 checks (S + handoff-sections, self-acceptance-thinness,
     iteration-counter, validator-outputs, size-drift, human-directive,
-    director-verdict)
-  - L-tier: 21 checks (all)
+    director-verdict, consilium-addressed, handoff-digest)
+  - L-tier: 24 checks (all)
 
 Tier is read from criteria.md frontmatter. Override via --all-checks (run
 everything) or --override-checks NAME1,NAME2 (add to current tier set).
@@ -34,7 +34,9 @@ Internal structure (modular refactor):
 """
 
 from __future__ import annotations
+
 import sys as _sys
+
 try:
     _sys.stdout.reconfigure(encoding="utf-8")
     _sys.stderr.reconfigure(encoding="utf-8")
@@ -48,33 +50,47 @@ import sys
 import time
 from pathlib import Path
 
-# Topic-modularized checks
+# Topic-modularized checks (modular refactor)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib.precheck import (  # noqa: E402
-    read_criteria_meta,
-    # criteria
-    check_whitelist, check_criteria_frontmatter, check_preflight,
-    check_size_drift, check_tasks_decomposition,
-    # handoff
-    check_handoff_paths, check_handoff_sections, check_cross_val_quotes,
-    check_self_acceptance_thinness, check_slot_language,
-    # iteration
-    check_iteration_counter, check_executor_iteration_structure,
-    check_validator_output_freshness, check_specialist_criteria_ack,
-    # validators
-    check_validator_outputs, check_trace_schema,
+from lib.precheck import (
     # acceptance
-    check_acceptance_log_paths, check_verdict_canonical,
-    check_human_directive, check_director_verdict,
+    check_acceptance_log_paths,
+    check_consilium_addressed,
+    check_criteria_frontmatter,
+    check_cross_val_quotes,
     # danger
     check_danger_scan,
+    check_director_verdict,
+    check_executor_iteration_structure,
+    check_handoff_digest,
+    # handoff
+    check_handoff_paths,
+    check_handoff_sections,
+    check_human_directive,
+    # iteration
+    check_iteration_counter,
+    check_open_questions,
+    check_preflight,
+    check_self_acceptance_thinness,
+    check_size_drift,
+    check_slot_language,
+    check_specialist_criteria_ack,
+    check_tasks_decomposition,
+    check_trace_schema,
+    check_validator_output_freshness,
+    # validators
+    check_validator_outputs,
+    check_verdict_canonical,
+    # criteria
+    check_whitelist,
+    read_criteria_meta,
 )
 
-# Append-only event ledger. Optional dependency; falls back to silent
-# no-op when unavailable so handoff-precheck.py works unchanged on
-# stripped installs / minimal envs.
+# append-only event ledger. Optional dependency;
+# falls back to silent no-op when unavailable so handoff-precheck.py works
+# unchanged on stripped installs / minimal envs.
 try:
-    from lib.ledger import EventLedger  # noqa: E402
+    from lib.ledger import EventLedger
     _LEDGER_AVAILABLE = True
 except Exception:
     EventLedger = None  # type: ignore
@@ -123,32 +139,38 @@ def _emit_check_result(name: str, result: dict) -> None:
 # ad-hoc inclusion of additional checks on a per-run basis.
 TIER_CHECKS = {
     "S": [
-        # Minimum safety + integrity: 6 critical checks
+        # Minimum safety + integrity: 8 critical checks
         "criteria-frontmatter",  # tier itself depends on this
         "whitelist",
         "preflight",
         "handoff-paths",
         "danger-scan",
         "verdict-canonical",
+        "handoff-digest",
+        "open-questions",   # ambiguity intake could not close must be dispositioned    # S writes a verdict too (human, not manager) and the
+                             # new `bounded` route class funnels straight into S
     ],
     "M": [
-        # S + 7 more = 13
+        # S + 8 more = 16
         "criteria-frontmatter", "whitelist", "preflight", "handoff-paths",
-        "danger-scan", "verdict-canonical",
+        "danger-scan", "verdict-canonical", "handoff-digest", "open-questions",
         "handoff-sections",
         "self-acceptance-thinness",
         "iteration-counter",
         "validator-outputs",
         "size-drift",
         "human-directive",   # human reads consilium first, writes directive
+        "consilium-addressed",  # a verdict may not leave the consilium unmentioned
         "director-verdict",  # adjudication completeness check
+        "handoff-digest",    # a verdict is bound to the handoff it judged
     ],
     "L": [
-        # M + 8 more = 21 (all checks)
+        # M + 8 more = 24 (all checks)
         "criteria-frontmatter", "whitelist", "preflight", "handoff-paths",
-        "danger-scan", "verdict-canonical",
+        "danger-scan", "verdict-canonical", "handoff-digest", "open-questions",
         "handoff-sections", "self-acceptance-thinness", "iteration-counter",
         "validator-outputs", "size-drift", "human-directive", "director-verdict",
+        "consilium-addressed", "handoff-digest",
         "acceptance-log-paths",
         "executor-iteration-structure",
         "specialist-criteria-ack",
@@ -193,7 +215,7 @@ def main() -> int:
     if ux_heavy not in {"false", "minor", "true"}:
         ux_heavy = "false"
 
-    # Initialize event ledger (no-op when lib.ledger import failed).
+    # initialize event ledger (no-op when lib.ledger import failed).
     global _RUN_LEDGER
     if _LEDGER_AVAILABLE:
         try:
@@ -236,6 +258,7 @@ def main() -> int:
     all_fast_specs = [
         ("whitelist",                    check_whitelist,                    (eng,)),
         ("criteria-frontmatter",         check_criteria_frontmatter,         (eng,)),
+        ("open-questions",               check_open_questions,               (eng,)),
         ("handoff-sections",             check_handoff_sections,             (eng, size)),
         ("iteration-counter",            check_iteration_counter,            (eng,)),
         ("executor-iteration-structure", check_executor_iteration_structure, (eng,)),
@@ -247,6 +270,8 @@ def main() -> int:
         ("verdict-canonical",            check_verdict_canonical,            (eng,)),
         ("tasks-decomposition",          check_tasks_decomposition,          (eng, size, ux_heavy)),
         ("human-directive",              check_human_directive,              (eng,)),
+        ("consilium-addressed",          check_consilium_addressed,          (eng, size)),
+        ("handoff-digest",               check_handoff_digest,               (eng,)),
     ]
     fast_check_specs = [s for s in all_fast_specs if s[0] in active_checks]
     fast_checks = [timed(n, fn, *a) for n, fn, a in fast_check_specs]
@@ -281,7 +306,7 @@ def main() -> int:
 
     # Re-order to canonical sequence; only include checks that actually ran.
     canonical_order = [
-        "whitelist", "criteria-frontmatter", "preflight",
+        "whitelist", "criteria-frontmatter", "open-questions", "preflight",
         "size-drift", "tasks-decomposition",
         "handoff-paths", "acceptance-log-paths", "handoff-sections",
         "iteration-counter", "executor-iteration-structure",
@@ -289,13 +314,19 @@ def main() -> int:
         "validator-output-freshness",
         "cross-val-quotes", "trace-schema", "slot-language",
         "danger-scan", "self-acceptance-thinness", "verdict-canonical",
-        "human-directive", "director-verdict",
+        "human-directive", "consilium-addressed", "director-verdict",
+        "handoff-digest",
     ]
     by_name = {c["name"]: c for c in (fast_checks + slow_checks)}
     checks = [by_name[n] for n in canonical_order if n in by_name]
+    # A check that ran but is missing from canonical_order used to be dropped here without a
+    # word, so registering one in TIER_CHECKS and the dispatch table was not enough to make it
+    # count: consilium-addressed executed and vanished from every report and from the exit code.
+    # Append stragglers rather than discard them. Ordering is cosmetic; losing a verdict is not.
+    checks += [c for n, c in by_name.items() if n not in canonical_order]
     tier_label = "all" if args.all_checks else size
 
-    # Emit per-check results to ledger (silent skips).
+    # emit per-check results to ledger (silent skips).
     for c in checks:
         _emit_check_result(c.get("name", "?"), c)
 

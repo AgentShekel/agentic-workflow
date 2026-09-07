@@ -14,7 +14,8 @@ the same signature and return-dict shape used before the modular refactor:
 Modules:
   - common      shared constants + read_criteria_meta + subprocess runner
   - criteria    engagement structure: whitelist, criteria-frontmatter,
-                preflight, size-drift, tasks-decomposition
+                preflight, size-drift, tasks-decomposition,
+                open-questions
   - handoff     handoff.md content: paths, sections, cross-val quotes,
                 self-acceptance thinness, slot-language ban
   - iteration   multi-iteration discipline: iteration-counter, executor
@@ -33,7 +34,10 @@ having to know the topic split.
 from .common import (
     WHITELIST,
     CRITERIA_FRONTMATTER_REQUIRED,
+    handoff_digest,
+    normalize_for_digest,
     read_criteria_meta,
+    read_iteration_counter,
     run,
 )
 from .criteria import (
@@ -42,6 +46,7 @@ from .criteria import (
     check_preflight,
     check_size_drift,
     check_tasks_decomposition,
+    check_open_questions,
 )
 from .handoff import (
     REQUIRED_HANDOFF_SECTIONS,
@@ -71,7 +76,9 @@ from .acceptance import (
     check_acceptance_log_paths,
     check_verdict_canonical,
     check_human_directive,
+    check_consilium_addressed,
     check_director_verdict,
+    check_handoff_digest,
 )
 from .danger import check_danger_scan
 
@@ -88,6 +95,9 @@ __all__ = [
     "HUMAN_DIRECTIVE_DECISIONS",
     # Utilities
     "read_criteria_meta",
+    "read_iteration_counter",
+    "normalize_for_digest",
+    "handoff_digest",
     "run",
     # criteria.py checks
     "check_whitelist",
@@ -95,6 +105,7 @@ __all__ = [
     "check_preflight",
     "check_size_drift",
     "check_tasks_decomposition",
+    "check_open_questions",
     # handoff.py checks
     "check_handoff_paths",
     "check_handoff_sections",
@@ -113,7 +124,9 @@ __all__ = [
     "check_acceptance_log_paths",
     "check_verdict_canonical",
     "check_human_directive",
+    "check_consilium_addressed",
     "check_director_verdict",
+    "check_handoff_digest",
     # danger.py checks
     "check_danger_scan",
 ]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LangGraph validator orchestrator — first release.
+"""LangGraph validator orchestrator.
 
 Parallel Send fan-out across atomic validator subagents. Replaces lead's
 manual sequential dispatch with one graph invocation. Absorbs
@@ -120,7 +120,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send, Command, interrupt
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-# Append-only event ledger. Optional dependency:
+# append-only event ledger. Optional dependency:
 # if lib.ledger is unavailable (script run from a stripped install), wiring
 # degrades to no-op so validator_lg.py remains usable.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -200,12 +200,12 @@ class ValidatorOutput(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _derive_status(cls, data):
-        """Some validator agents express their verdict via a `verdict` / `result`
-        / `overall` field, or only via {critical,major,minor}_findings counts,
-        with no `status`. Derive `status` from those so they validate instead of
-        raising `status Field required` - which would otherwise sink the whole
-        validator run AND the M-tier consilium. extra='allow' keeps the original
-        fields intact."""
+        """Tolerate validator agents that don't emit `status` (orchestrator/agent
+        schema drift, 2026-05-30 field test): derive it from a `verdict` / `result`
+        / `overall` field, or from {critical,major,minor}_findings counts. Without
+        this, an agent returning only `verdict` or finding-counts raises
+        `status Field required`, which sinks the whole validator run AND the
+        M-tier consilium. extra='allow' keeps the original fields intact."""
         if not isinstance(data, dict) or data.get("status"):
             return data
         data = dict(data)
@@ -235,10 +235,12 @@ class ValidatorOutput(BaseModel):
     @field_validator("summary", "methodology", mode="before")
     @classmethod
     def _coerce_text(cls, v):
-        """Tolerate agents that emit summary/methodology as a dict or list:
-        a structured value would raise 'Input should be a valid string' and sink
-        the whole validator run even when the content is fine. Coerce structured
-        values to a compact JSON string; leave str / None untouched."""
+        """Tolerate agents that emit summary/methodology as a dict or list
+        (schema drift seen in the field: infrastructure-
+        reviewer + deploy-reviewer returned `summary` as a dict, so
+        'summary Input should be a valid string' rejected the whole validator run
+        even though the content was fine). Coerce structured values to a compact
+        JSON string; leave str / None untouched."""
         if v is None or isinstance(v, str):
             return v
         if isinstance(v, (dict, list)):
@@ -259,7 +261,7 @@ class ValidatorOutput(BaseModel):
 
 
 # ===========================================================================
-# Canonical envelope — canonical validator output schema + normalizer.
+# canonical validator output schema + normalizer.
 # Pydantic discriminated-finding union; the normalizer coerces the 23
 # validator variants into one shape so downstream consumers (manager,
 # Langfuse, analytics, dashboards) see a stable schema. Original raw output
@@ -639,7 +641,7 @@ class ValidatorState(TypedDict, total=False):
     retry_n: int
     # Reducer — every validator-node appends here.
     results: Annotated[list[dict], operator.add]
-    # Opt-in native HITL pause on critical findings.
+    # native HITL pause on critical findings.
     # Tier read from criteria.md (S|M|L). interrupt_enabled set by CLI flag.
     # Pause only fires when interrupt_enabled AND tier∈{M,L} AND any result
     # carries severity=critical finding. Default behaviour (flag absent) is
@@ -685,8 +687,10 @@ class SubprocessInvoker(Invoker):
         # A headless `claude -p --agent` validator must be granted read tools +
         # access to the engagement AND the project root it reviews — otherwise it
         # runs in default permission mode where every Read is denied, reports a
-        # permission block, and emits no JSON. Read-only grant: validators inspect
-        # artefacts + source and print JSON; they never edit or deploy.
+        # permission block, and emits no JSON. This is the dispatch-environment gap
+        # that silently skipped the validator fan-out on every prior engagement
+        # (diagnosed in the field). Read-only grant: validators
+        # inspect artefacts + source and print JSON; they never edit or deploy.
         cmd = [self.claude, "-p", "--agent", validator, prompt,
                "--allowedTools", "Read", "Glob", "Grep",
                "--add-dir", str(eng), "--add-dir", str(eng.parent)]
@@ -695,8 +699,9 @@ class SubprocessInvoker(Invoker):
                 cmd,
                 capture_output=True, text=True,
                 encoding="utf-8", errors="replace",
-                # stdin=DEVNULL: guard the headless `claude -p` stdin-wait hang
-                # (a never-closing inherited pipe blocks the reviewer to timeout).
+                # stdin=DEVNULL: guard the same headless `claude -p` stdin-wait hang
+                # that emptied the adversary_lg reviewers (2026-06-01). validator_lg
+                # survived in the field by context luck; close the risk defensively.
                 stdin=subprocess.DEVNULL, timeout=600,
             )
             stdout = (r.stdout or "").strip()
@@ -901,7 +906,7 @@ def _plan_node(state: ValidatorState) -> dict:
         skipped_done = sorted(done)
         candidates = [v for v in candidates if v not in done]
 
-    # propagate tier from criteria.md frontmatter into state so the
+    # Propagate tier from criteria.md frontmatter into state so the
     # critical_check node can gate interrupt on M/L only.
     tier_raw = str(fm.get("size", "")).strip().upper()
     tier = tier_raw if tier_raw in {"S", "M", "L"} else "S"
@@ -986,7 +991,7 @@ def _make_run_validator_node(invoker_cache: dict):
         # Try to coerce through Pydantic.
         try:
             parsed = ValidatorOutput.model_validate(raw)
-            # Canonical envelope — also build canonical envelope; written alongside raw so
+            # also build canonical envelope; written alongside raw so
             # consumers can pick either shape without re-parsing.
             canonical = canonicalize_validator_output(validator, parsed)
             raw_dump = parsed.model_dump()
@@ -1128,7 +1133,7 @@ def _has_critical_finding(results: list[dict]) -> list[dict]:
 
 
 def _critical_check_node(state: ValidatorState) -> dict:
-    """pause graph for human directive on critical findings.
+    """Pause graph for human directive on critical findings.
 
     Fires only when ALL of:
       - --interrupt-on-critical was passed (state.interrupt_enabled = True),
@@ -1448,7 +1453,7 @@ def _read_iter_counter(eng: Path) -> int:
 
 
 def _resume_interrupt_main(args) -> int:
-    """resume a validator_lg graph paused at critical_check via
+    """Resume a validator_lg graph paused at critical_check via
     Command(resume={...}). The graph picks up at _critical_check_node,
     validates the directive, invokes human-directive.py, then proceeds to
     finalize.
@@ -1507,7 +1512,7 @@ def _resume_interrupt_main(args) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="LangGraph validator orchestrator — first release",
+        description="LangGraph validator orchestrator",
     )
     parser.add_argument("engagement", nargs="?", help="Path to engagement/ directory")
     group = parser.add_mutually_exclusive_group()
@@ -1534,7 +1539,7 @@ def main() -> int:
                         help="Print results as JSON to stdout")
     parser.add_argument("--help-billing", action="store_true",
                         help="Explain the --invoker billing model and exit.")
-    # Opt-in native HITL pause on critical findings.
+    # native HITL pause on critical findings.
     parser.add_argument("--interrupt-on-critical", action="store_true",
                         help="On M/L tier, pause graph via interrupt() when any "
                              "validator returns severity=critical finding. "
@@ -1592,7 +1597,7 @@ def main() -> int:
     # stdout stays clean.
     print(setup_langsmith(), file=sys.stderr)
 
-    # Initialize event ledger (no-op when lib.ledger import failed).
+    # initialize event ledger (no-op when lib.ledger import failed).
     # Tier is best-effort read of criteria.md frontmatter; final value
     # propagates through state via _plan_node.
     global _RUN_LEDGER
@@ -1664,7 +1669,7 @@ def main() -> int:
             except Exception:
                 pass
 
-    # detect pause. graph.invoke returns the state at the point of
+    # Detect pause. graph.invoke returns the state at the point of
     # interrupt() with an `__interrupt__` key. We print the resume hint and
     # exit cleanly so caller can react (e.g. surface the pause to a human).
     if isinstance(final_state, dict) and final_state.get("__interrupt__"):

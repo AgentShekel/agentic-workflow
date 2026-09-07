@@ -269,7 +269,7 @@ def count_tasks(eng: Path) -> int:
 # Trailing filename tokens that denote a VARIANT / VIEWPORT / THEME / density of ONE
 # logical surface — not a distinct surface. A multi-variant design engagement renders the
 # SAME screen several ways (hero-v1-desktop, hero-v2-mobile, hero-dark@2x …); counting each
-# render as a surface false-inflated a design engagement to "9 surfaces" on one menu+hero screen →
+# render as a surface false-inflated one engagement to "9 surfaces" on one menu+hero screen →
 # false M→L drift that also cleared L_PROMOTE_HYSTERESIS (skill-evolution log 2026-06-04,
 # bug #1). The root is the COUNT, not the threshold: collapse these to the logical-surface
 # key BEFORE counting. Width tokens require a px/w suffix so a real "error-404" is NOT eaten.
@@ -301,7 +301,7 @@ def _logical_surface(stem: str) -> str:
 def count_ui_surfaces(eng: Path) -> int:
     """Count distinct LOGICAL surfaces under screens/. Variants/viewports/themes of one
     screen (hero-v1-desktop, hero-v2-mobile, …) collapse to one (skill-evolution 2026-06-04
-    bug #1: per-variant/viewport counting drifted a design engagement M→L falsely)."""
+    bug #1: per-variant/viewport counting drifted an engagement M→L falsely)."""
     d = eng / "screens"
     if not d.exists():
         return 0

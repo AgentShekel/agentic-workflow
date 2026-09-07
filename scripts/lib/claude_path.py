@@ -12,14 +12,14 @@ silently mangling multi-line prompts. When the resolved entry is a .CMD wrapper,
 resolve to the underlying `claude.exe` via the npm wrapper layout. Unix/macOS
 unaffected (no .CMD is ever returned).
 
-Resolution order (dispatch-gap close):
+Resolution order (2026-06-01, dispatch-gap close):
   1. `CLAUDE_CLI_PATH` / `CLAUDE_CLI` env override — operator escape hatch that
      survives any PATH stripping.
   2. `shutil.which()` — the fast path when claude is on PATH.
   3. Fallback probe of known install locations — a recursive `claude -p`
      subprocess launched from inside an agent session can inherit a STRIPPED
      PATH that omits the npm / ~/.local/bin dirs (this is what made
-     engagement_lg.py die with "claude CLI not found in PATH" even
+     engagement_lg.py die with "claude CLI not found in PATH" on 2026-05-28 even
      though the binary was installed). Probing the canonical install dirs makes
      discovery independent of the inherited PATH, which is the keystone that lets
      validator_lg / adversary_lg actually dispatch in the engagement runtime.
@@ -84,7 +84,7 @@ def find_claude_cmd() -> Optional[str]:
             return _prefer_exe(Path(p))
 
     # 3. Fallback: probe canonical install dirs (inherited PATH may be stripped
-    #    in a nested-subprocess launch — a "claude not found").
+    #    in a nested-subprocess launch — the 2026-05-28 "claude not found").
     for cand in _fallback_locations():
         try:
             if cand.exists():

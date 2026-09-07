@@ -19,7 +19,7 @@ import re
 import sys
 from pathlib import Path
 
-from .common import WHITELIST, CRITERIA_FRONTMATTER_REQUIRED, run
+from .common import CRITERIA_FRONTMATTER_REQUIRED, WHITELIST, run
 
 
 def _criteria_named_deliverables(eng: Path) -> set[str]:
@@ -43,7 +43,7 @@ def _preflight_override(eng: Path) -> str | None:
     """A documented intake preflight override in criteria.md, of the form
     `<!-- preflight: ... status=PASS ... override ... -->`. This is the
     human/lead intake decision (criteria > protocol) that preflight.py's host
-    probe is a false positive - e.g. pg/redis run in compose containers reached
+    probe is a false positive — e.g. pg/redis run in compose containers reached
     over the compose network, with no host pg_isready/redis-cli. Returns the
     (whitespace-collapsed, truncated) marker text, or None."""
     crit = eng / "criteria.md"
@@ -190,3 +190,78 @@ def check_tasks_decomposition(eng: Path, size: str, ux_heavy: str) -> dict:
             "fix": "Run domain task-decomposition skill at Phase 2.5. Atomic tasks let lead re-dispatch only the broken unit on REJECT instead of the whole phase.",
         }
     return {"name": "tasks-decomposition", "status": "pass", "detail": f"M-tier: {'tasks present' if has_tasks else 'tasks not required (single specialist)'}"}
+
+
+# `- [ ] q-1: text — needed to: ... — status: open`
+_OQ_ROW = re.compile(
+    r"^\s*[-*]\s*(?:\[[ xX]\]\s*)?(q-\d+)\s*:(.*?)$",
+    re.MULTILINE)
+_OQ_STATUS = re.compile(r"status\s*:\s*(open|answered|waived)\b", re.IGNORECASE)
+
+
+def check_open_questions(eng: Path) -> dict:
+    """Every question intake could not resolve is written down and dispositioned.
+
+    Intake asks one clarifying question and locks criteria. Whatever stayed
+    ambiguous after that used to live nowhere: not in criteria.md, not in the
+    handoff, not in the acceptance record. It resurfaced as a specialist guessing,
+    and the guess only became visible when the manager rejected the result.
+
+    The rule is borrowed from a tracker-draft tool that had the same problem: an
+    open question blocks readiness until it is either answered or EXPLICITLY
+    waived, and a waived question rides along as an acknowledged warning rather
+    than disappearing. Waiving is a decision someone made and left a trace of.
+    Silence is not.
+
+    Warn, not fail: the section is new, every engagement written before it has
+    none, and a hard gate here would be waived on day one. The blocking half
+    lives at intake (agency-intake §6), where the question is still cheap.
+    """
+    name = "open-questions"
+    crit = eng / "criteria.md"
+    if not crit.exists():
+        return {"name": name, "status": "skip", "detail": "criteria.md not present"}
+
+    text = crit.read_text(encoding="utf-8", errors="replace")
+    m = re.search(r"^##\s*Open questions\s*$(.*?)(?=^##\s|\Z)",
+                  text, re.MULTILINE | re.DOTALL | re.IGNORECASE)
+    if not m:
+        return {"name": name, "status": "skip",
+                "detail": "no `## Open questions` section (pre-dates the convention)"}
+
+    body = m.group(1)
+    rows = _OQ_ROW.findall(body)
+    if not rows:
+        return {"name": name, "status": "pass",
+                "detail": "Open questions section present and empty — nothing was left hanging"}
+
+    undispositioned, still_open, waived = [], [], []
+    for qid, rest in rows:
+        st = _OQ_STATUS.search(rest)
+        if not st:
+            undispositioned.append(qid)
+        elif st.group(1).lower() == "open":
+            still_open.append(qid)
+        elif st.group(1).lower() == "waived":
+            waived.append(qid)
+
+    if undispositioned:
+        return {
+            "name": name, "status": "warn",
+            "detail": f"questions with no status at all: {undispositioned}. A question "
+                      f"without a disposition is indistinguishable from one nobody read.",
+            "fix": "Give each row `status: open | answered | waived`. Answered carries the "
+                   "answer; waived is the user's explicit decision to proceed without one.",
+        }
+    if still_open:
+        return {
+            "name": name, "status": "warn",
+            "detail": f"still open at handoff: {still_open}. Intake should have closed or "
+                      f"waived these before the engagement started.",
+            "fix": "Answer them, or mark `status: waived` so they travel into acceptance as "
+                   "acknowledged warnings instead of quietly shaping someone's guess.",
+        }
+    detail = f"{len(rows)} question(s) dispositioned"
+    if waived:
+        detail += f"; {len(waived)} waived and carried forward as acknowledged: {waived}"
+    return {"name": name, "status": "pass", "detail": detail}

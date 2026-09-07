@@ -41,7 +41,6 @@ import re
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Optional
 
 THRESHOLD = 2
 
@@ -56,11 +55,19 @@ DRYRUN_RE = re.compile(r"^dryrun:\s*true\b", re.IGNORECASE | re.MULTILINE)
 # swallows the SKILL loop's half-marker.
 #
 # `resolved (SKILL half):` means the skill half is fixed and the SCRIPT half is still open,
-# so this checker must keep counting the signal. Without the lookahead the broad `^resolved`
+# so this checker must keep counting the signal. Without the lookahead the broad `^resolved\b`
 # closed it, silently dropping the still-open script half out of the >=2 cluster — the mirror
 # image of skillopt-ready closing on `resolved (SCRIPT half):`, which it likewise must not do.
 RESOLVED_RE = re.compile(r"^resolved\b(?!\s*\(SKILL)", re.IGNORECASE | re.MULTILINE)
 PLATFORM_RE = re.compile(r"platform-limitation|status:\s*PLATFORM-LIMITATION", re.IGNORECASE)
+# A cycle looked at this signal and produced nothing actionable. Distinct from `resolved`
+# (which means fixed) and from `platform` (which means the constraint is outside our layer):
+# adjudicated means "judged unactionable AT THIS LAYER, for a stated reason, on a stated date".
+# The 2026-08-31 null cycle is the case that forced this: Codex judged all three engagement-
+# workflow.js signals unfixable under the Zone-2 freeze, the cycle wrote nothing, and the
+# trigger kept firing DUE on a cluster it structurally could not close. A trigger that is
+# always on is a trigger nobody reads.
+ADJUDICATED_RE = re.compile(r"^adjudicated:", re.IGNORECASE | re.MULTILINE)
 
 # Harness target extraction from a `Traced to:` line.
 SCRIPT_RE = re.compile(r"(scripts/(?:lib/precheck/)?[A-Za-z0-9_./-]+\.py)", re.IGNORECASE)
@@ -72,7 +79,9 @@ ENGINE_PATH = "workflows/engagement-workflow.js"
 def class_key(failure_class: str) -> str:
     """Stable problem-identity key for clustering — mirrors skillopt-ready.class_key so the
     two checkers bucket the same way. Convention A "slug (rule_token)" -> slug; Convention B
-    "rule_token (prose)" -> token; else the whole string."""
+    "rule_token (prose)" -> token; Convention C "slug (instance)" / "slug — prose" -> slug;
+    else the whole string. Keep this body byte-identical to skillopt-ready.class_key: a
+    divergence splits one problem across the two loops."""
     s = failure_class.strip()
     a = re.sub(r"\s*\(rule_\w+\b[^)]*\)\s*$", "", s, flags=re.IGNORECASE).strip()
     if a.lower() != s.lower():
@@ -80,10 +89,13 @@ def class_key(failure_class: str) -> str:
     m = re.match(r"^(rule_missing|rule_wrong|rule_ignored)\b", s, flags=re.IGNORECASE)
     if m:
         return m.group(1).lower()
+    head = re.split(r"\s*\(|\s[—–]\s|\.\s|\s-\s", s, maxsplit=1)[0].strip()
+    if head:
+        return head.lower()
     return s.lower()
 
 
-def harness_target(traced: str) -> Optional[str]:
+def harness_target(traced: str) -> str | None:
     """The harness file a signal points at, or None if it names no script/engine. A mixed
     'skills/X + scripts/Y.py + agents/Z' trace returns scripts/Y.py (the harness half) — the
     skill/agent half is SkillOpt's; this checker owns the script/engine half."""
@@ -99,7 +111,7 @@ def harness_target(traced: str) -> Optional[str]:
     return None
 
 
-def find_log(explicit: Optional[str]) -> Optional[Path]:
+def find_log(explicit: str | None) -> Path | None:
     if explicit:
         p = Path(explicit)
         return p if p.exists() else None
@@ -142,12 +154,20 @@ def parse_signals(text: str) -> list:
             "dryrun": bool(DRYRUN_RE.search(body)),
             "resolved": bool(RESOLVED_RE.search(body)),
             "platform": bool(PLATFORM_RE.search(body)),
+            "adjudicated": bool(ADJUDICATED_RE.search(body)),
         })
     return out
 
 
 def analyze(signals: list):
-    """Cluster OPEN harness signals by (script, class_key); a bucket >= THRESHOLD is due."""
+    """Cluster OPEN harness signals by (script, class_key); a bucket is due when it reaches
+    THRESHOLD *and* still holds at least one signal no cycle has adjudicated.
+
+    Adjudicated signals stay in the bucket and keep counting toward THRESHOLD on purpose.
+    That makes the suppression self-clearing in the right direction: one NEW signal joining
+    an already-adjudicated cluster re-fires it immediately, instead of waiting for a second
+    one. A class that was judged speculative and then actually happened in the field has
+    earned a fresh look on the first real hit."""
     live = [
         s for s in signals
         if s["target"] and not s["dryrun"] and not s["resolved"] and not s["platform"]
@@ -155,7 +175,8 @@ def analyze(signals: list):
     buckets = defaultdict(list)
     for s in live:
         buckets[(s["target"], s["class_key"])].append(s)
-    due = [(tgt, ck, len(v)) for (tgt, ck), v in buckets.items() if len(v) >= THRESHOLD]
+    due = [(tgt, ck, len(v)) for (tgt, ck), v in buckets.items()
+           if len(v) >= THRESHOLD and any(not s["adjudicated"] for s in v)]
     due.sort(key=lambda x: -x[2])
     return live, buckets, due
 
@@ -192,6 +213,8 @@ def main() -> int:
         print(json.dumps({
             "log": str(log), "threshold": THRESHOLD, "live_count": len(live),
             "buckets": {f"{t}|{c}": len(v) for (t, c), v in buckets.items()},
+            "adjudicated": {f"{t}|{c}": sum(1 for s in v if s["adjudicated"])
+                            for (t, c), v in buckets.items()},
             "due": [{"target": t, "class": c, "count": n} for t, c, n in due],
             "ready": ready,
         }, ensure_ascii=False, indent=2))
@@ -204,9 +227,12 @@ def main() -> int:
         print("  none accumulating.")
     else:
         for (t, c), v in sorted(buckets.items(), key=lambda kv: -len(kv[1])):
-            flag = "  <<< DUE" if len(v) >= THRESHOLD else ""
+            adj = sum(1 for s in v if s["adjudicated"])
+            is_due = len(v) >= THRESHOLD and adj < len(v)
+            flag = "  <<< DUE" if is_due else ("  (all adjudicated)" if adj == len(v) and adj else "")
             engs = sorted({s["engagement"] for s in v if s["engagement"]})
-            print(f"    {t} / {c}: {len(v)}  [{', '.join(engs)}]{flag}")
+            adj_note = f", {adj} adjudicated" if adj else ""
+            print(f"    {t} / {c}: {len(v)}{adj_note}  [{', '.join(engs)}]{flag}")
     print()
 
     if ready:

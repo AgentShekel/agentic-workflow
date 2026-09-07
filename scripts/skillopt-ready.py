@@ -22,7 +22,7 @@ Counts LIVE same-class signals across BOTH input channels and reports whether th
               threshold (2): a success edit reinforces existing wording rather than
               adding a new rule, so it carries less risk than a corrective one.
               It shares Channel B's recency window (`--reflection-window-days`), because
-              a behaviour that carried an engagement months ago is a claim about a
+              a behaviour that carried an engagement six months ago is a claim about a
               corpus that has since been edited many times.
 
 Channel C never makes a cycle DUE on its own. A loop that fires because things went well
@@ -71,9 +71,13 @@ import sys
 from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
-from typing import Optional
 
 THRESHOLD = 3
+# Second trigger, see analyze_backlog(). Set at 6 because that is where the dev domain sat on
+# 2026-08-27 with 6 loop-actionable live signals across 6 distinct classes: enough accumulated
+# material to be worth one pass, and high enough that a couple of stray signals do not summon a
+# cycle. Revisit against real cycle outcomes, not by taste.
+BACKLOG_THRESHOLD = 6
 # Channel C (success) fires at 2, not 3. A corrective edit adds a rule the corpus did not
 # have and can misfire on cases nobody sampled, so it has to earn a repeat plus a repeat.
 # A reinforcement edit tightens wording that is already there and already passing, so the
@@ -85,7 +89,7 @@ REFLECTION_WINDOW_DAYS = 90  # Channel-B recency window (protocol §Trigger: "la
 # Where engagements (and their engagement-reflections.md) live. Overridable via
 # --reflection-root / env SKILLOPT_REFLECTION_ROOTS. Missing roots are skipped, so a
 # machine without these dirs (e.g. the public mirror) just sees zero reflections.
-DEFAULT_REFLECTION_ROOTS = []
+DEFAULT_REFLECTION_ROOTS = ["C:/work-projects", "C:/game-projects"]
 REFLECTION_FILE = "engagement-reflections.md"
 
 SIGNAL_RE = re.compile(r"^###\s+SIGNAL\s*\|", re.IGNORECASE)
@@ -102,16 +106,17 @@ DRYRUN_RE = re.compile(r"^dryrun:\s*true\b", re.IGNORECASE | re.MULTILINE)
 #
 # The two checkers must disagree here, and in opposite directions, or a mixed signal is lost.
 # A mixed signal has a skill half and a script half; whichever loop closes its own half writes
-# a half-marker, and ONLY that loop may stop counting the signal. A narrow `^resolved:` here
-# with a broad `^resolved` in harness-ready would invert both halves at once: the harness loop
-# would close a signal whose script half is still open, while this loop kept re-firing a
-# cluster it had already closed.
+# a half-marker, and ONLY that loop may stop counting the signal. Before this, skillopt matched
+# a bare `^resolved:` while harness matched a broad `^resolved\b`, which was correct for the
+# harness marker and exactly inverted for the skill one: `resolved (SKILL half):` closed the
+# harness signal (whose script half was still open) and left the skill signal live forever
+# (re-firing its cluster every session).
 RESOLVED_RE = re.compile(r"^resolved\s*(?:\(SKILL[^)]*\))?\s*:", re.IGNORECASE | re.MULTILINE)
 DATE_SUFFIX_RE = re.compile(r"-?\d{4}-\d{2}-\d{2}$")
 
 # Channel B (reflection) parsing. Header separators may be em-dash (canonical) or a
 # spaced hyphen; the mandatory surrounding whitespace keeps in-name hyphens
-# (e.g. "some-hyphenated-engagement-name") from being read as separators.
+# (e.g. "universal-site-template-redesign-impl") from being read as separators.
 REFL_HEADER_RE = re.compile(
     r"^##\s+Reflection\s+[—-]\s+(?P<eng>.+?)\s+[—-]\s+(?P<date>\d{4}-\d{2}-\d{2})\s+[—-]\s+verdict:",
     re.IGNORECASE,
@@ -127,7 +132,7 @@ REFL_DRYRUN_RE = re.compile(r"^\s*dryrun:\s*true\b", re.IGNORECASE)
 TARGET_NAME_RE = re.compile(r"(?:skills?|agents?)\s*[:/]\s*([A-Za-z0-9_][A-Za-z0-9_./-]*)")
 
 
-def find_log(explicit: Optional[str]) -> Optional[Path]:
+def find_log(explicit: str | None) -> Path | None:
     if explicit:
         p = Path(explicit)
         return p if p.exists() else None
@@ -143,20 +148,24 @@ def class_key(failure_class: str) -> str:
     conventions for the `Failure class:` line:
 
       "intake-size-misclassification (rule_wrong)"  -> "intake-size-misclassification"
-      "rule_ignored (mandatory consilium skipped...)" -> "rule_ignored"
+      "rule_ignored (mandatory consilium skipped…)" -> "rule_ignored"
       "rule_ignored"                                 -> "rule_ignored"
       "token-drift"                                  -> "token-drift"
 
     Convention A leads with a descriptive slug and trails a (rule_token); the
     slug is the key. Convention B leads with the taxonomy token and trails FREE
     PROSE — prose is not a stable cluster key, so we key on the token instead.
-    Without this, a token-leading signal keys on its whole verbose line and never
-    clusters with a same-gap signal worded differently."""
+    Without this, a token-leading signal keyed on its whole verbose line and
+    never clustered with a same-gap signal worded differently (the consilium-
+    skip cluster would silently never reach the >=3 trigger). 2026-06-01.
+    """
     s = failure_class.strip()
     # Convention A: strip a trailing "(rule_token[ / extra prose])" -> descriptive slug
-    # remains. The `[^)]*` tolerates a parenthetical carrying the token PLUS extra text,
-    # e.g. "(rule_wrong / internal-contradiction)" -> still keyed by the slug, so two
-    # slug-identical signals worded with/without the extra cluster together.
+    # remains. The `[^)]*` tolerates a parenthetical that carries the token PLUS extra
+    # text, e.g. "(rule_wrong / internal-contradiction)" -> still keyed by the slug, so
+    # two slug-identical signals worded with/without the extra cluster together
+    # (field 2026-06-02: a "(rule_wrong / internal-contradiction)" form keyed on its
+    # whole verbose line and would never have clustered with a "(rule_wrong)" twin).
     a = re.sub(r"\s*\(rule_\w+\b[^)]*\)\s*$", "", s, flags=re.IGNORECASE).strip()
     if a.lower() != s.lower():
         return a.lower()
@@ -165,11 +174,21 @@ def class_key(failure_class: str) -> str:
     m = re.match(r"^(rule_missing|rule_wrong|rule_ignored)\b", s, flags=re.IGNORECASE)
     if m:
         return m.group(1).lower()
-    # Otherwise the whole class string is its own identity (e.g. "token-drift").
+    # Convention C: a descriptive slug followed by an INSTANCE — a parenthetical, a dash
+    # clause, or a second sentence. Key on the head; the tail describes this occurrence, not
+    # the class. Without this the whole line became the key, and a key unique by construction
+    # can never reach a threshold: measured 2026-08-27, 19 of 28 `Failure class:` lines fell
+    # through here, giving 27 distinct keys for 28 signals. Three signals reading
+    # "tooling false-negative (<instance>)" were one class and never clustered. A and B run
+    # first so this broader cut cannot re-partition a bucket that already worked.
+    head = re.split(r"\s*\(|\s[—–]\s|\.\s|\s-\s", s, maxsplit=1)[0].strip()
+    if head:
+        return head.lower()
+    # Nothing left to cut: the whole class string is its own identity (e.g. "token-drift").
     return s.lower()
 
 
-def norm_eng(name: Optional[str]) -> str:
+def norm_eng(name: str | None) -> str:
     """Normalize an engagement name for cross-channel matching — lowercase and drop a
     trailing ISO date (`-2026-05-28`) so a log `engagement:` and a reflection header
     referring to the same engagement match even if one carries the date suffix."""
@@ -195,7 +214,7 @@ def extract_target_names(target_raw: str) -> list:
 
 def primary_target(target_raw: str) -> str:
     """The single target a reflection bucket keys on — the first named skill/agent
-    (so '... vs scripts/x.py' keys on the skill, not the script). Falls back to the
+    (so '… vs scripts/x.py' keys on the skill, not the script). Falls back to the
     first token / a trimmed prefix when no skill/agent is named."""
     names = extract_target_names(target_raw)
     return names[0] if names else (target_raw or "?").strip()[:40]
@@ -267,7 +286,7 @@ def parse_reflection_file(text: str) -> list:
     """Parse one engagement-reflections.md into reflection records. Each `- target:`
     (kind="gap", Channel B) or `- worked:` (kind="worked", Channel C) bullet is one
     record; class/resolved/dryrun are read from its indented lines; engagement+date
-    come from the enclosing `## Reflection — ...` header."""
+    come from the enclosing `## Reflection — …` header."""
     records = []
     cur_eng, cur_date = None, None
     cur = None
@@ -336,7 +355,7 @@ def reflection_to_signal(rec: dict, domain: str) -> dict:
     }
 
 
-def within_window(rec_date: Optional[str], window_days: int) -> bool:
+def within_window(rec_date: str | None, window_days: int) -> bool:
     if not window_days or window_days <= 0:
         return True
     if not rec_date:
@@ -388,6 +407,28 @@ def scan_reflections(roots: list, window_days: int) -> list:
                     sig["source_file"] = str(f)
                     out.append(sig)
     return out
+
+
+def analyze_backlog(live):
+    """Second trigger: a domain that accumulated loop-actionable signals without any of them
+    repeating. Distinct from the same-class cluster and deliberately named differently.
+
+    The recurrence trigger asks "has this specific failure happened THRESHOLD times", which
+    separates a systemic gap from prompt drift. Sound, and it stays. What it cannot see is a
+    domain producing many DIFFERENT one-off failures: measured 2026-08-27 over the full log,
+    28 signals fell into 25 classes, 23 of them singletons, and exactly one class ever reached
+    3. A loop with only a recurrence trigger waits for a repeat this corpus does not produce.
+
+    So this asks a different question: has enough unmetabolised material piled up in one domain
+    to be worth a batch pass, regardless of whether any of it repeats. Script/other-targeted
+    signals are excluded here as they are everywhere else — those are direct fixes.
+    """
+    per_domain = defaultdict(list)
+    for s in live:
+        if s["target"] == "skill_agent":
+            per_domain[s["domain"]].append(s)
+    return sorted(((dom, len(sigs)) for dom, sigs in per_domain.items()
+                   if len(sigs) >= BACKLOG_THRESHOLD), key=lambda x: -x[1])
 
 
 def analyze(signals):
@@ -540,21 +581,32 @@ def main() -> int:
     refl_live, refl_buckets, refl_due = analyze_reflections(refl_signals, log_twin_keys)
     succ_signals = [] if (args.no_reflections or args.no_success) else refl_signals
     succ_live, succ_buckets, succ_due = analyze_success(succ_signals)
+    backlog_due = analyze_backlog(live)
     # Channel C is deliberately absent from `ready`. See the module docstring: a loop that
     # fires because things went well has no defect to close.
-    ready = bool(due) or bool(refl_due)
+    ready = bool(due) or bool(refl_due) or bool(backlog_due)
 
     if args.hook:
-        # SessionStart hook mode: emit the additionalContext envelope ONLY when a
-        # cycle is due; print nothing otherwise. Always exit 0 (never block the
-        # session start).
+        # SessionStart hook mode: emit the additionalContext envelope ONLY when something
+        # is due; print nothing otherwise. Always exit 0 (never block the session start).
         if ready:
-            lines = ["A system-optimization (SkillOpt) cycle is DUE — the >=3-same-class "
-                     "trigger is met. Surface this to the user as a reminder:"]
+            lines = ["Surface this to the user as a reminder:"]
             for dom, ck, n in due:
-                lines.append(f"- {dom}/{ck}: {n} live log signals -> run `прогнать skill-evolution {dom}`")
+                lines.append(f"- CYCLE due — {dom}/{ck}: {n} live log signals "
+                             f"-> run `прогнать skill-evolution {dom}`")
             for dom, tgt, ck, n in refl_due:
-                lines.append(f"- {dom}/{tgt}/{ck}: {n} live reflections -> run `прогнать skill-evolution {dom}`")
+                lines.append(f"- CYCLE due — {dom}/{tgt}/{ck}: {n} live reflections "
+                             f"-> run `прогнать skill-evolution {dom}`")
+            # A backlog is NOT a cycle. A cycle authors one bounded edit against a COMMON
+            # pattern; a pile of unrelated signals has no common pattern to author against.
+            # What a backlog earns is a triage: re-check each signal against today's corpus,
+            # close the stale ones, and see whether a real cluster falls out. Measured
+            # 2026-08-27 on the first firing, 2 of 6 signals were already dead — one pointed
+            # at doctrine retired in June, one asked for a gate that had since been built.
+            for dom, n in backlog_due:
+                lines.append(f"- TRIAGE due — {dom}: {n} loop-actionable live signals across "
+                             f"distinct classes. Re-check each against the current corpus and "
+                             f"close what is stale; run a cycle only if a real cluster falls out.")
             # Mentioned only alongside a real trigger — a success cluster is reinforcement
             # fuel for a cycle something else earned, never a reason to open one.
             for dom, tgt, ck, n in succ_due:
@@ -572,6 +624,8 @@ def main() -> int:
         print(json.dumps({
             "log": str(log),
             "threshold": THRESHOLD,
+            "backlog_threshold": BACKLOG_THRESHOLD,
+            "backlog_due": [{"domain": d, "count": n} for d, n in backlog_due],
             "live_count": len(live),
             "buckets": {f"{d}/{c}": len(v) for (d, c), v in buckets.items()},
             "due": [{"domain": d, "class": c, "count": n} for d, c, n in due],
@@ -593,7 +647,8 @@ def main() -> int:
         return 1 if ready else 0
 
     print(f"SkillOpt readiness — {log}")
-    print(f"  live log signals (excl. dryrun/resolved): {len(live)}  | threshold: >={THRESHOLD} same-class")
+    print(f"  live log signals (excl. dryrun/resolved): {len(live)}  | triggers: "
+          f">={THRESHOLD} same-class, or >={BACKLOG_THRESHOLD} loop-actionable in one domain")
     if not buckets:
         print("  Channel A (log signals): none accumulating.")
     else:
@@ -628,16 +683,31 @@ def main() -> int:
             print(f"    {d}/{tgt}/{c}: {len(v)}  [{', '.join(engs)}]{flag}")
     print()
 
-    if ready:
-        print("VERDICT: a SkillOpt cycle is DUE.")
+    if due or refl_due:
+        print("VERDICT: a SkillOpt CYCLE is DUE.")
         for d, c, n in due:
             print(f"  -> прогнать skill-evolution {d}   (log: {c}, {n} signals)")
         for d, tgt, c, n in refl_due:
             print(f"  -> прогнать skill-evolution {d}   (reflections: {tgt}/{c}, {n})")
+        for d, n in backlog_due:
+            print(f"  -> and triage {d}'s backlog of {n} while you are there")
         for d, tgt, c, n in succ_due:
             print(f"  -> reinforcement fuel available in {d}: {tgt}/{c} ({n} worked-reflections)")
         return 1
-    print("VERDICT: not yet — no (domain,class) bucket has >=3 loop-actionable live signals.")
+    if backlog_due:
+        print("VERDICT: a TRIAGE is DUE (no cycle — nothing repeats).")
+        for d, n in backlog_due:
+            print(f"  -> {d}: {n} loop-actionable live signals across distinct classes.")
+        # A triage is exactly when a director is re-reading a domain's material, so this is
+        # the moment reinforcement fuel is worth knowing about — the hook mode already says so.
+        for d, tgt, c, n in succ_due:
+            print(f"  -> reinforcement fuel also available in {d}: {tgt}/{c} ({n} worked-reflections)")
+        print("     Re-check each against the current corpus, close what is stale, and run a")
+        print("     cycle only if a real cluster falls out. See system-optimization-protocol")
+        print("     §\"Triage (what a domain backlog earns)\".")
+        return 1
+    print(f"VERDICT: not yet — no (domain,class) bucket has >={THRESHOLD} loop-actionable live "
+          f"signals, and no domain has >={BACKLOG_THRESHOLD} of them in total.")
     return 0
 
 

@@ -33,14 +33,14 @@ def check_validator_outputs(eng: Path) -> dict:
     # Find every '### {name}' block. Validator agent names are lowercase-hyphenated
     # (code-reviewer, security-auditor, skeptic, ...); filtering to name.islower()
     # excludes prose section headings like "### Phase 6a" / "### Transport note"
-    # that the bare regex mis-counted as phantom validators (a field test).
+    # that the bare regex mis-counted as phantom validators (2026-05-30 field test).
     # A validator agentType is lowercase-hyphenated and never contains a slash. A
     # slash-command token (`/critique`, `/design-review`) is NOT a validator agentType —
     # it can never produce a {name}-iter-N.json output file, so listing one in
     # validation-log.md must not be counted as a REQUIRED validator (else guaranteed
     # false-fail). validation-pipeline historically listed `/critique` as a mandatory
-    # design validator (an earlier field signal). islower()
-    # also excludes prose headings like "### Phase 6a" (a field test).
+    # design validator (recorded in the skill-evolution log). islower()
+    # also excludes prose headings like "### Phase 6a" (2026-05-30 field test).
     blocks = [
         name
         for name in re.findall(
