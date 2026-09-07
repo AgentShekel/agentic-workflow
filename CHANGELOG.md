@@ -2,6 +2,33 @@
 
 All notable changes to agentic-workflow.
 
+## v0.6.1 — 2026-09-06 (Regression suite + the scripts the docs point at)
+
+Publishes two things the shipped docs already assumed.
+
+### Test suite
+
+`scripts/tests/` — 16 regression guards, runnable standalone or under pytest, no
+dependencies beyond the stdlib (one JavaScript suite needs node). They pin the
+invariants that fail silently: the signal-clustering key both readiness checkers
+share, the partial-resolved half-markers each loop must and must not honour, the
+success channel's isolation from the readiness count, the ledger hash chain, and
+the safety gates of both self-improvement loops (a required rollback that does not
+complete, a check that could not run, a low-blast edit reaching publication).
+
+The three live-consilium cases skip rather than fail when the optional LangGraph
+venv is absent, so a fresh clone reports green with an explicit skip note.
+
+### Scripts
+
+`handoff-digest.py`, `reflect-emit.py`, `ledger-emit-phases.py`, `metrics.py` and
+`outcome-due.py` — the shipped skills instruct the operator to run these, so they
+belong here. All stdlib-only.
+
+### Counts
+
+60 agents (Managers 3 · Directors 4 · Leads 3 · Specialists 20 · Validators 30) · 46 skills · 23 main + 3 optional Python scripts · 3 Workflow engines + 2 LangGraph engines.
+
 ## v0.6.0 — 2026-09-06 (Success channel + loop gates that fail closed)
 
 The skill-evolution loop now learns from what worked, not only from what broke, closes the signals it acted on, and every gate guarding it fails closed instead of open.
