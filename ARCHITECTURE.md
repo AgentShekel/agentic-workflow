@@ -401,7 +401,7 @@ raw fields (normalized verdict + severity + validator_type).
 
 ## 5. Orchestration layer
 
-17 main + 3 optional Python scripts in `~/.claude/scripts/`. All scripts
+23 main + 3 optional Python scripts in `~/.claude/scripts/`. All scripts
 are **exit-code gates**: a non-zero exit blocks the pipeline, no
 prompts, no negotiations. **No model judgment** — purely deterministic
 logic.

@@ -402,7 +402,7 @@ engagement-протокола) через frontmatter.
 
 ## 5. Orchestration layer
 
-17 main + 3 optional Python-скриптов в `~/.claude/scripts/`. Все скрипты
+23 main + 3 optional Python-скриптов в `~/.claude/scripts/`. Все скрипты
 — **exit-code gates**: ненулевой exit блокирует пайплайн, без
 промптов, без переговоров. **Без модельных суждений** — чистая
 детерминистическая логика.
