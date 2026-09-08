@@ -78,7 +78,7 @@ framing contamination:
   retracts findings. Delta preliminary→final is a contamination signal.
 
 **L-tier consilium.** 5 reviewers in parallel: Anthropic Opus +
-2× OpenAI GPT-5 (Codex) + Anthropic Sonnet + Anthropic Haiku.
+2× OpenAI Codex (GPT-6-Astra) + Anthropic Sonnet + Anthropic Haiku.
 Cross-family disagreements are detected automatically and flagged for
 manual review.
 
@@ -242,7 +242,7 @@ Windows-style paths that would nest worktrees inside the repo.
 
 Frontmatter tags for the router: `[PROTOCOL]`, `[METHODOLOGY]`, `[TOOL]`.
 
-### Scripts (18 main + 3 optional)
+### Scripts (23 main + 3 optional)
 
 Three Workflow orchestration engines (`workflows/`):
 - `engagement-workflow.js` — the **pre-gate cascade** the main loop conducts: discovery (`lead:plan`) → decompose (gated) → deliver (specialist waves in isolated git worktrees, per-task review→rework, per-wave consolidation: code = octopus-merge / artefact = manifest-verify) → validate (validators in parallel + adversarial-verify each finding) → handoff → gate. Stops at the handoff seam; a wave hard-stops if a task is blocked / fails review / the plan is malformed (no silent proceed). Resumes via the Workflow run journal (`resumeFromRunId`). Opt-in activation flags (`args.A`, all default-OFF) add the per-task contract handshake, bounded replan, repo detection, consolidation guard, artefact render-eval, and cheap-model tiering — see [Engine activation flags](#engine-activation-flags).
@@ -267,6 +267,16 @@ Mechanical gates and synthesis:
 - `size-detect.py` — tier detection at intake / runtime, with `--auto-promote`
 - `engagement-archive.py` — idempotent archival
 
+Readiness and observability:
+- `skillopt-ready.py` — SkillOpt readiness: clusters log signals, orphan reflections and `- worked:` success patterns; reports what is DUE
+- `harness-ready.py` — the script/engine-layer peer, clustering by `(script × class)` at ≥2
+- `metrics.py` — agreement / override / false-positive rates and per-phase deltas off the event ledger
+- `ledger-emit.py`, `ledger-emit-phases.py` — append lifecycle events from a shell one-liner
+- `reflect-emit.py` — append one reflection (`--kind gap` or `--kind worked`) mid-flight
+- `handoff-digest.py` — print the handoff digest an acceptance log must record
+- `outcome-due.py` — surface engagements whose outcome hypothesis is due for a check
+- `check-agent-models.py` — model assignment across the agent corpus
+
 Shared libraries:
 - `lib/ledger.py` — append-only event ledger (`engagement/events.jsonl`); 28 known payload types; thin shim; smoke-tested
 - `lib/precheck/` — modular precheck package (v0.2.2): 8 topic modules (`common`, `criteria`, `handoff`, `iteration`, `validators`, `acceptance`, `danger` + `__init__` re-exports). `handoff-precheck.py` (1264 → 423 lines, CLI/dispatch only) imports from this package. Byte-identical JSON output to the pre-refactor monolith.
@@ -278,15 +288,18 @@ see [`scripts/optional/README.md`](scripts/optional/README.md)).
 ## SkillOpt golden sets
 
 The director-optimizer uses golden scenarios as a regression gate before
-promoting any Codex-proposed edit. One set per domain, ≥3 scenarios each
-covering the three failure classes (dev adds a 4th — a manager-fidelity
-catch):
+promoting any Codex-proposed edit. One set per domain, each covering the
+three failure classes plus a **non-rejection** scenario. That last one
+matters: every other scenario rewards catching a defect, so without it
+each accepted edit ratchets the corpus toward suspicion and nothing
+ratchets back. An edit that closes its target but trips the
+non-rejection scenario is a reject.
 
 | Domain | Scenarios | Failure classes |
 |---|---|---|
-| `golden/dev/` | spec-code-drift / flaky-test-masking / security-gap (+ manager-catches-mis-rendered-consilium) | rule_ignored / rule_missing / rule_wrong |
-| `golden/design/` | design-token-drift / accessibility-aria-missing / dark-mode-contrast-fail | rule_ignored / rule_missing / rule_wrong |
-| `golden/marketing/` | keyword-count-underdelivery / seo-claim-unsupported / brand-voice-pronoun-violation | rule_ignored / rule_missing / rule_wrong |
+| `golden/dev/` | spec-code-drift / flaky-test-masking / security-gap / mis-rendered-consilium / http-endpoint-on-unit-green (+ clean-work-must-not-be-rejected, escalation-quality) | rule_ignored / rule_missing / rule_wrong + non-rejection |
+| `golden/design/` | design-token-drift / accessibility-aria-missing / dark-mode-contrast-fail (+ documented-exception-must-not-be-flagged) | rule_ignored / rule_missing / rule_wrong + non-rejection |
+| `golden/marketing/` | keyword-count-underdelivery / seo-claim-unsupported / brand-voice-pronoun-violation (+ sourced-claim-must-not-be-flagged) | rule_ignored / rule_missing / rule_wrong + non-rejection |
 
 A real SkillOpt cycle fires only when ≥3 real same-class signals
 accumulate in `skill-evolution-log.md`. A synthetic dry-run on the dev

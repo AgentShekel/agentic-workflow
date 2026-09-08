@@ -128,7 +128,7 @@ flowchart TB
         SK6[Skill development · 3]
     end
 
-    subgraph Orch ["Orchestration · Workflow engines + 18 main + 3 optional scripts"]
+    subgraph Orch ["Orchestration · Workflow engines + 23 main + 3 optional scripts"]
         O1[Mechanical gates]
         O2[engagement-workflow · pre-gate Workflow]
         O3[Adversary bridge · LangGraph]
@@ -224,8 +224,9 @@ description: |
   all `*-manager` agents (tier-aware S/M/L verdict shape, reflection
   emission).
 - `system-optimization-protocol` — SkillOpt loop used by all
-  `*-director` agents (reflect → bounded edit → golden gate →
-  promote / reject).
+  `*-director` agents (reflect on both channels → bounded edit →
+  golden gate → snapshot + promote → diff guard + slow-update →
+  record).
 - `engagement-contract` — minimal specialist subset of engagement
   protocol; loaded by 20 specialists via frontmatter.
 - `validation-pipeline` — which validator to run when, in what order,
@@ -290,16 +291,37 @@ SkillOpt-style skill-evolution loop on accumulated REJECT/rework
 signals from the manager's `skill-evolution-log.md`:
 
 1. **Reflect** — cluster signals by `target × class`
-   (`rule_missing` / `rule_wrong` / `rule_ignored`); fires only at
-   ≥3 same-class signals.
-2. **Codex proposes bounded edits** (cross-family — kills defend-bias).
-   Edit budget L: 4–6 patches per cycle, ≤10 lines each.
-3. **Judge against golden set** — director (not Codex) verifies the
-   edit doesn't regress any scenario in
-   `skills/system-optimization-protocol/golden/{domain}/`.
-4. **Promote or reject.** Passing edits promote to the `~/.claude/`
-   tree. Rejected edits land in `<your-memory>/skill-rejected-edits.md`
+   (`rule_missing` / `rule_wrong` / `rule_ignored`); fires at ≥3
+   same-class signals, or as a triage when one domain accumulates enough
+   unrelated ones. A second, deliberately conservative channel reads
+   `- worked:` reflections, so a cycle can reinforce as well as forbid.
+   Success never opens a cycle on its own: a cycle authors an edit
+   against a defect, and there is nothing to close when things went well.
+2. **Codex proposes bounded edits** (cross-family — kills defend-bias)
+   on both channels. Edit budget L: 4–6 patches per cycle, ≤10 lines each.
+3. **Select** — merge the two channels failure-first, drop what the
+   rejection buffer already settled, then rank on stated criteria
+   (support, complementarity, generality, actionability) before cutting
+   to budget.
+4. **Judge against the golden set** — the director, not Codex, verifies
+   the edit regresses no scenario in
+   `skills/system-optimization-protocol/golden/{domain}/`. That includes
+   the non-rejection scenario, which stops an edit buying a catch by
+   making the corpus more suspicious.
+5. **Snapshot, then promote or reject.** Every target file is copied
+   before it is edited; with no restore point the cycle refuses to edit
+   at all. Rejected edits land in `<your-memory>/skill-rejected-edits.md`
    (negative memory; read before next cycle).
+6. **Verify what actually landed** — a diff guard confirms the cycle
+   wrote only where it declared, and slow-update re-reads the golden set
+   over every promotion, not just the high-blast ones. A regression
+   restores the snapshot and blocks publication. A check that could not
+   run counts as failed, never as passed.
+7. **Record** — signals a promotion closed get `resolved:`; a cycle that
+   produced no edit writes `adjudicated:`. Either way the trigger clears,
+   so it cannot fire forever on a cluster nobody can close.
+8. **Meta** — what this cycle learned about editing is written back for
+   the next one to read.
 
 The director **never authors edits itself** — Codex is the proposer,
 the director is the judge, the human is the commons-maintainer for
@@ -556,8 +578,8 @@ sequenceDiagram
 | Role | Model | Scope |
 |---|---|---|
 | `peer-opus` | Anthropic Opus | Peer-level adversarial review |
-| `codex-blind` | OpenAI GPT-5 (Codex CLI) | Fully independent, no prior findings |
-| `codex-informed` | OpenAI GPT-5 (Codex CLI) | Reads peer-opus, focuses on gaps |
+| `codex-blind` | OpenAI Codex CLI (GPT-6-Astra) | Fully independent, no prior findings |
+| `codex-informed` | OpenAI Codex CLI (GPT-6-Astra) | Reads peer-opus, focuses on gaps |
 | `sonnet-scoped` | Anthropic Sonnet | «Average human» common-sense scope |
 | `haiku-scoped` | Anthropic Haiku | Naive obvious-miss scope, format checks |
 
@@ -773,18 +795,31 @@ manager-emitted `skill-evolution-log.md` entries:
 ```mermaid
 flowchart LR
     SIG["skill-evolution-log.md<br/>≥3 same-class signals"]
+    WRK["worked: reflections<br/>reinforcement fuel"]
     REF[Director reflects<br/>cluster by target × class]
     REJ[Read skill-rejected-edits.md<br/>negative memory]
     CDX[Codex proposes<br/>bounded edits L=4-6]
+    SEL[Select<br/>failure-first merge + rank]
     GLD[Golden-set gate<br/>per-domain scenarios]
+    SNAP[Snapshot the targets]
     PROM[Promote to live]
+    VER[Diff guard + slow-update]
+    REC[Record resolved / adjudicated]
+    RB[Roll back from snapshot]
     REJBUF[Append to<br/>skill-rejected-edits.md]
 
     SIG --> REF
-    REJ --> CDX
+    WRK --> REF
+    REJ --> SEL
     REF --> CDX
-    CDX --> GLD
-    GLD -->|pass| PROM
+    CDX --> SEL
+    SEL --> GLD
+    GLD -->|pass| SNAP
+    SNAP --> PROM
+    PROM --> VER
+    VER -->|clean| REC
+    VER -->|regression| RB
+    RB --> REJBUF
     GLD -->|fail| REJBUF
 
     classDef proc fill:#dbeafe,stroke:#2563eb,color:#000
@@ -792,19 +827,19 @@ flowchart LR
     classDef out fill:#dcfce7,stroke:#16a34a,color:#000
     classDef neg fill:#fee2e2,stroke:#dc2626,color:#000
 
-    class SIG,REF,CDX proc
-    class GLD gate
+    class SIG,WRK,REF,CDX,SEL,SNAP,REC proc
+    class GLD,VER gate
     class PROM out
-    class REJ,REJBUF neg
+    class REJ,REJBUF,RB neg
 ```
 
 Golden-set parity across domains:
 
 | Domain | Scenarios | Failure classes covered |
 |---|---|---|
-| `golden/dev/` | 4 (spec-code-drift / flaky-test-masking / security-gap + manager-catches-mis-rendered-consilium) | rule_ignored / rule_missing / rule_wrong |
-| `golden/design/` | 3 (token-drift / aria-missing / dark-contrast-fail) | rule_ignored / rule_missing / rule_wrong |
-| `golden/marketing/` | 3 (keyword-undercount / SEO-claim-uncited / brand-voice-pronoun) | rule_ignored / rule_missing / rule_wrong |
+| `golden/dev/` | 7 (spec-code-drift / flaky-test-masking / security-gap / mis-rendered-consilium / http-endpoint-on-unit-green + clean-work-must-not-be-rejected / escalation-quality) | rule_ignored / rule_missing / rule_wrong + non-rejection |
+| `golden/design/` | 4 (token-drift / aria-missing / dark-contrast-fail + documented-exception-must-not-be-flagged) | rule_ignored / rule_missing / rule_wrong + non-rejection |
+| `golden/marketing/` | 4 (keyword-undercount / SEO-claim-uncited / brand-voice-pronoun + sourced-claim-must-not-be-flagged) | rule_ignored / rule_missing / rule_wrong + non-rejection |
 
 A real cycle fires only when ≥3 real same-class signals accumulate in
 `<your-memory>/skill-evolution-log.md`. The synthetic dry-run on dev

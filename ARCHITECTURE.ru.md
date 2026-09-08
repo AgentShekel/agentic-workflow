@@ -128,7 +128,7 @@ flowchart TB
         SK6[Skill development · 3]
     end
 
-    subgraph Orch ["Orchestration · Workflow engines + 18 main + 3 optional scripts"]
+    subgraph Orch ["Orchestration · Workflow engines + 23 main + 3 optional scripts"]
         O1[Mechanical gates]
         O2[engagement-workflow · pre-gate Workflow]
         O3[Adversary bridge · LangGraph]
@@ -291,16 +291,39 @@ SkillOpt-loop эволюции навыков по накопленным REJECT
 из manager'овского `skill-evolution-log.md`:
 
 1. **Reflect** — кластеризует сигналы по `target × class`
-   (`rule_missing` / `rule_wrong` / `rule_ignored`); срабатывает только
-   при ≥3 same-class сигналах.
+   (`rule_missing` / `rule_wrong` / `rule_ignored`); срабатывает при ≥3
+   same-class сигналах либо как triage, когда в одном домене накопилось
+   достаточно разрозненных. Второй, намеренно консервативный канал читает
+   `- worked:` рефлексии, чтобы цикл умел не только запрещать, но и
+   усиливать. Успех сам по себе цикл не открывает: цикл пишет правку
+   против дефекта, а когда всё прошло хорошо, закрывать нечего.
 2. **Codex предлагает bounded edits** (cross-family — убирает
-   defend-bias). Edit budget L: 4–6 патчей за цикл, ≤10 строк каждый.
-3. **Judge против golden-сета** — директор (не Codex) верифицирует,
-   что правка не регрессирует ни один сценарий в
-   `skills/system-optimization-protocol/golden/{domain}/`.
-4. **Promote или reject.** Прошедшие правки промоутятся в `~/.claude/`
-   дерево. Rejected попадают в `<your-memory>/skill-rejected-edits.md`
-   (негативная память; читается перед следующим циклом).
+   defend-bias) по обоим каналам. Edit budget L: 4–6 патчей за цикл,
+   ≤10 строк каждый.
+3. **Select** — мержит два канала failure-first, выбрасывает то, что уже
+   закрыто буфером отказов, и ранжирует по заявленным критериям
+   (поддержка, дополняемость, общность, конкретность) перед срезом по
+   бюджету.
+4. **Judge против golden-сета** — директор, не Codex, верифицирует, что
+   правка не регрессирует ни один сценарий в
+   `skills/system-optimization-protocol/golden/{domain}/`. В том числе
+   сценарий на отсутствие ложного срабатывания: он не даёт протащить
+   правку, которая покупает находку ценой подозрительности корпуса.
+5. **Snapshot, затем promote или reject.** Каждый целевой файл
+   копируется до правки; без точки восстановления цикл вообще
+   отказывается редактировать. Rejected попадают в
+   `<your-memory>/skill-rejected-edits.md` (негативная память; читается
+   перед следующим циклом).
+6. **Проверка того, что реально легло** — diff guard сверяет, что цикл
+   писал только туда, куда заявил, а slow-update перечитывает golden-сет
+   по каждому промоушену, а не только по high-blast. Регрессия
+   восстанавливает снимок и блокирует публикацию. Проверка, которая не
+   отработала, считается проваленной, а не пройденной.
+7. **Record** — закрытые промоушеном сигналы получают `resolved:`, цикл
+   без правок пишет `adjudicated:`. В обоих случаях триггер гаснет и не
+   срабатывает вечно на кластере, который никто не может закрыть.
+8. **Meta** — то, что цикл понял про редактирование, записывается для
+   следующего.
 
 Директор **никогда не пишет правки сам** — Codex это proposer, директор
 это judge, человек — commons-maintainer для cross-domain промоушенов.
@@ -557,8 +580,8 @@ sequenceDiagram
 | Роль | Модель | Scope |
 |---|---|---|
 | `peer-opus` | Anthropic Opus | Peer-level adversarial review |
-| `codex-blind` | OpenAI GPT-5 (Codex CLI) | Полностью независимо, без prior findings |
-| `codex-informed` | OpenAI GPT-5 (Codex CLI) | Читает peer-opus, фокусируется на gaps |
+| `codex-blind` | OpenAI Codex CLI (GPT-6-Astra) | Полностью независимо, без prior findings |
+| `codex-informed` | OpenAI Codex CLI (GPT-6-Astra) | Читает peer-opus, фокусируется на gaps |
 | `sonnet-scoped` | Anthropic Sonnet | «Средний человек», common-sense scope |
 | `haiku-scoped` | Anthropic Haiku | Naive obvious-miss scope, format checks |
 
@@ -777,18 +800,31 @@ SkillOpt-стилизованный skill-evolution loop по накопленн
 ```mermaid
 flowchart LR
     SIG["skill-evolution-log.md<br/>≥3 same-class сигнала"]
+    WRK["worked: рефлексии<br/>топливо для подкрепления"]
     REF[Director reflects<br/>cluster by target × class]
     REJ[Read skill-rejected-edits.md<br/>негативная память]
     CDX[Codex proposes<br/>bounded edits L=4-6]
+    SEL[Select<br/>failure-first мерж + ранжирование]
     GLD[Golden-set gate<br/>per-domain сценарии]
+    SNAP[Снимок целевых файлов]
     PROM[Promote to live]
+    VER[Diff guard + slow-update]
+    REC[Record resolved / adjudicated]
+    RB[Откат из снимка]
     REJBUF[Append to<br/>skill-rejected-edits.md]
 
     SIG --> REF
-    REJ --> CDX
+    WRK --> REF
+    REJ --> SEL
     REF --> CDX
-    CDX --> GLD
-    GLD -->|pass| PROM
+    CDX --> SEL
+    SEL --> GLD
+    GLD -->|pass| SNAP
+    SNAP --> PROM
+    PROM --> VER
+    VER -->|clean| REC
+    VER -->|regression| RB
+    RB --> REJBUF
     GLD -->|fail| REJBUF
 
     classDef proc fill:#dbeafe,stroke:#2563eb,color:#000
@@ -796,19 +832,19 @@ flowchart LR
     classDef out fill:#dcfce7,stroke:#16a34a,color:#000
     classDef neg fill:#fee2e2,stroke:#dc2626,color:#000
 
-    class SIG,REF,CDX proc
-    class GLD gate
+    class SIG,WRK,REF,CDX,SEL,SNAP,REC proc
+    class GLD,VER gate
     class PROM out
-    class REJ,REJBUF neg
+    class REJ,REJBUF,RB neg
 ```
 
 Паритет golden-сетов по доменам (v0.2.1):
 
 | Домен | Сценарии | Failure classes покрыты |
 |---|---|---|
-| `golden/dev/` | 4 (spec-code-drift / flaky-test-masking / security-gap + manager-catches-mis-rendered-consilium) | rule_ignored / rule_missing / rule_wrong |
-| `golden/design/` | 3 (token-drift / aria-missing / dark-contrast-fail) | rule_ignored / rule_missing / rule_wrong |
-| `golden/marketing/` | 3 (keyword-undercount / SEO-claim-uncited / brand-voice-pronoun) | rule_ignored / rule_missing / rule_wrong |
+| `golden/dev/` | 7 (spec-code-drift / flaky-test-masking / security-gap / mis-rendered-consilium / http-endpoint-on-unit-green + clean-work-must-not-be-rejected / escalation-quality) | rule_ignored / rule_missing / rule_wrong |
+| `golden/design/` | 4 (token-drift / aria-missing / dark-contrast-fail + documented-exception-must-not-be-flagged) | rule_ignored / rule_missing / rule_wrong |
+| `golden/marketing/` | 4 (keyword-undercount / SEO-claim-uncited / brand-voice-pronoun + sourced-claim-must-not-be-flagged) | rule_ignored / rule_missing / rule_wrong |
 
 Реальный цикл запускается только когда ≥3 реальных сигнала одного
 класса накопились в `<your-memory>/skill-evolution-log.md`. Synthetic

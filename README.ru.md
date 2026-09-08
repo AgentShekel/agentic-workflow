@@ -79,7 +79,7 @@ framing contamination:
   отзывает выводы. Дельта preliminary→final — сигнал contamination.
 
 **L-tier consilium.** 5 reviewers параллельно: Anthropic Opus +
-2× OpenAI GPT-5 (Codex) + Anthropic Sonnet + Anthropic Haiku.
+2× OpenAI Codex (GPT-6-Astra) + Anthropic Sonnet + Anthropic Haiku.
 Cross-family disagreements детектируются автоматически и помечаются для
 ручной проверки.
 
@@ -247,7 +247,7 @@ Frontmatter-теги для router'а: `[PROTOCOL]`, `[METHODOLOGY]`, `[TOOL]`.
 `references/{topic}.md` — последние подгружаются on-demand. См. v0.2.1
 в CHANGELOG.
 
-### Scripts (18 main + 3 optional)
+### Scripts (23 main + 3 optional)
 
 Три Workflow-движка оркестрации (`workflows/`):
 - `engagement-workflow.js` — **pre-gate каскад**, который проводит главный цикл: discovery (`lead:plan`) → decompose (gated) → deliver (волны специалистов в изолированных git-worktree, per-task review→rework, консолидация по волне: код = octopus-merge / артефакт = manifest-verify) → validate (валидаторы параллельно + adversarial-verify каждого finding) → handoff → gate. Останавливается на шве handoff; волна жёстко стопорится, если задача заблокирована / провалила review / план некорректен (без молчаливого продолжения). Возобновляется через journal прогонов Workflow (`resumeFromRunId`). Opt-in activation-флаги (`args.A`, все default-OFF) добавляют per-task contract handshake, bounded replan, детект репозитория, guard консолидации, artefact render-eval и cheap-model tiering — см. [Engine activation flags](#engine-activation-flags).
@@ -272,6 +272,16 @@ Mechanical gates и synthesis:
 - `size-detect.py` — детектор tier'а на intake / runtime, с `--auto-promote`
 - `engagement-archive.py` — idempotent archival
 
+Готовность и наблюдаемость:
+- `skillopt-ready.py` — готовность SkillOpt: кластеризует сигналы лога, орфанные рефлексии и `- worked:` паттерны успеха; сообщает, что DUE
+- `harness-ready.py` — аналог для слоя скриптов и движка, кластеризация по `(script × class)` при ≥2
+- `metrics.py` — agreement / override / false-positive rate и пофазовые дельты по event ledger
+- `ledger-emit.py`, `ledger-emit-phases.py` — дописать lifecycle-события одной строкой из шелла
+- `reflect-emit.py` — дописать одну рефлексию (`--kind gap` или `--kind worked`) на лету
+- `handoff-digest.py` — напечатать digest хендоффа, который должен зафиксировать acceptance-log
+- `outcome-due.py` — показать энгейджменты, у которых пришло время проверить outcome-гипотезу
+- `check-agent-models.py` — назначение моделей по корпусу агентов
+
 Shared библиотеки:
 - `lib/ledger.py` — append-only event ledger (`engagement/events.jsonl`); 28 known payload types; thin shim; smoke-tested
 - `lib/precheck/` — модульный precheck пакет (v0.2.2): 8 топик-модулей (`common`, `criteria`, `handoff`, `iteration`, `validators`, `acceptance`, `danger` + `__init__` re-exports). `handoff-precheck.py` (1264 → 423 строки, CLI/dispatch only) импортирует из этого пакета. Byte-identical JSON output к pre-refactor монолиту.
@@ -284,14 +294,18 @@ Shared библиотеки:
 
 Директор-оптимизатор использует golden-сценарии как регрессионный шлюз
 перед промоутом любой Codex-предложенной правки. По одному набору на
-домен, ≥3 сценария в каждом покрывают три класса провалов (в dev есть
-4-й — manager-fidelity catch):
+домен, каждый покрывает три класса провалов плюс сценарий на
+**отсутствие ложного срабатывания**. Последний важен: все остальные
+сценарии награждают за находку дефекта, поэтому без него каждая принятая
+правка двигает корпус в сторону подозрительности и ничто не двигает
+обратно. Правка, которая закрывает свою цель, но валит этот сценарий,
+отклоняется.
 
 | Домен | Сценарий | Failure class |
 |---|---|---|
-| `golden/dev/` | spec-code-drift / flaky-test-masking / security-gap (+ manager-catches-mis-rendered-consilium) | rule_ignored / rule_missing / rule_wrong |
-| `golden/design/` | design-token-drift / accessibility-aria-missing / dark-mode-contrast-fail | rule_ignored / rule_missing / rule_wrong |
-| `golden/marketing/` | keyword-count-underdelivery / seo-claim-unsupported / brand-voice-pronoun-violation | rule_ignored / rule_missing / rule_wrong |
+| `golden/dev/` | spec-code-drift / flaky-test-masking / security-gap / mis-rendered-consilium / http-endpoint-on-unit-green (+ clean-work-must-not-be-rejected, escalation-quality) | rule_ignored / rule_missing / rule_wrong + non-rejection |
+| `golden/design/` | design-token-drift / accessibility-aria-missing / dark-mode-contrast-fail (+ documented-exception-must-not-be-flagged) | rule_ignored / rule_missing / rule_wrong + non-rejection |
+| `golden/marketing/` | keyword-count-underdelivery / seo-claim-unsupported / brand-voice-pronoun-violation (+ sourced-claim-must-not-be-flagged) | rule_ignored / rule_missing / rule_wrong + non-rejection |
 
 Реальный SkillOpt-цикл запускается когда ≥3 реальных сигнала одного
 класса накопились в `skill-evolution-log.md`. Synthetic dry-run проведён
