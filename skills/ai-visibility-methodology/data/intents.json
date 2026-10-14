@@ -1,0 +1,92 @@
+{
+  "_description": "Predefined intent templates by niche. Each intent has a category (brand/category/decision) and prompt templates with {brand}, {location}, {niche}, {service}, {feature} placeholders.",
+  "universal": [
+    {"category": "brand-methodology", "template": "Что такое {brand}?", "lang": "ru"},
+    {"category": "brand-methodology", "template": "What is {brand}?", "lang": "en"},
+    {"category": "brand-methodology", "template": "Расскажи о компании {brand} в {location}", "lang": "ru"},
+    {"category": "brand-methodology", "template": "{brand} — что это за компания?", "lang": "ru"},
+    {"category": "brand-methodology", "template": "Отзывы о {brand}", "lang": "ru"},
+    {"category": "brand-methodology", "template": "{brand} reviews", "lang": "en"},
+    {"category": "category", "template": "Лучшие {niche} в {location}", "lang": "ru"},
+    {"category": "category", "template": "Best {niche} in {location}", "lang": "en"},
+    {"category": "category", "template": "Топ {niche} {location}", "lang": "ru"},
+    {"category": "category", "template": "{niche} с хорошими отзывами в {location}", "lang": "ru"},
+    {"category": "category", "template": "Рейтинг {niche} в {location}", "lang": "ru"},
+    {"category": "decision", "template": "Какой {niche} выбрать в {location}?", "lang": "ru"},
+    {"category": "decision", "template": "Куда обратиться за {service} в {location}?", "lang": "ru"},
+    {"category": "decision", "template": "Сравни {niche} в {location} по соотношению цена-качество", "lang": "ru"},
+    {"category": "decision", "template": "Which {niche} to choose in {location}?", "lang": "en"}
+  ],
+  "niches": {
+    "fitness": [
+      {"category": "category", "template": "Фитнес-клубы с бассейном в {location}", "lang": "ru"},
+      {"category": "category", "template": "Тренажерный зал с персональным тренером в {location}", "lang": "ru"},
+      {"category": "decision", "template": "Где лучше заниматься фитнесом в {location} для начинающих?", "lang": "ru"},
+      {"category": "decision", "template": "Сравни фитнес-клубы {location} по абонементам", "lang": "ru"},
+      {"category": "category", "template": "Gym with pool near {location}", "lang": "en"}
+    ],
+    "restaurant": [
+      {"category": "category", "template": "Лучшие рестораны {location} для семейного ужина", "lang": "ru"},
+      {"category": "category", "template": "Рестораны с верандой в {location}", "lang": "ru"},
+      {"category": "decision", "template": "Где поесть в {location} вкусно и недорого?", "lang": "ru"},
+      {"category": "decision", "template": "Ресторан для банкета на 30 человек в {location}", "lang": "ru"},
+      {"category": "category", "template": "Best restaurants in {location} for business lunch", "lang": "en"}
+    ],
+    "clinic": [
+      {"category": "category", "template": "Лучшие стоматологии в {location}", "lang": "ru"},
+      {"category": "category", "template": "Частные клиники {location} с хорошими отзывами", "lang": "ru"},
+      {"category": "decision", "template": "Куда обратиться к стоматологу в {location}?", "lang": "ru"},
+      {"category": "decision", "template": "Сравни частные клиники {location} по ценам", "lang": "ru"},
+      {"category": "category", "template": "Best dental clinics in {location}", "lang": "en"}
+    ],
+    "education": [
+      {"category": "category", "template": "Онлайн-школы {service} в {location}", "lang": "ru"},
+      {"category": "category", "template": "Курсы {service} для начинающих", "lang": "ru"},
+      {"category": "decision", "template": "Где лучше учиться {service} онлайн?", "lang": "ru"},
+      {"category": "decision", "template": "Сравни онлайн-курсы {service} по отзывам", "lang": "ru"},
+      {"category": "category", "template": "Best online {service} courses", "lang": "en"}
+    ],
+    "ecommerce": [
+      {"category": "category", "template": "Лучшие интернет-магазины {service} в России", "lang": "ru"},
+      {"category": "category", "template": "Где купить {service} с доставкой в {location}", "lang": "ru"},
+      {"category": "decision", "template": "Какой интернет-магазин {service} лучше?", "lang": "ru"},
+      {"category": "decision", "template": "Сравни цены на {service} в разных магазинах", "lang": "ru"},
+      {"category": "category", "template": "Best {service} online stores", "lang": "en"}
+    ],
+    "saas": [
+      {"category": "category", "template": "Лучшие {service} сервисы для бизнеса", "lang": "ru"},
+      {"category": "category", "template": "Аналоги {brand} — какие есть альтернативы?", "lang": "ru"},
+      {"category": "decision", "template": "Какой {service} сервис выбрать для малого бизнеса?", "lang": "ru"},
+      {"category": "decision", "template": "Сравни {brand} с конкурентами", "lang": "ru"},
+      {"category": "decision", "template": "{brand} vs competitors — which is better?", "lang": "en"}
+    ],
+    "realestate": [
+      {"category": "category", "template": "Лучшие застройщики в {location}", "lang": "ru"},
+      {"category": "category", "template": "Новостройки {location} с хорошей транспортной доступностью", "lang": "ru"},
+      {"category": "decision", "template": "Где купить квартиру в {location} — какой район лучше?", "lang": "ru"},
+      {"category": "decision", "template": "Сравни застройщиков {location} по отзывам", "lang": "ru"},
+      {"category": "category", "template": "Best real estate developers in {location}", "lang": "en"}
+    ],
+    "auto": [
+      {"category": "category", "template": "Лучшие автосервисы в {location}", "lang": "ru"},
+      {"category": "category", "template": "Автосалоны {location} с trade-in", "lang": "ru"},
+      {"category": "decision", "template": "Где лучше обслуживать машину в {location}?", "lang": "ru"},
+      {"category": "decision", "template": "Сравни автосервисы {location} по ценам", "lang": "ru"},
+      {"category": "category", "template": "Best car dealerships in {location}", "lang": "en"}
+    ],
+    "beauty": [
+      {"category": "category", "template": "Лучшие салоны красоты в {location}", "lang": "ru"},
+      {"category": "category", "template": "Барбершопы в {location} с хорошими отзывами", "lang": "ru"},
+      {"category": "decision", "template": "Где сделать {service} в {location}?", "lang": "ru"},
+      {"category": "decision", "template": "Сравни салоны красоты {location}", "lang": "ru"},
+      {"category": "category", "template": "Best beauty salons in {location}", "lang": "en"}
+    ],
+    "legal": [
+      {"category": "category", "template": "Лучшие юридические компании в {location}", "lang": "ru"},
+      {"category": "category", "template": "Адвокаты по {service} в {location}", "lang": "ru"},
+      {"category": "decision", "template": "К какому юристу обратиться по {service} в {location}?", "lang": "ru"},
+      {"category": "decision", "template": "Сравни юридические фирмы {location}", "lang": "ru"},
+      {"category": "category", "template": "Best law firms in {location} for {service}", "lang": "en"}
+    ]
+  }
+}

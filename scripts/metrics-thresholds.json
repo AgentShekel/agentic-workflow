@@ -1,0 +1,111 @@
+{
+  "_doc": [
+    "Threshold triple per metric: baseline (what it was when the metric was born),",
+    "target (where it should be), alert (where it demands action). A metric with no",
+    "entry here prints 'no target' and metrics.py refuses to treat it as a signal —",
+    "a dashboard nobody acts on is the 'metrics without targets' antipattern.",
+    "",
+    "direction: higher_is_better | lower_is_better | band (uses `band`: [lo, hi]).",
+    "",
+    "Baselines ship as null: measure your own engagements with metrics.py, then record",
+    "the numbers here together with measured_at."
+  ],
+  "measured_at": null,
+  "metrics": {
+    "override_rate": {
+      "baseline": null,
+      "target": 20,
+      "alert": 5,
+      "direction": "band",
+      "band": [
+        10,
+        40
+      ],
+      "why": "Below ~10% the human gate is rubber-stamping; above ~40% the producers are being fed a bad context. Read it from canonical verdict lines until the gate emits gate_decision events."
+    },
+    "agreement_rate": {
+      "baseline": null,
+      "target": 85,
+      "alert": 60,
+      "direction": "higher_is_better",
+      "why": "Share of consilium signals the manager SUSTAINED. Low agreement means validators are noisy or the acceptor is overruling on taste."
+    },
+    "iv_tempo_ratio": {
+      "baseline": null,
+      "target": 2.0,
+      "alert": 3.0,
+      "direction": "lower_is_better",
+      "why": "Production time over validation time. Past ~2 validation is the bottleneck; past 3 stop adding delivery capacity and fix validation first."
+    },
+    "rework_rate": {
+      "baseline": null,
+      "target": 25,
+      "alert": 50,
+      "direction": "lower_is_better",
+      "why": "Share of specialist reports that are reworks. Read it alongside agreement_rate — a low rework rate with falling agreement means reviews are passing work they should not."
+    },
+    "evidence_completeness": {
+      "baseline": null,
+      "target": 90,
+      "alert": 50,
+      "direction": "higher_is_better",
+      "why": "Engagements carrying handoff + acceptance-log + ledger. The ones that miss one cannot be reconstructed later."
+    },
+    "ledger_coverage": {
+      "baseline": null,
+      "target": 90,
+      "alert": 50,
+      "direction": "higher_is_better",
+      "why": "Engagements that produced any ledger. Collect from the engagement root and from multi-track subdirectories (primary/), or multi-track engagements silently count as zero."
+    },
+    "verdict_canonical_rate": {
+      "baseline": null,
+      "target": 95,
+      "alert": 60,
+      "direction": "higher_is_better",
+      "why": "Acceptance-logs carrying the canonical verdict line. Logs without it are unreadable by any acceptance metric."
+    },
+    "l_tier_share": {
+      "baseline": null,
+      "target": 50,
+      "alert": 85,
+      "direction": "lower_is_better",
+      "why": "Share of engagements run at L. L costs a consilium of five reviewers; if almost everything is L, tier routing is not routing."
+    },
+    "post_accept_defect_rate": {
+      "baseline": null,
+      "target": 15,
+      "alert": 30,
+      "direction": "lower_is_better",
+      "why": "Defects found after ACCEPT, per accepted engagement. The only honest quality signal; needs post_accept_defect events to exist."
+    },
+    "outcome_validation_rate": {
+      "baseline": null,
+      "target": 60,
+      "alert": 20,
+      "direction": "higher_is_better",
+      "why": "Share of outcome hypotheses confirmed after deploy. Currently unmeasurable because criteria.md carries no hypothesis to close."
+    },
+    "tokens_recorded": {
+      "baseline": null,
+      "target": null,
+      "alert": null,
+      "direction": "higher_is_better",
+      "why": "Aggregate tokens seen in the ledger. Not a quality target — it is the data source that makes the Tier-14 budget guard real."
+    },
+    "high_risk_ungated_rate": {
+      "baseline": null,
+      "target": 0,
+      "alert": 1,
+      "direction": "lower_is_better",
+      "why": "Engagements marked `risk: high` (irreversible: auth, payments, PII, migrations, deletion, publish) that reached acceptance with no human gate decision. Target zero, alert on the first one — this is the axis that catches a small-but-dangerous change taking the S-tier path, which `size:` alone cannot see."
+    },
+    "outcome_hypothesis_rate": {
+      "baseline": null,
+      "target": 80,
+      "alert": 30,
+      "direction": "higher_is_better",
+      "why": "criteria.md files carrying an Outcome hypothesis. Without one an engagement can say what was delivered but not whether it helped."
+    }
+  }
+}

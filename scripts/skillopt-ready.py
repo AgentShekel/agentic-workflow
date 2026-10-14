@@ -1,0 +1,835 @@
+#!/usr/bin/env python3
+"""SkillOpt readiness checker — tells you (in-session) when to run the loop.
+
+Counts LIVE same-class signals across BOTH input channels and reports whether the
+>=3-same-class trigger for a system-optimization (SkillOpt) cycle is met:
+
+  Channel A — explicit SIGNAL entries in skill-evolution-log.md (managers / system
+              sessions append these). Clustered by (domain, class).
+  Channel B — per-engagement reflections (engagement-reflections.md), written by the
+              manager at M/L acceptance. Previously visible ONLY to a never-run manual
+              "reflection sweep"; this checker now harvests them so the slow-burn
+              patterns they encode can trip the same gate. Clustered by
+              (domain, target, class) per protocol §Trigger Layer-3 — reflections name
+              a specific target, so a finer key avoids firing on 3 unrelated gaps that
+              merely share a class.
+  Channel C — SUCCESS patterns: `- worked:` bullets in the same reflection files. Every
+              other channel here records a FAILURE, so every edit the loop has ever
+              authored made the corpus more suspicious and nothing ever ratcheted back.
+              The gate's false-positive floor is the downstream brake; this is the
+              upstream counterweight — what a clean engagement actually did right, so
+              reinforcement edits have a source. Clustered like B, but at a LOWER
+              threshold (2): a success edit reinforces existing wording rather than
+              adding a new rule, so it carries less risk than a corrective one.
+              It shares Channel B's recency window (`--reflection-window-days`), because
+              a behaviour that carried an engagement six months ago is a claim about a
+              corpus that has since been edited many times.
+
+Channel C never makes a cycle DUE on its own. A loop that fires because things went well
+would spend a cycle with no defect to close; success patterns are fuel for a cycle that
+some failure already earned, exactly as SkillOpt runs success-analysis alongside (never
+instead of) failure-analysis. `ready` is therefore computed from A/B only.
+
+Channel B counts ONLY *orphan* reflections — those with NO twin SIGNAL in the log for
+the same (engagement, rule_* token, target) — see log_twin_keys(). The log is the
+authoritative channel: once an issue is
+promoted there it carries the resolved-tracking, and double-counting its reflection
+origin would inflate the gate (reflections are write-once and are never retro-marked
+`resolved:`). So B surfaces exactly the reflections that fell through to no log signal —
+which was the actual bug this harvest fixes.
+
+"Live" excludes (both channels): `dryrun: true`, `resolved:`, and — for B — any reflection
+with a log twin. A bucket only counts toward readiness if >=1 of its signals is
+skill/agent-targeted (the loop edits skills/agents; pure script-targeted signals are
+direct-fix territory, listed but not loop fuel).
+
+The A/B threshold counts distinct ENGAGEMENTS per bucket, not entries (engagement_count()),
+because the protocol's trigger is ">=3 engagements show the same failure class": one
+engagement logging a signal per iteration is one engagement. The signal count is reported
+alongside. A triage `rekey:` line overrides a signal's class (rekey_override()).
+
+Modes:
+  (default)  human report + exit 1 if a cycle is due, else 0.
+  --hook     print a single surface-to-user reminder ONLY when due (silent
+             otherwise); always exit 0 (safe to wire into a SessionStart hook).
+  --json     machine-readable.
+
+Log path: --log PATH, else first match of ~/.claude/projects/*/memory/skill-evolution-log.md
+Reflection roots: --reflection-root PATH (repeatable) / env SKILLOPT_REFLECTION_ROOTS
+  (os.pathsep-separated), else DEFAULT_REFLECTION_ROOTS. Missing roots are skipped, so
+  this is safe on any machine.
+"""
+from __future__ import annotations
+
+import sys as _sys
+
+try:
+    _sys.stdout.reconfigure(encoding="utf-8")
+    _sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
+import argparse
+import json
+import os
+import re
+import sys
+from collections import defaultdict
+from datetime import date, datetime
+from pathlib import Path
+
+THRESHOLD = 3
+# Second trigger, see analyze_backlog(). Set at 6 because that is where the dev domain sat on
+# 2026-08-27 with 6 loop-actionable live signals across 6 distinct classes: enough accumulated
+# material to be worth one pass, and high enough that a couple of stray signals do not summon a
+# cycle. Revisit against real cycle outcomes, not by taste.
+BACKLOG_THRESHOLD = 6
+# Channel C (success) fires at 2, not 3. A corrective edit adds a rule the corpus did not
+# have and can misfire on cases nobody sampled, so it has to earn a repeat plus a repeat.
+# A reinforcement edit tightens wording that is already there and already passing, so the
+# blast radius of being wrong is smaller. SkillOpt draws the same line: its success analyst
+# is told to encode patterns seen across MULTIPLE trajectories, while its merge step gives
+# failure patches priority over success ones on every conflict.
+SUCCESS_THRESHOLD = 2
+REFLECTION_WINDOW_DAYS = 90  # Channel-B recency window (protocol §Trigger: "last 30-60 days")
+# Where engagements (and their engagement-reflections.md) live. Overridable via
+# --reflection-root / env SKILLOPT_REFLECTION_ROOTS. Missing roots are skipped, so a
+# machine without these dirs (e.g. the public mirror) just sees zero reflections.
+DEFAULT_REFLECTION_ROOTS = [str(Path.home() / "projects")]
+REFLECTION_FILE = "engagement-reflections.md"
+
+SIGNAL_RE = re.compile(r"^###\s+SIGNAL\s*\|", re.IGNORECASE)
+HEADER_RE = re.compile(r"^#{2,}\s+")  # any ## / ### header ends a signal block
+DOMAIN_RE = re.compile(r"domain:\s*([A-Za-z]+)", re.IGNORECASE)
+DOMAIN_FM_RE = re.compile(r"^domain:\s*([A-Za-z]+)", re.IGNORECASE | re.MULTILINE)
+ENG_RE = re.compile(r"engagement:\s*([A-Za-z0-9._-]+)", re.IGNORECASE)
+CLASS_RE = re.compile(r"^Failure class:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
+TAXON_RE = re.compile(r"\b(rule_missing|rule_wrong|rule_ignored)\b", re.IGNORECASE)
+TRACED_RE = re.compile(r"^Traced to:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
+DRYRUN_RE = re.compile(r"^dryrun:\s*true\b", re.IGNORECASE | re.MULTILINE)
+# Closes on a full `resolved:` OR on THIS loop's own half-marker `resolved (SKILL half):`,
+# and deliberately NOT on the harness loop's `resolved (SCRIPT half):` / `resolved (ENGINE ...):`.
+#
+# The two checkers must disagree here, and in opposite directions, or a mixed signal is lost.
+# A mixed signal has a skill half and a script half; whichever loop closes its own half writes
+# a half-marker, and ONLY that loop may stop counting the signal. Before this, skillopt matched
+# a bare `^resolved:` while harness matched a broad `^resolved\b`, which was correct for the
+# harness marker and exactly inverted for the skill one: `resolved (SKILL half):` closed the
+# harness signal (whose script half was still open) and left the skill signal live forever
+# (re-firing its cluster every session).
+RESOLVED_RE = re.compile(r"^resolved\s*(?:\(SKILL[^)]*\))?\s*:", re.IGNORECASE | re.MULTILINE)
+DATE_SUFFIX_RE = re.compile(r"-?\d{4}-\d{2}-\d{2}$")
+# A triage re-key, system-optimization-protocol §Triage item 4:
+#   rekey: <date> - as <slug> (<rule_x>)[. why]
+REKEY_RE = re.compile(
+    r"^rekey:\s*(?P<date>\d{4}-\d{2}-\d{2})\s*[-—–]\s*as\s+(?P<slug>[^()\n]+?)\s*"
+    r"\((?P<tax>rule_(?:missing|wrong|ignored))\)",
+    re.IGNORECASE | re.MULTILINE,
+)
+TAXONOMY_TOKENS = frozenset({"rule_missing", "rule_wrong", "rule_ignored"})
+SCRIPT_PATH_RE = re.compile(r"((?:scripts|workflows|hooks)/[A-Za-z0-9_./-]+\.(?:py|js|cjs|sh))",
+                            re.IGNORECASE)
+
+# Channel B (reflection) parsing. Header separators may be em-dash (canonical) or a
+# spaced hyphen; the mandatory surrounding whitespace keeps in-name hyphens
+# (e.g. "universal-site-template-redesign-impl") from being read as separators.
+REFL_HEADER_RE = re.compile(
+    r"^##\s+Reflection\s+[—-]\s+(?P<eng>.+?)\s+[—-]\s+(?P<date>\d{4}-\d{2}-\d{2})\s+[—-]\s+verdict:",
+    re.IGNORECASE,
+)
+REFL_TARGET_RE = re.compile(r"^\s*-\s*target:\s*(?P<target>.+?)\s*$", re.IGNORECASE)
+# Channel C bullet. Deliberately a DIFFERENT bullet key rather than a flag on `- target:`:
+# an older reflection file has no `- worked:` lines at all, so the success channel reads as
+# empty on historical data instead of mis-reading a gap as a success.
+REFL_WORKED_RE = re.compile(r"^\s*-\s*worked:\s*(?P<target>.+?)\s*$", re.IGNORECASE)
+REFL_CLASS_RE = re.compile(r"^\s*class:\s*(?P<cls>.+?)\s*$", re.IGNORECASE)
+REFL_RESOLVED_RE = re.compile(r"^\s*resolved:", re.IGNORECASE)
+REFL_DRYRUN_RE = re.compile(r"^\s*dryrun:\s*true\b", re.IGNORECASE)
+TARGET_NAME_RE = re.compile(r"(?:skills?|agents?)\s*[:/]\s*([A-Za-z0-9_][A-Za-z0-9_./-]*)")
+
+
+def find_log(explicit: str | None) -> Path | None:
+    if explicit:
+        p = Path(explicit)
+        return p if p.exists() else None
+    base = Path.home() / ".claude" / "projects"
+    if not base.exists():
+        return None
+    matches = sorted(base.glob("*/memory/skill-evolution-log.md"))
+    return matches[0] if matches else None
+
+
+def class_key(failure_class: str) -> str:
+    """Stable problem-identity key for clustering — tolerant of BOTH authored
+    conventions for the `Failure class:` line:
+
+      "intake-size-misclassification (rule_wrong)"  -> "intake-size-misclassification"
+      "rule_ignored (mandatory consilium skipped…)" -> "rule_ignored"
+      "rule_ignored"                                 -> "rule_ignored"
+      "token-drift"                                  -> "token-drift"
+
+    Convention A leads with a descriptive slug and trails a (rule_token); the
+    slug is the key. Convention B leads with the taxonomy token and trails FREE
+    PROSE — prose is not a stable cluster key, so we key on the token instead.
+    Without this, a token-leading signal keyed on its whole verbose line and
+    never clustered with a same-gap signal worded differently (the consilium-
+    skip cluster would silently never reach the >=3 trigger). 2026-06-01.
+    """
+    s = failure_class.strip()
+    # Convention A: strip a trailing "(rule_token[ / extra prose])" -> descriptive slug
+    # remains. The `[^)]*` tolerates a parenthetical that carries the token PLUS extra
+    # text, e.g. "(rule_wrong / internal-contradiction)" -> still keyed by the slug, so
+    # two slug-identical signals worded with/without the extra cluster together
+    # (field 2026-06-02: a "(rule_wrong / internal-contradiction)" form keyed on its
+    # whole verbose line and would never have clustered with a "(rule_wrong)" twin).
+    a = re.sub(r"\s*\(rule_\w+\b[^)]*\)\s*$", "", s, flags=re.IGNORECASE).strip()
+    if a.lower() != s.lower():
+        return a.lower()
+    # Convention B: text leads with a taxonomy token (optionally + a prose tail)
+    # -> key on the stable token, dropping the variable prose.
+    m = re.match(r"^(rule_missing|rule_wrong|rule_ignored)\b", s, flags=re.IGNORECASE)
+    if m:
+        return m.group(1).lower()
+    # Convention C: a descriptive slug followed by an INSTANCE — a parenthetical, a dash
+    # clause, or a second sentence. Key on the head; the tail describes this occurrence, not
+    # the class. Without this the whole line became the key, and a key unique by construction
+    # can never reach a threshold: most `Failure class:` lines fell through here, giving
+    # almost one key per signal. Signals reading "tooling false-negative (<instance>)" were
+    # one class and never clustered. A and B run
+    # first so this broader cut cannot re-partition a bucket that already worked.
+    head = re.split(r"\s*\(|\s[—–]\s|\.\s|\s-\s", s, maxsplit=1)[0].strip()
+    if head:
+        return head.lower()
+    # Nothing left to cut: the whole class string is its own identity (e.g. "token-drift").
+    return s.lower()
+
+
+def rekey_override(body: str) -> tuple[str, str] | None:
+    """The (class_key, taxonomy) a triage re-key assigns to a signal block, or None.
+
+    Triage item 4 of system-optimization-protocol re-keys a live signal whose authored wording
+    kept it apart from its kin, or lumped it with strangers, by appending
+    `rekey: <date> - as <slug> (<rule_x>)`. The latest date wins; on a tie, the line written
+    last. A malformed line is ignored and the signal keeps its authored key. Until 2026-10-09
+    no checker read these lines: the dev triage split three `rule_missing (<prose>)` signals
+    into two classes, Convention B kept them in one bucket, and the hook went on printing the
+    CYCLE-due the triage had disproved. Keep this body byte-identical in skillopt-ready.py and
+    harness-ready.py. Pinned by tests/test_class_key_regress.py (groups E, D2)."""
+    hits = list(REKEY_RE.finditer(body))
+    if not hits:
+        return None
+    _, m = max(enumerate(hits), key=lambda im: (im[1].group("date"), im[0]))
+    tax = m.group("tax").lower()
+    return class_key(f"{m.group('slug')} ({tax})"), tax
+
+
+def norm_eng(name: str | None) -> str:
+    """Normalize an engagement name for cross-channel matching — lowercase and drop a
+    trailing ISO date (`-2026-05-28`) so a log `engagement:` and a reflection header
+    referring to the same engagement match even if one carries the date suffix."""
+    n = (name or "").strip().lower()
+    return DATE_SUFFIX_RE.sub("", n)
+
+
+def classify_target(text: str) -> str:
+    """Map a 'Traced to' / reflection 'target' string to a coarse target class.
+    skill/agent -> loop fuel; script -> direct-fix; else other."""
+    t = (text or "").lower()
+    if "agents/" in t or "skills/" in t or "skill:" in t or "agent:" in t:
+        return "skill_agent"
+    if "scripts/" in t or "script:" in t:
+        return "script"
+    return "other"
+
+
+def _target_name_id(name: str) -> str:
+    """`validation-pipeline/SKILL.md` -> `validation-pipeline`, `test-reviewer.md` -> `test-reviewer`."""
+    n = name.strip(" /").split("/")[0].lower()
+    return n.removesuffix(".md")
+
+
+def target_ids(text: str) -> list:
+    """Every target a log signal's `Traced to:` names, in twin-match form: a skill or agent by
+    its bare name, a script or the engine by its path."""
+    ids = {_target_name_id(m.group(1)) for m in TARGET_NAME_RE.finditer(text or "")}
+    ids |= {m.lower() for m in SCRIPT_PATH_RE.findall(text or "")}
+    return sorted(i for i in ids if i)
+
+
+def primary_target_id(text: str) -> str:
+    """The one target a reflection names, in target_ids() form: the first skill/agent, else the
+    first script path, else the trimmed raw text."""
+    m = TARGET_NAME_RE.search(text or "")
+    if m:
+        return _target_name_id(m.group(1))
+    m = SCRIPT_PATH_RE.search(text or "")
+    if m:
+        return m.group(1).lower()
+    return (text or "?").strip()[:40].lower()
+
+
+def engagement_count(sigs) -> int:
+    """Distinct engagements behind a bucket: the unit of the protocol's ">=3 engagements"
+    trigger. Before 2026-10-09 the checkers compared len(signals), so one engagement that logged
+    a signal per iteration (L allows three) fired a cycle alone. A signal with no engagement
+    (`none` or absent: a system session) counts one each. Merging them into one shared `none`
+    would mute system-session signals for good. Pinned by tests/test_cluster_threshold_regress.py."""
+    named, anon = set(), 0
+    for s in sigs:
+        e = norm_eng(s.get("engagement"))
+        if e in ("", "none"):
+            anon += 1
+        else:
+            named.add(e)
+    return len(named) + anon
+
+
+def extract_target_names(target_raw: str) -> list:
+    names = [m.group(1).strip(" /") for m in TARGET_NAME_RE.finditer(target_raw or "")]
+    return names or [(target_raw or "?").strip()[:40]]
+
+
+def primary_target(target_raw: str) -> str:
+    """The single target a reflection bucket keys on — the first named skill/agent
+    (so '… vs scripts/x.py' keys on the skill, not the script). Falls back to the
+    first token / a trimmed prefix when no skill/agent is named."""
+    names = extract_target_names(target_raw)
+    return names[0] if names else (target_raw or "?").strip()[:40]
+
+
+def parse_signals(text: str) -> list:
+    blocks = []
+    cur = None
+    for ln in text.splitlines():
+        if SIGNAL_RE.match(ln):
+            if cur is not None:
+                blocks.append(cur)
+            cur = [ln]
+        elif cur is not None:
+            if HEADER_RE.match(ln):  # next header (## RESOLUTION / ### CYCLE / ...) ends the block
+                blocks.append(cur)
+                cur = None
+            else:
+                cur.append(ln)
+    if cur is not None:
+        blocks.append(cur)
+
+    out = []
+    for blk in blocks:
+        header = blk[0]
+        body = "\n".join(blk)
+        dom = DOMAIN_RE.search(header)
+        eng = ENG_RE.search(header)
+        cls = CLASS_RE.search(body)
+        # Taxonomy comes ONLY from the declared `Failure class:` line, never arbitrary
+        # prose: a note/evidence line that merely *mentions* rule_missing/wrong/ignored
+        # (e.g. cross-referencing another signal) must NOT mint a phantom taxonomy that
+        # then twin-excludes a real same-engagement reflection from Channel B.
+        tax = TAXON_RE.search(cls.group(1)) if cls else None
+        traced = TRACED_RE.search(body)
+        traced_s = traced.group(1).strip() if traced else ""
+        ck = class_key(cls.group(1)) if cls else "?"
+        taxonomy = tax.group(1).lower() if tax else None
+        rk = rekey_override(body)
+        out.append({
+            "domain": dom.group(1).lower() if dom else "?",
+            "engagement": eng.group(1).strip() if eng else "",
+            "failure_class": cls.group(1).strip() if cls else "?",
+            "class_key": rk[0] if rk else ck,
+            "taxonomy": rk[1] if rk else taxonomy,
+            "rekeyed_from": ck if rk else None,
+            # Issue identity for the Channel-B twin check. A rekey moves the CLUSTER; the
+            # reflection this signal was promoted from still carries the authored wording, so
+            # the authored and the re-keyed class both claim it.
+            "twin_classes": sorted({ck, rk[0]} if rk else {ck}),
+            "twin_taxonomies": sorted(({taxonomy, rk[1]} if rk else {taxonomy}) - {None}),
+            "twin_targets": target_ids(traced_s),
+            "traced": traced_s,
+            "target": classify_target(traced_s),
+            "dryrun": bool(DRYRUN_RE.search(body)),
+            "resolved": bool(RESOLVED_RE.search(body)),
+            "source": "log",
+        })
+    return out
+
+
+def resolve_domain(reflection_path: Path) -> str:
+    """Reflections carry no domain; derive it from the engagement's criteria.md
+    frontmatter (sibling first, then parent — covers both `<eng>/` and
+    `<eng>/primary/` layouts)."""
+    d = reflection_path.parent
+    for cand in (d / "criteria.md", d.parent / "criteria.md"):
+        try:
+            if cand.exists():
+                m = DOMAIN_FM_RE.search(cand.read_text(encoding="utf-8", errors="replace"))
+                if m:
+                    return m.group(1).lower()
+        except Exception:
+            continue
+    return "?"
+
+
+def parse_reflection_file(text: str) -> list:
+    """Parse one engagement-reflections.md into reflection records. Each `- target:`
+    (kind="gap", Channel B) or `- worked:` (kind="worked", Channel C) bullet is one
+    record; class/resolved/dryrun are read from its indented lines; engagement+date
+    come from the enclosing `## Reflection — …` header."""
+    records = []
+    cur_eng, cur_date = None, None
+    cur = None
+
+    def flush():
+        nonlocal cur
+        if cur is not None:
+            records.append(cur)
+            cur = None
+
+    for ln in text.splitlines():
+        h = REFL_HEADER_RE.match(ln)
+        if h:
+            flush()
+            cur_eng, cur_date = h.group("eng").strip(), h.group("date").strip()
+            continue
+        t = REFL_TARGET_RE.match(ln)
+        w = None if t else REFL_WORKED_RE.match(ln)
+        if t or w:
+            flush()
+            m = t or w
+            cur = {
+                "engagement": cur_eng,
+                "date": cur_date,
+                "target_raw": m.group("target").strip(),
+                "class_raw": None,
+                "resolved": False,
+                "dryrun": False,
+                "kind": "gap" if t else "worked",
+            }
+            continue
+        if HEADER_RE.match(ln):  # any other header ends the current record
+            flush()
+            continue
+        if cur is not None:
+            c = REFL_CLASS_RE.match(ln)
+            if c and cur["class_raw"] is None:
+                cur["class_raw"] = c.group("cls").strip()
+            elif REFL_RESOLVED_RE.match(ln):
+                cur["resolved"] = True
+            elif REFL_DRYRUN_RE.match(ln):
+                cur["dryrun"] = True
+    flush()
+    return records
+
+
+def reflection_to_signal(rec: dict, domain: str) -> dict:
+    cls_raw = rec.get("class_raw") or "?"
+    target_raw = rec.get("target_raw") or ""
+    tax = TAXON_RE.search(cls_raw)
+    return {
+        "domain": domain,
+        "failure_class": cls_raw,
+        "class_key": class_key(cls_raw) if cls_raw != "?" else "?",
+        "taxonomy": tax.group(1).lower() if tax else None,
+        "traced": target_raw,
+        "target": classify_target(target_raw),
+        "target_names": extract_target_names(target_raw),
+        "primary_target": primary_target(target_raw),
+        "twin_target": primary_target_id(target_raw),
+        "dryrun": bool(rec.get("dryrun")),
+        "resolved": bool(rec.get("resolved")),
+        "source": "reflection",
+        "kind": rec.get("kind", "gap"),
+        "engagement": rec.get("engagement"),
+        "date": rec.get("date"),
+    }
+
+
+def within_window(rec_date: str | None, window_days: int) -> bool:
+    if not window_days or window_days <= 0:
+        return True
+    if not rec_date:
+        return True
+    try:
+        d = datetime.strptime(rec_date, "%Y-%m-%d").date()
+    except Exception:
+        return True  # unparseable -> keep (never silently drop a real reflection)
+    return (date.today() - d).days <= window_days
+
+
+def default_reflection_roots() -> list:
+    env = os.environ.get("SKILLOPT_REFLECTION_ROOTS")
+    if env:
+        return [p for p in env.split(os.pathsep) if p.strip()]
+    return list(DEFAULT_REFLECTION_ROOTS)
+
+
+def scan_reflections(roots: list, window_days: int) -> list:
+    """Harvest Channel B: every engagement-reflections.md under the given roots
+    (live + archived, with/without a primary/ subdir), normalized to signal records."""
+    patterns = [
+        f"*/engagement/{REFLECTION_FILE}",
+        f"*/engagement-archived/*/{REFLECTION_FILE}",
+        f"*/engagement-archived/*/primary/{REFLECTION_FILE}",
+    ]
+    out, seen = [], set()
+    for root in roots:
+        rp = Path(root)
+        if not rp.exists():
+            continue
+        for pat in patterns:
+            for f in rp.glob(pat):
+                rf = f.resolve()
+                if rf in seen:
+                    continue
+                seen.add(rf)
+                try:
+                    text = f.read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    continue
+                domain = resolve_domain(f)
+                for rec in parse_reflection_file(text):
+                    if rec.get("class_raw") is None:  # not a real reflection block
+                        continue
+                    if not within_window(rec.get("date"), window_days):
+                        continue
+                    sig = reflection_to_signal(rec, domain)
+                    sig["source_file"] = str(f)
+                    out.append(sig)
+    return out
+
+
+def analyze_backlog(live):
+    """Second trigger: a domain that accumulated loop-actionable signals without any of them
+    repeating. Distinct from the same-class cluster and deliberately named differently.
+
+    The recurrence trigger asks "has this specific failure happened THRESHOLD times", which
+    separates a systemic gap from prompt drift. Sound, and it stays. What it cannot see is a
+    domain producing many DIFFERENT one-off failures, where most classes are singletons and
+    almost none reaches the threshold. A loop with only a recurrence trigger waits for a repeat
+    such a log does not produce.
+
+    So this asks a different question: has enough unmetabolised material piled up in one domain
+    to be worth a batch pass, regardless of whether any of it repeats. Script/other-targeted
+    signals are excluded here as they are everywhere else — those are direct fixes.
+    """
+    per_domain = defaultdict(list)
+    for s in live:
+        if s["target"] == "skill_agent":
+            per_domain[s["domain"]].append(s)
+    return sorted(((dom, len(sigs)) for dom, sigs in per_domain.items()
+                   if len(sigs) >= BACKLOG_THRESHOLD), key=lambda x: -x[1])
+
+
+def analyze(signals):
+    """Channel A: cluster log signals by (domain, class_key). A bucket is due at THRESHOLD
+    distinct engagements; due rows are (domain, class_key, engagements, signals)."""
+    live = [s for s in signals if not s["dryrun"] and not s["resolved"]]
+    buckets = defaultdict(list)
+    for s in live:
+        buckets[(s["domain"], s["class_key"])].append(s)
+    due = []
+    for (dom, ck), sigs in buckets.items():
+        loop_actionable = any(s["target"] == "skill_agent" for s in sigs)
+        n_eng = engagement_count(sigs)
+        if n_eng >= THRESHOLD and loop_actionable:
+            due.append((dom, ck, n_eng, len(sigs)))
+    due.sort(key=lambda x: (-x[2], -x[3]))
+    return live, buckets, due
+
+
+def log_twin_keys(signals) -> set:
+    """The issue identities the log already holds, for Channel B's orphan filter.
+
+    ANY log signal, live or resolved, claims its issue for the authoritative channel, so the
+    reflection it came from is not counted twice. Two key shapes:
+
+      (engagement, rule_* token, target)  The log states a class as a slug carrying the token,
+          reflections state the bare token, so the token bridges the channels; the target keeps
+          one signal from claiming every same-token reflection of its engagement. Every target
+          the signal traces counts, because a signal often names two (engine + skill) where its
+          reflection named one. A signal tracing no target claims the token for any target (*).
+      (engagement, class_key)  Descriptive classes only. A bare token is no identity, and
+          matching `rule_missing` here would reopen the same hole without the target.
+
+    The key used to be (engagement, token): one `rule_missing` signal about deferred findings
+    hid every `rule_missing` reflection of that engagement, whatever it was about. Pinned by tests/test_twin_key_regress.py."""
+    keys = set()
+    for s in signals:
+        eng = norm_eng(s.get("engagement"))
+        if not eng:
+            continue
+        targets = s.get("twin_targets") or ["*"]
+        for tax in s.get("twin_taxonomies", []):
+            for t in targets:
+                keys.add((eng, tax, t))
+        for ck in s.get("twin_classes") or [s["class_key"]]:
+            if ck not in TAXONOMY_TOKENS:
+                keys.add((eng, ck))
+    return keys
+
+
+def analyze_reflections(signals, log_twin_keys):
+    """Channel B: keep only orphan reflections (no log twin, see log_twin_keys()), then
+    cluster by (domain, primary_target, class_key). Due at THRESHOLD distinct engagements;
+    due rows are (domain, target, class_key, engagements, signals)."""
+    def _has_twin(s):
+        eng = norm_eng(s.get("engagement"))
+        tax = s.get("taxonomy")
+        tid = s.get("twin_target") or primary_target_id(s.get("traced"))
+        if tax and ((eng, tax, tid) in log_twin_keys or (eng, tax, "*") in log_twin_keys):
+            return True
+        return s["class_key"] not in TAXONOMY_TOKENS and (eng, s["class_key"]) in log_twin_keys
+
+    live = [
+        s for s in signals
+        if s.get("kind", "gap") == "gap"
+        and not s["dryrun"] and not s["resolved"] and not _has_twin(s)
+    ]
+    buckets = defaultdict(list)
+    for s in live:
+        buckets[(s["domain"], s["primary_target"], s["class_key"])].append(s)
+    due = []
+    for (dom, tgt, ck), sigs in buckets.items():
+        loop_actionable = any(s["target"] == "skill_agent" for s in sigs)
+        n_eng = engagement_count(sigs)
+        if n_eng >= THRESHOLD and loop_actionable:
+            due.append((dom, tgt, ck, n_eng, len(sigs)))
+    due.sort(key=lambda x: (-x[3], -x[4]))
+    return live, buckets, due
+
+
+def analyze_success(signals):
+    """Channel C: cluster `- worked:` reflections by (domain, primary_target, class_key).
+
+    No twin-exclusion runs here. Twin logic exists because Channel B and the log describe the
+    same failure twice and double-counting would inflate a gate; there is no success log, so a
+    worked bullet has nothing to be a twin of.
+
+    Returns (live, buckets, due) with due at SUCCESS_THRESHOLD. `due` is an OFFER, not a
+    trigger — main() keeps it out of `ready` on purpose.
+    """
+    live = [
+        s for s in signals
+        if s.get("kind") == "worked" and not s["dryrun"] and not s["resolved"]
+    ]
+    buckets = defaultdict(list)
+    for s in live:
+        buckets[(s["domain"], s["primary_target"], s["class_key"])].append(s)
+    due = []
+    for (dom, tgt, ck), sigs in buckets.items():
+        # Same rule as everywhere else: the loop edits skills/agents, so a success pattern
+        # traced to a script is a note for the human, not reinforcement fuel.
+        loop_actionable = any(s["target"] == "skill_agent" for s in sigs)
+        if len(sigs) >= SUCCESS_THRESHOLD and loop_actionable:
+            due.append((dom, tgt, ck, len(sigs)))
+    due.sort(key=lambda x: -x[3])
+    return live, buckets, due
+
+
+def success_payload(live, due, domain=None):
+    """The success records belonging to DUE clusters, ready to hand to the reflect step.
+
+    Channel A/B signals are re-read from the log by the workflow's harvest agent; success
+    records are spread across many reflection files, so they are emitted here instead of
+    making the agent walk the tree a second time.
+    """
+    keys = {(d, t, c) for d, t, c, _ in due if domain is None or d == domain}
+    out = []
+    for s in live:
+        if (s["domain"], s["primary_target"], s["class_key"]) not in keys:
+            continue
+        out.append({
+            "domain": s["domain"],
+            "engagement": s.get("engagement"),
+            "date": s.get("date"),
+            "pattern_class": s["failure_class"],
+            "class_key": s["class_key"],
+            "target": s["traced"],
+            "primary_target": s["primary_target"],
+            "source_file": s.get("source_file"),
+        })
+    return out
+
+
+def _refl_bucket_detail(buckets) -> dict:
+    out = {}
+    for (d, tgt, c), v in buckets.items():
+        engs = sorted({s.get("engagement") for s in v if s.get("engagement")})
+        out[f"{d}/{tgt}/{c}"] = {
+            "count": len(v),
+            "engagement_count": engagement_count(v),
+            "loop_actionable": any(s["target"] == "skill_agent" for s in v),
+            "engagements": engs,
+        }
+    return out
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="SkillOpt readiness checker")
+    ap.add_argument("--log", help="path to skill-evolution-log.md")
+    ap.add_argument("--hook", action="store_true",
+                    help="silent unless a cycle is due; always exit 0 (SessionStart hook mode)")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--reflection-root", action="append", default=None,
+                    help="root dir to scan for engagement-reflections.md (repeatable)")
+    ap.add_argument("--reflection-window-days", type=int, default=REFLECTION_WINDOW_DAYS,
+                    help=f"recency window in days for BOTH reflection channels, B and C "
+                         f"(default {REFLECTION_WINDOW_DAYS}; 0 = no limit)")
+    ap.add_argument("--no-reflections", action="store_true",
+                    help="disable Channel B (log signals only)")
+    ap.add_argument("--no-success", action="store_true",
+                    help="disable Channel C (skip the `- worked:` success harvest)")
+    ap.add_argument("--domain", help="restrict the emitted success payload to one domain")
+    args = ap.parse_args()
+
+    log = find_log(args.log)
+    if log is None:
+        if not args.hook:
+            print("skill-evolution-log.md not found (pass --log PATH)", file=sys.stderr)
+        return 0
+    signals = parse_signals(log.read_text(encoding="utf-8"))
+    live, buckets, due = analyze(signals)
+
+    roots = args.reflection_root or default_reflection_roots()
+    refl_signals = [] if args.no_reflections else scan_reflections(roots, args.reflection_window_days)
+    refl_live, refl_buckets, refl_due = analyze_reflections(refl_signals, log_twin_keys(signals))
+    succ_signals = [] if (args.no_reflections or args.no_success) else refl_signals
+    succ_live, succ_buckets, succ_due = analyze_success(succ_signals)
+    backlog_due = analyze_backlog(live)
+    # Channel C is deliberately absent from `ready`. See the module docstring: a loop that
+    # fires because things went well has no defect to close.
+    ready = bool(due) or bool(refl_due) or bool(backlog_due)
+
+    if args.hook:
+        # SessionStart hook mode: emit the additionalContext envelope ONLY when something
+        # is due; print nothing otherwise. Always exit 0 (never block the session start).
+        if ready:
+            lines = ["Surface this to the user as a reminder:"]
+            for dom, ck, ne, n in due:
+                lines.append(f"- CYCLE due — {dom}/{ck}: {ne} engagements ({n} live log signals) "
+                             f"-> run `прогнать skill-evolution {dom}`")
+            for dom, tgt, ck, ne, n in refl_due:
+                lines.append(f"- CYCLE due — {dom}/{tgt}/{ck}: {ne} engagements ({n} live "
+                             f"reflections) -> run `прогнать skill-evolution {dom}`")
+            # A backlog is NOT a cycle. A cycle authors one bounded edit against a COMMON
+            # pattern; a pile of unrelated signals has no common pattern to author against.
+            # What a backlog earns is a triage: re-check each signal against today's corpus,
+            # close the stale ones, and see whether a real cluster falls out. Some signals
+            # are already dead by then: they point at retired doctrine, or ask for a gate
+            # that has since been built.
+            for dom, n in backlog_due:
+                lines.append(f"- TRIAGE due — {dom}: {n} loop-actionable live signals across "
+                             f"distinct classes. Re-check each against the current corpus and "
+                             f"close what is stale; run a cycle only if a real cluster falls out.")
+            # Mentioned only alongside a real trigger — a success cluster is reinforcement
+            # fuel for a cycle something else earned, never a reason to open one.
+            for dom, tgt, ck, n in succ_due:
+                lines.append(f"- (success fuel — {dom}/{tgt}/{ck}: {n} `worked:` reflections "
+                             f"available to reinforce if you run that domain's cycle)")
+            print(json.dumps({
+                "hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": "\n".join(lines),
+                }
+            }, ensure_ascii=False))
+        return 0
+
+    if args.json:
+        print(json.dumps({
+            "log": str(log),
+            "threshold": THRESHOLD,
+            "threshold_unit": "distinct engagements per bucket",
+            "backlog_threshold": BACKLOG_THRESHOLD,
+            "backlog_due": [{"domain": d, "count": n} for d, n in backlog_due],
+            "live_count": len(live),
+            "buckets": {f"{d}/{c}": len(v) for (d, c), v in buckets.items()},
+            "bucket_engagements": {f"{d}/{c}": engagement_count(v) for (d, c), v in buckets.items()},
+            "due": [{"domain": d, "class": c, "engagements": ne, "count": n}
+                    for d, c, ne, n in due],
+            "reflection_window_days": args.reflection_window_days,
+            "reflection_count": len(refl_live),
+            "reflection_buckets": _refl_bucket_detail(refl_buckets),
+            "reflection_due": [
+                {"domain": d, "target": t, "class": c, "engagements": ne, "count": n}
+                for d, t, c, ne, n in refl_due
+            ],
+            "success_threshold": SUCCESS_THRESHOLD,
+            "success_count": len(succ_live),
+            "success_buckets": _refl_bucket_detail(succ_buckets),
+            "success_due": [
+                {"domain": d, "target": t, "class": c, "count": n} for d, t, c, n in succ_due
+            ],
+            "success_signals": success_payload(succ_live, succ_due, args.domain),
+            "ready": ready,
+        }, ensure_ascii=False, indent=2))
+        return 1 if ready else 0
+
+    print(f"SkillOpt readiness — {log}")
+    print(f"  live log signals (excl. dryrun/resolved): {len(live)}  | triggers: "
+          f">={THRESHOLD} engagements in one class, or >={BACKLOG_THRESHOLD} loop-actionable "
+          f"signals in one domain")
+    if not buckets:
+        print("  Channel A (log signals): none accumulating.")
+    else:
+        print("  Channel A — log buckets (domain/class -> signals / engagements):")
+        for (d, c), v in sorted(buckets.items(), key=lambda kv: -len(kv[1])):
+            tgts = sorted(set(s["target"] for s in v))
+            ne = engagement_count(v)
+            actionable = ne >= THRESHOLD and any(s["target"] == "skill_agent" for s in v)
+            flag = "  <<< DUE" if actionable else ""
+            note = "" if any(t == "skill_agent" for t in tgts) else "  [script/other -> direct-fix, not loop fuel]"
+            print(f"    {d}/{c}: {len(v)} / {ne} eng  ({','.join(tgts)}){flag}{note}")
+
+    print(f"  Channel B — orphan reflections (window {args.reflection_window_days}d, "
+          f"{len(refl_live)} live, no log twin):")
+    if not refl_buckets:
+        print("    none accumulating.")
+    else:
+        for (d, tgt, c), v in sorted(refl_buckets.items(), key=lambda kv: -len(kv[1])):
+            actionable = (engagement_count(v) >= THRESHOLD
+                          and any(s["target"] == "skill_agent" for s in v))
+            flag = "  <<< DUE" if actionable else ""
+            engs = sorted({s.get("engagement") for s in v if s.get("engagement")})
+            print(f"    {d}/{tgt}/{c}: {len(v)}  [{', '.join(engs)}]{flag}")
+
+    print(f"  Channel C — success patterns (`worked:` bullets, {len(succ_live)} live, "
+          f">={SUCCESS_THRESHOLD} = reinforcement fuel; never a trigger):")
+    if not succ_buckets:
+        print("    none recorded.")
+    else:
+        for (d, tgt, c), v in sorted(succ_buckets.items(), key=lambda kv: -len(kv[1])):
+            actionable = len(v) >= SUCCESS_THRESHOLD and any(s["target"] == "skill_agent" for s in v)
+            flag = "  <<< available" if actionable else ""
+            engs = sorted({s.get("engagement") for s in v if s.get("engagement")})
+            print(f"    {d}/{tgt}/{c}: {len(v)}  [{', '.join(engs)}]{flag}")
+    print()
+
+    if due or refl_due:
+        print("VERDICT: a SkillOpt CYCLE is DUE.")
+        for d, c, ne, n in due:
+            print(f"  -> прогнать skill-evolution {d}   (log: {c}, {ne} engagements / {n} signals)")
+        for d, tgt, c, ne, n in refl_due:
+            print(f"  -> прогнать skill-evolution {d}   (reflections: {tgt}/{c}, {ne} engagements / {n})")
+        for d, n in backlog_due:
+            print(f"  -> and triage {d}'s backlog of {n} while you are there")
+        for d, tgt, c, n in succ_due:
+            print(f"  -> reinforcement fuel available in {d}: {tgt}/{c} ({n} worked-reflections)")
+        return 1
+    if backlog_due:
+        print("VERDICT: a TRIAGE is DUE (no cycle — nothing repeats).")
+        for d, n in backlog_due:
+            print(f"  -> {d}: {n} loop-actionable live signals across distinct classes.")
+        # A triage is exactly when a director is re-reading a domain's material, so this is
+        # the moment reinforcement fuel is worth knowing about — the hook mode already says so.
+        for d, tgt, c, n in succ_due:
+            print(f"  -> reinforcement fuel also available in {d}: {tgt}/{c} ({n} worked-reflections)")
+        print("     Re-check each against the current corpus, close what is stale, and run a")
+        print("     cycle only if a real cluster falls out. See system-optimization-protocol")
+        print("     §\"Triage (what a domain backlog earns)\".")
+        return 1
+    print(f"VERDICT: not yet — no loop-actionable (domain,class) bucket spans >={THRESHOLD} "
+          f"engagements, and no domain has >={BACKLOG_THRESHOLD} live signals in total.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,63 @@
+.hero {
+  position: relative;
+  background: #1a1a1a url("spring-hero.jpg") center / cover no-repeat;
+  min-height: 520px;
+  display: grid;
+  align-content: end;
+  padding: 48px;
+}
+
+/* fixed scrim required by the design system for any hero image */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.hero__badge {
+  position: relative;
+  background: #2f9e44;          /* brand-accent */
+  padding: 16px 24px;
+  border-radius: 8px;
+  max-width: 640px;
+}
+
+.hero__title {
+  color: #ffffff;               /* brand-accent-inverse: large-text-only pair */
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.intro {
+  background: #ffffff;          /* surface */
+  padding: 32px 48px;
+}
+
+.intro p {
+  color: #707070;               /* text-body */
+  font-size: 18px;
+  line-height: 1.6;
+  max-width: 64ch;
+}
+
+.hero__cta {
+  position: relative;
+  display: inline-block;
+  margin-top: 24px;
+  background: #ffffff;
+  color: #1a1a1a;               /* text-strong */
+  font-size: 18px;
+  font-weight: 600;
+  padding: 14px 24px;
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+/* focus.ring-on-imagery: documented exception, design-system/README.md */
+.hero__cta:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}

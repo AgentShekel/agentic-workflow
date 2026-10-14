@@ -1,0 +1,265 @@
+"""Multi-iteration discipline checks: counter, structure, freshness, ack.
+
+Four checks live here:
+  - check_iteration_counter: engagement/iteration file agrees with
+    acceptance-log.md sections.
+  - check_executor_iteration_structure: for iter >= 2, every executor-report
+    must have `## Iteration N` heading (catches silent overwrites).
+  - check_validator_output_freshness: for iter >= 2, validator-outputs must
+    include at least one file from the current iteration.
+  - check_specialist_criteria_ack: every executor-report opens with a
+    Criteria acknowledgement section listing crit-N items.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+
+def _read_iter_count(counter: Path) -> int:
+    """Parse the engagement/iteration counter tolerantly. The file is sometimes written
+    UTF-8-WITH-BOM; reading it as plain "utf-8" leaves a leading U+FEFF that str.strip()
+    does NOT remove (it is not whitespace) → int() on the BOM-prefixed "1" raised ValueError
+    and false-failed the precheck (recorded in the skill-evolution log). utf-8-sig
+    drops a leading BOM on decode; the extra lstrip is belt-and-suspenders for a stray one."""
+    raw = counter.read_text(encoding="utf-8-sig").strip().lstrip("﻿").strip()
+    return int(raw)
+
+
+def check_iteration_counter(eng: Path) -> dict:
+    """The iteration counter file must agree with acceptance-log.md sections."""
+    counter = eng / "iteration"
+    log = eng / "acceptance-log.md"
+
+    if not counter.exists():
+        # First handoff — counter expected = 1
+        if not log.exists():
+            return {"name": "iteration-counter", "status": "skip", "detail": "first handoff (no counter file yet, no acceptance-log yet — protocol allows missing counter on iter-1 first submit)"}
+        return {
+            "name": "iteration-counter", "status": "fail",
+            "detail": "engagement/iteration file missing but acceptance-log.md exists",
+            "fix": "Create engagement/iteration with current iter number per §iteration-counter.",
+        }
+
+    try:
+        n = _read_iter_count(counter)
+    except Exception as e:
+        return {"name": "iteration-counter", "status": "fail", "detail": f"engagement/iteration not parseable as int: {e}"}
+
+    if log.exists():
+        log_iters = re.findall(r"^##\s*Iteration\s+(\d+)", log.read_text(encoding="utf-8"), re.MULTILINE | re.IGNORECASE)
+        seen = sorted({int(x) for x in log_iters})
+        # Counter should equal max(seen) + 1 (about to submit) OR equal max(seen) (latest already-rejected iter)
+        if seen:
+            expected = {max(seen), max(seen) + 1}
+            if n not in expected:
+                return {
+                    "name": "iteration-counter", "status": "fail",
+                    "detail": f"counter={n} but acceptance-log iterations={seen}; expected {expected}",
+                    "fix": "Sync engagement/iteration to match latest acceptance-log iteration number (or +1 for new submission).",
+                }
+    return {"name": "iteration-counter", "status": "pass", "detail": f"counter={n}"}
+
+
+def check_executor_iteration_structure(eng: Path) -> dict:
+    """For iter >= 2, every executor-report must have a `## Iteration N` heading
+    matching the current iteration. Catches silent overwrites of prior work."""
+    counter_path = eng / "iteration"
+    if not counter_path.exists():
+        return {"name": "executor-iteration-structure", "status": "skip", "detail": "iter counter missing — first iteration"}
+    try:
+        n = _read_iter_count(counter_path)
+    except Exception:
+        return {"name": "executor-iteration-structure", "status": "skip", "detail": "iter counter unparseable"}
+    if n < 2:
+        return {"name": "executor-iteration-structure", "status": "skip", "detail": f"iter={n}, no iteration structure required yet"}
+
+    reports_dir = eng / "executor-reports"
+    if not reports_dir.exists():
+        return {"name": "executor-iteration-structure", "status": "skip", "detail": "no executor-reports yet"}
+
+    missing = []
+    for report in reports_dir.glob("*.md"):
+        text = report.read_text(encoding="utf-8")
+        # Look for ANY iteration heading >= 2 (lead may have done iter 2 fix)
+        has_iter_n = re.search(rf"^##\s*Iteration\s+{n}\b", text, re.MULTILINE | re.IGNORECASE)
+        # Also require iter-1 marker (proves the file isn't a single-iteration silent overwrite)
+        has_iter_1 = re.search(r"^##\s*Iteration\s+1\b", text, re.MULTILINE | re.IGNORECASE)
+        if not has_iter_n or not has_iter_1:
+            missing.append(report.name)
+
+    if missing:
+        # Snapshot trail: human-directive.py copies executor-reports/*.md to iter-{k}/ when
+        # iteration k is sent back (REJECT / DIRECTED). A non-empty snapshot for every earlier
+        # iteration proves the prior work survived even though the engine refreshes the
+        # report in place.
+        gaps = []
+        for k in range(1, n):
+            snap = reports_dir / f"iter-{k}"
+            files = list(snap.glob("*.md")) if snap.is_dir() else []
+            if not files or any(f.stat().st_size == 0 for f in files):
+                gaps.append(f"iter-{k}/")
+        if not gaps:
+            return {
+                "name": "executor-iteration-structure",
+                "status": "pass",
+                "detail": f"snapshot trail: executor-reports/iter-1..iter-{n - 1}/ hold the earlier iterations",
+            }
+        # Per-wave / per-iteration FILE convention satisfies the no-silent-overwrite
+        # intent WITHOUT `## Iteration N` headings: distinct files per wave PLUS a
+        # clearly iter-N / rework-named file prove nothing was overwritten in place
+        # (a field engagement used wave1..5 +
+        # iter2-consilium-fixes.md + *-fix.md and was false-failed by the heading regex).
+        names = [f.name for f in reports_dir.glob("*.md")]
+        iter_named = [nm for nm in names if re.search(
+            rf"iter[-_]?{n}\b|iteration[-_]?{n}\b|consilium-fix|[-_]fix(?:es)?\b|[-_]cut\b", nm, re.IGNORECASE)]
+        wave_named = [nm for nm in names if re.search(r"wave[-_]?\d", nm, re.IGNORECASE)]
+        if iter_named and len(wave_named) >= 2:
+            return {
+                "name": "executor-iteration-structure",
+                "status": "pass",
+                "detail": f"per-wave/per-iteration file convention: {len(wave_named)} wave reports + "
+                          f"iter-{n} file(s) {iter_named[:3]} — audit trail via distinct files, no silent overwrite",
+            }
+        return {
+            "name": "executor-iteration-structure",
+            "status": "fail",
+            "detail": f"executor-reports missing `## Iteration {n}` (and/or `## Iteration 1`) heading: {missing}",
+            "fix": "The iter-1..N-1 snapshots are missing or empty "
+                   f"({', '.join(gaps)}): human-directive.py writes them on REJECT / DIRECTED before the "
+                   "rework run. Otherwise append `## Iteration N` headings to each executor-report, OR use "
+                   "one report file per wave plus a distinct iter-N / *-fix file.",
+        }
+    return {"name": "executor-iteration-structure", "status": "pass", "detail": f"all executor-reports have iter-{n} structure"}
+
+
+def check_validator_output_freshness(eng: Path) -> dict:
+    """For iter >= 2, validator-outputs must contain at least one file with
+    iter-N matching current iteration. Catches lead who forgot to re-run validators
+    after rework, leaving stale iter-1 outputs as evidence."""
+    counter_path = eng / "iteration"
+    if not counter_path.exists():
+        return {"name": "validator-output-freshness", "status": "skip", "detail": "iter counter missing — first iteration"}
+    try:
+        n = _read_iter_count(counter_path)
+    except Exception:
+        return {"name": "validator-output-freshness", "status": "skip", "detail": "iter counter unparseable"}
+    if n < 2:
+        return {"name": "validator-output-freshness", "status": "skip", "detail": f"iter={n}, freshness only meaningful from iter 2+"}
+
+    outputs_dir = eng / "validation-outputs"
+    if not outputs_dir.exists():
+        return {"name": "validator-output-freshness", "status": "skip", "detail": "validation-outputs/ missing"}
+
+    files = list(outputs_dir.glob("*.json"))
+    if not files:
+        return {"name": "validator-output-freshness", "status": "skip", "detail": "no validator output files"}
+
+    # File names follow pattern: {validator}-iter-{N}-{ts}.json
+    iter_pat = re.compile(r"-iter-(\d+)-")
+    has_current_iter = False
+    stale_only = []
+    for f in files:
+        m = iter_pat.search(f.name)
+        if m and int(m.group(1)) == n:
+            has_current_iter = True
+        else:
+            stale_only.append(f.name)
+
+    # Per-validator re-run coverage — a validator the log marks "(re-run)" at this iteration
+    # must have its OWN {validator}-iter-N output, else the re-run is claimed but UNPROVEN
+    # (audit-trail gap seen in the field: "### test-reviewer (re-run)" with
+    # code-reviewer/ux-review iter-2 present but no test-reviewer-iter-2 → the any-iter-N check
+    # below passed while a named re-run had zero proof-of-run). Advisory (WARN), scoped to
+    # validators the log ITSELF claims were re-run, so it never demands an un-claimed (forbidden
+    # acceptor) re-sweep — it only catches a re-run that was ASSERTED but not captured.
+    log_path = eng / "validation-log.md"
+    unproven_reruns = []
+    if log_path.exists():
+        log_text = log_path.read_text(encoding="utf-8", errors="replace")
+        rerun_validators = {
+            m.group(1).lower()
+            for m in re.finditer(r"^###\s+([\w\-]+)\s*\(re-?run\)", log_text, re.MULTILINE | re.IGNORECASE)
+            if m.group(1).islower() and "/" not in m.group(1)
+        }
+        cur_iter_re = re.compile(rf"-iter-{n}-")
+        for v in sorted(rerun_validators):
+            if not any(f.name.startswith(v) and cur_iter_re.search(f.name) for f in files):
+                unproven_reruns.append(v)
+    if unproven_reruns:
+        return {
+            "name": "validator-output-freshness",
+            "status": "warn",
+            "detail": f"iter={n}: validation-log marks {unproven_reruns} as (re-run) but no matching "
+                      f"{{validator}}-iter-{n} output exists — the re-run is claimed without proof-of-run "
+                      f"(audit-trail gap; per-validator coverage, not just any-iter-{n} presence).",
+            "fix": "Capture each re-run validator's JSON to validation-outputs/{validator}-iter-{N}-{ts}.json, "
+                   "or drop the (re-run) claim from validation-log.md if it was not actually re-run.",
+        }
+
+    if not has_current_iter:
+        # Advisory, NOT a hard gate. acceptance-protocol §"Role boundary" forbids the
+        # ACCEPTOR from re-running validators in the sweep ("same brain = no new info").
+        # Re-validation after rework is the LEAD's duty before re-submit, and on M/L the
+        # iter-N consilium roles are the fresh independent signal. So a missing iter-N
+        # standard-validator output is a WARN the acceptor adjudicates — never a FAIL
+        # that would demand the forbidden acceptor re-sweep (a field engagement
+        # flagged this freshness-vs-no-resweep
+        # contradiction; the no-resweep rule wins on precedence).
+        return {
+            "name": "validator-output-freshness",
+            "status": "warn",
+            "detail": f"iter={n}: no iter-{n} standard-validator output (latest: {[f.name for f in files][:5]}). "
+                      f"Advisory — on M/L the iter-{n} consilium roles are the fresh signal; re-validation is the lead's duty.",
+            "fix": "Lead re-runs validators on reworked code before re-submit ({validator}-iter-{N}-{ts}.json). "
+                   "Acceptor does NOT re-run (no-resweep) — adjudicates on consilium iter-N + lead's re-validation.",
+        }
+
+    return {"name": "validator-output-freshness", "status": "pass", "detail": f"validator outputs include iter-{n} files"}
+
+
+def check_specialist_criteria_ack(eng: Path) -> dict:
+    """Each executor-report must have a 'Criteria acknowledgement' section
+    with at least one bullet. Catches specialists who skipped reading criteria.md."""
+    reports_dir = eng / "executor-reports"
+    if not reports_dir.exists() or not list(reports_dir.glob("*.md")):
+        return {"name": "specialist-criteria-ack", "status": "skip", "detail": "no executor-reports yet"}
+
+    # Rework / fix follow-up reports address prior consilium/audit findings, not fresh
+    # criteria coverage — exempt them from the criteria-ack SECTION requirement (field
+    # Seen in the field: iter2b-fixes.md / *-consilium-
+    # fixes.md / audit-fix.md false-failed). Primary specialist reports (e.g.
+    # wave1-fullstack.md) are NOT exempt and still must carry the acknowledgement.
+    rework_re = re.compile(r"(?:[-_]fix(?:es)?|consilium-fix|audit-fix|[-_]cut)\b", re.IGNORECASE)
+    missing = []
+    for report in reports_dir.glob("*.md"):
+        if rework_re.search(report.stem):
+            continue
+        text = report.read_text(encoding="utf-8")
+        # Headers like:
+        #   ## Criteria acknowledgement
+        #   ### Criteria acknowledgement
+        #   ## Criteria
+        #   ## Criterion mapping
+        ack_pat = r"^#{2,4}\s*(Criteria(?:\s+acknowledgement|\s+addressed|\s+mapping)?|Criterion(?:\s+\w+)?)"
+        if not re.search(ack_pat, text, re.MULTILINE | re.IGNORECASE):
+            missing.append(report.name)
+            continue
+        # At least one bullet that references a criterion. Accept the engagement's
+        # actual ID scheme, not only crit-N: deliverable IDs like D1..D7 / FB-1
+        # (a field engagement legitimately used
+        # D1..D7 and was false-failed by the crit-N-only regex, forcing a waiver).
+        bullets = re.findall(r"^\s*(?:[-*]|\d+\.)\s+(.+)$", text, re.MULTILINE)
+        has_crit_ref = any(re.search(r"\b(?:crit-?\d+|[A-Za-z]{1,3}-?\d+|criterion\s*\d+|done[- ]when|criteria\.md)", b, re.IGNORECASE) for b in bullets)
+        if not has_crit_ref:
+            missing.append(f"{report.name} (section present, but no crit-N reference in bullets)")
+
+    if missing:
+        return {
+            "name": "specialist-criteria-ack",
+            "status": "fail",
+            "detail": f"executor-reports without Criteria acknowledgement: {missing}",
+            "fix": "Each specialist's report must open with `## Criteria acknowledgement` listing crit-N items their work addresses (per Engagement-mode contract).",
+        }
+    return {"name": "specialist-criteria-ack", "status": "pass", "detail": f"all {len(list(reports_dir.glob('*.md')))} executor-reports have criteria-ack"}

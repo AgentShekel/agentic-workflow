@@ -1,0 +1,689 @@
+#!/usr/bin/env python3
+"""Consilium synthesizer — aggregates adversary outputs into a single report.
+
+Reads engagement/validation-outputs/{role}-iter-{N}-*.json files produced by
+adversary_lg.py, computes agreement / disagreement / dedup, writes
+engagement/consilium-summary.md (machine-aggregated; director writes verdict
+on top of this aggregation, see director-acceptance-protocol skill).
+
+Aggregation rules:
+  - Convergent finding: ≥3 reviewers report same issue (text similarity > 0.6).
+  - Cross-family disagreement: peer-opus says satisfied, codex-blind/informed
+    says rework_required (or vice versa).
+  - Naive-layer catch: Sonnet/Haiku found something none of stronger reviewers
+    flagged → "obvious miss" signal.
+  - Suspicious-too-clean: at least one reviewer flagged this; require director
+    review even if others said satisfied.
+
+Usage:
+  python ~/.claude/scripts/consilium-synth.py engagement/
+  python ~/.claude/scripts/consilium-synth.py engagement/ --iter 2
+  python ~/.claude/scripts/consilium-synth.py engagement/ --json
+  python ~/.claude/scripts/consilium-synth.py engagement/ --tier L
+
+--tier names the roster the consilium was run with (adversary_lg passes it). An
+expected role with no parseable final JSON is listed as FAILED; without --tier the
+roster is inferred from the role files on disk for that iteration.
+
+Exit codes:
+  0 — synthesis completed (regardless of verdict aggregation)
+  1 — no adversary outputs found for current iteration
+  2 — invocation error
+"""
+
+from __future__ import annotations
+import sys as _sys
+
+try:
+    _sys.stdout.reconfigure(encoding="utf-8")
+    _sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
+import argparse
+import json
+import re
+import sys
+from difflib import SequenceMatcher
+from pathlib import Path
+
+REVIEWER_TIERS = {
+    "peer-opus": "peer",
+    "codex-blind": "cross-family",
+    "codex-informed": "cross-family",
+    "sonnet-scoped": "naive",
+    "haiku-scoped": "naive",
+}
+
+# Mirror of adversary_lg.CONSILIUM (S has no consilium, so no synth).
+TIER_ROSTER = {
+    "M": ("peer-opus",),
+    "L": ("peer-opus", "codex-blind", "codex-informed", "sonnet-scoped", "haiku-scoped"),
+}
+
+SEVERITY_ORDER = {"critical": 3, "major": 2, "minor": 1}
+
+
+def read_iter_counter(eng: Path) -> int:
+    counter = eng / "iteration"
+    if counter.exists():
+        try:
+            return int(counter.read_text(encoding="utf-8").strip())
+        except Exception:
+            pass
+    return 1
+
+
+def load_outputs(eng: Path, iter_n: int) -> list[dict]:
+    """Load latest output per role for the given iteration."""
+    outputs_dir = eng / "validation-outputs"
+    if not outputs_dir.exists():
+        return []
+    pattern = re.compile(r"^(?P<role>[\w-]+?)-iter-(?P<iter>\d+)-(?P<ts>[\d\w]+)\.json$")
+    by_role: dict[str, tuple[str, dict]] = {}
+    for f in outputs_dir.glob("*.json"):
+        m = pattern.match(f.name)
+        if not m:
+            continue
+        if int(m.group("iter")) != iter_n:
+            continue
+        role = m.group("role")
+        if role not in REVIEWER_TIERS:
+            continue
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        ts = m.group("ts")
+        prior = by_role.get(role)
+        if prior is None or ts > prior[0]:
+            by_role[role] = (ts, data)
+    return [{"role": role, "data": data} for role, (_, data) in by_role.items()]
+
+
+def find_failed_roles(
+    eng: Path, iter_n: int, outputs: list[dict], tier: str | None = None,
+) -> tuple[str, list[dict]]:
+    """Expected roles with no parseable final JSON for this iteration.
+
+    load_outputs only sees finals, so a role that wrote just *.raw.txt (or nothing,
+    when it crashed) used to vanish from the roster: with both codex roles failed, the
+    summary listed only the others. With --tier the
+    roster is that tier's; without it, any L-only role file on disk implies L,
+    else the roster is whoever left a file. Returns (roster source, failed roles).
+    """
+    present = {o["role"] for o in outputs}
+    files: dict[str, list[str]] = {}
+    outputs_dir = eng / "validation-outputs"
+    if outputs_dir.is_dir():
+        for f in sorted(outputs_dir.iterdir()):
+            for role in REVIEWER_TIERS:
+                if f.name.startswith(f"{role}-iter-{iter_n}-"):
+                    files.setdefault(role, []).append(f.name)
+    if tier in TIER_ROSTER:
+        expected, source = TIER_ROSTER[tier], f"tier {tier}"
+    elif (present | set(files)) - set(TIER_ROSTER["M"]):
+        expected, source = TIER_ROSTER["L"], "tier L, inferred from role files on disk"
+    else:
+        expected, source = tuple(sorted(present | set(files))), "inferred from role files on disk"
+    failed = []
+    for role in expected:
+        if role in present:
+            continue
+        names = files.get(role, [])
+        finals = [n for n in names if n.endswith(".json") and "-preliminary-" not in n]
+        raws = [n for n in names if n.endswith(".raw.txt")]
+        if finals:
+            reason, shown = "final JSON unparseable", finals + raws
+        elif raws:
+            reason, shown = "no final JSON, reviewer output kept as raw text", raws
+        elif names:
+            reason, shown = "no final JSON", names
+        else:
+            reason, shown = "no output on disk", []
+        failed.append({"role": role, "reason": reason, "files": shown})
+    return source, failed
+
+
+def account_for_failed_roles(
+    verdict: str, rationale: str, failed: list[dict],
+) -> tuple[str, str]:
+    """A consilium that lost reviewers is incomplete. It may still demand rework, but
+    it may not read as satisfied, and the rationale names who is missing."""
+    if not failed:
+        return verdict, rationale
+    note = (f"{len(failed)} expected reviewer(s) returned no review "
+            f"({', '.join(f['role'] for f in failed)})")
+    if verdict == "satisfied":
+        return "director_review_required", note
+    return verdict, f"{rationale}; {note}"
+
+
+def text_similarity(a: str, b: str) -> float:
+    # Empty / whitespace-only issue text is NOT evidence of sameness: SequenceMatcher
+    # returns 1.0 for two empty strings, which degenerately collapses blank-issue findings
+    # into a single "1 blank MINOR" cluster (a real consilium-synth bug).
+    # A missing description means "cannot judge similarity" -> keep the findings separate.
+    if not a.strip() or not b.strip():
+        return 0.0
+    return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+
+# Reviewer schemas vary: peer-opus / codex use `issue`; the naive (haiku/sonnet) scoped
+# reviewers put their description in `observation`. Normalize so findings cluster and
+# render by their real content regardless of which field a reviewer populated - otherwise
+# a whole reviewer's findings read as blank and degenerately collapse to "1 blank MINOR".
+# Same order as adversary_lg._FINDING_ALIASES["issue"], which fills `issue` at write
+# time; repeating it here covers finals written before that fix.
+_ISSUE_FIELDS = ("issue", "observation", "gap", "title", "finding", "problem", "description",
+                 "actual_state", "detail", "message")
+EMPTY_TEXT_MARK = "[EMPTY FINDING TEXT from {roles}: read the reviewer JSON]"
+
+
+def finding_text(f: dict) -> str:
+    """Canonical issue text for a finding across the reviewer-output schemas."""
+    for k in _ISSUE_FIELDS:
+        v = f.get(k)
+        if isinstance(v, str) and v.strip():
+            return v
+    return ""
+
+
+def shown_issue(c: dict) -> str:
+    """Issue text for display. A cluster with no text gets a visible marker instead of
+    rendering as a blank finding line the human gate reads as nothing."""
+    return c["issue"] if c["issue"].strip() else EMPTY_TEXT_MARK.format(roles=", ".join(c["found_by"]))
+
+
+def normalize_path(path: str) -> str:
+    """Normalize evidence path for clustering: strip line numbers, normalize separators."""
+    if not path:
+        return ""
+    # Strip :line:col suffixes
+    p = re.sub(r":\d+(?::\d+)?$", "", path.strip())
+    # Normalize separators
+    p = p.replace("\\", "/").lower()
+    return p
+
+
+def path_cluster_key(path: str) -> str:
+    """Return clustering key for a finding's evidence_path.
+
+    Two findings with the same key are likely the same issue regardless of
+    issue-text wording.
+    """
+    norm = normalize_path(path)
+    if not norm:
+        return ""
+    # Use the file path (without line) as cluster key
+    return norm
+
+
+def cluster_findings(
+    outputs: list[dict],
+    intra_path_threshold: float = 0.7,
+    cross_path_threshold: float = 0.85,
+) -> list[dict]:
+    """Two-stage cluster of findings across reviewers.
+
+    Stage 1: group by evidence_path (normalized — same file likely same issue).
+              Within each path-group, dedup by issue-text similarity at intra_path_threshold (lenient).
+
+    Stage 2: across path-groups, only merge if BOTH path-keys empty AND issue
+              text is very-near-identical (cross_path_threshold) — handles findings
+              that lack evidence_path but describe the same thing.
+
+    Stage 3: leave the rest as separate findings (don't over-merge by lexical
+              similarity alone — that was the original v1 bug).
+
+    Returns list of clusters with metadata.
+    """
+    items = []
+    for o in outputs:
+        role = o["role"]
+        for f in o["data"].get("findings", []):
+            items.append({"role": role, **f})
+
+    # Stage 1: bucket by path-cluster-key
+    by_path_key: dict[str, list[list[dict]]] = {}
+    for item in items:
+        key = path_cluster_key(item.get("evidence_path", ""))
+        buckets = by_path_key.setdefault(key, [])
+        placed = False
+        for bucket in buckets:
+            # Within same path, lenient similarity merging
+            sample_issue = finding_text(bucket[0])
+            if text_similarity(finding_text(item), sample_issue) >= intra_path_threshold:
+                bucket.append(item)
+                placed = True
+                break
+        if not placed:
+            buckets.append([item])
+
+    # Flatten Stage 1 buckets into clusters
+    stage1_clusters: list[list[dict]] = []
+    for buckets in by_path_key.values():
+        stage1_clusters.extend(buckets)
+
+    # Stage 2: only consider merging across no-path-key clusters with very-strict text similarity
+    no_path_clusters = [c for c in stage1_clusters if not path_cluster_key(c[0].get("evidence_path", ""))]
+    has_path_clusters = [c for c in stage1_clusters if path_cluster_key(c[0].get("evidence_path", ""))]
+
+    merged_no_path: list[list[dict]] = []
+    for cluster in no_path_clusters:
+        placed = False
+        for existing in merged_no_path:
+            if text_similarity(finding_text(cluster[0]), finding_text(existing[0])) >= cross_path_threshold:
+                existing.extend(cluster)
+                placed = True
+                break
+        if not placed:
+            merged_no_path.append(cluster)
+
+    final_clusters = has_path_clusters + merged_no_path
+
+    def _rep(cluster: list[dict], accessor) -> str:
+        """Representative value: first non-blank across the cluster, so a cluster
+        never renders blank when any constituent carries that text."""
+        for c in cluster:
+            v = (accessor(c) or "").strip()
+            if v:
+                return accessor(c)
+        return ""
+
+    summarized = []
+    for cluster in final_clusters:
+        roles = sorted({c["role"] for c in cluster})
+        sevs = [c.get("severity", "minor").lower() for c in cluster]
+        max_sev = max(sevs, key=lambda s: SEVERITY_ORDER.get(s, 0))
+        summarized.append({
+            "issue": _rep(cluster, finding_text),
+            "evidence_path": _rep(cluster, lambda c: c.get("evidence_path", "")),
+            "max_severity": max_sev,
+            "found_by": roles,
+            "fix_hint": _rep(cluster, lambda c: c.get("fix_hint", "")),
+            "all_descriptions": [finding_text(c) for c in cluster],
+            "cluster_size": len(cluster),
+        })
+    summarized.sort(
+        key=lambda c: (-SEVERITY_ORDER.get(c["max_severity"], 0), -len(c["found_by"])),
+    )
+    return summarized
+
+
+def compute_similarity_matrix(outputs: list[dict]) -> list[dict]:
+    """Pairwise similarity for ALL findings — transparency aid for director.
+
+    Director can scan this to decide if any two findings the synth left as
+    separate are actually the same issue (or vice versa).
+    """
+    items = []
+    for o in outputs:
+        role = o["role"]
+        for i, f in enumerate(o["data"].get("findings", [])):
+            items.append({
+                "id": f"{role}#{i}",
+                "role": role,
+                "issue": finding_text(f),
+                "evidence_path": f.get("evidence_path", ""),
+            })
+    pairs = []
+    for i, a in enumerate(items):
+        for b in items[i + 1:]:
+            sim = text_similarity(a["issue"], b["issue"])
+            same_path = (
+                normalize_path(a["evidence_path"]) == normalize_path(b["evidence_path"])
+                and a["evidence_path"]
+            )
+            # Only surface non-trivial pairs
+            if sim >= 0.4 or same_path:
+                pairs.append({
+                    "a_id": a["id"],
+                    "b_id": b["id"],
+                    "issue_similarity": round(sim, 2),
+                    "same_evidence_path": bool(same_path),
+                })
+    pairs.sort(key=lambda p: -p["issue_similarity"])
+    return pairs
+
+
+def detect_disagreements(outputs: list[dict]) -> list[dict]:
+    """Pairs of reviewers with conflicting verdicts (satisfied vs rework_required)."""
+    by_role = {o["role"]: o["data"].get("verdict", "") for o in outputs}
+    disagreements = []
+    roles = list(by_role.keys())
+    for i, ra in enumerate(roles):
+        for rb in roles[i + 1:]:
+            va, vb = by_role[ra], by_role[rb]
+            if {va, vb} == {"satisfied", "rework_required"}:
+                # Cross-family-vs-Anthropic disagreement is most interesting
+                ta, tb = REVIEWER_TIERS.get(ra), REVIEWER_TIERS.get(rb)
+                kind = "cross-family" if {ta, tb} == {"peer", "cross-family"} else "intra-family"
+                disagreements.append({
+                    "reviewer_a": ra, "verdict_a": va,
+                    "reviewer_b": rb, "verdict_b": vb,
+                    "kind": kind,
+                })
+    return disagreements
+
+
+def detect_naive_only_catches(clusters: list[dict]) -> list[dict]:
+    """Findings that only Sonnet/Haiku flagged; stronger reviewers missed."""
+    catches = []
+    for c in clusters:
+        tiers = {REVIEWER_TIERS.get(r) for r in c["found_by"]}
+        if tiers and tiers.issubset({"naive"}):
+            catches.append(c)
+    return catches
+
+
+def detect_suspicious_too_clean(outputs: list[dict]) -> list[str]:
+    return [
+        o["role"] for o in outputs
+        if o["data"].get("verdict") == "suspicious_too_clean"
+    ]
+
+
+def determine_aggregate_verdict(
+    outputs: list[dict],
+    convergent: list[dict],
+    disagreements: list[dict],
+    naive_catches: list[dict],
+    too_clean: list[str],
+) -> tuple[str, str]:
+    """Aggregate verdict + 1-line rationale."""
+    # Any critical convergent (≥2 reviewers) → mandatory rework
+    critical_convergent = [
+        c for c in convergent
+        if c["max_severity"] == "critical" and len(c["found_by"]) >= 2
+    ]
+    rework_reviewers = sorted(
+        o["role"] for o in outputs if o["data"].get("verdict") == "rework_required"
+    )
+    # rework_required MUST dominate the softer director_review signals below: the aggregate
+    # may never be softer than the strongest constituent verdict (the same
+    # "aggregate softer than constituent" bug, where a real rework_required reviewer was
+    # downgraded to director_review by a co-occurring naive-catch flag).
+    if critical_convergent or rework_reviewers:
+        reasons = []
+        if critical_convergent:
+            reasons.append(f"{len(critical_convergent)} critical issue(s) confirmed by >=2 reviewers")
+        if rework_reviewers:
+            reasons.append(f"{len(rework_reviewers)} reviewer(s) demanded rework ({', '.join(rework_reviewers)})")
+        return "rework_required", "; ".join(reasons)
+
+    # Cross-family disagreement → mandatory director review
+    cross_family_dis = [d for d in disagreements if d["kind"] == "cross-family"]
+    if cross_family_dis:
+        return "director_review_required", (
+            f"{len(cross_family_dis)} cross-family disagreement(s) — framing contamination signal"
+        )
+
+    # Naive catches that weren't seen by stronger reviewers → director review
+    if naive_catches:
+        return "director_review_required", (
+            f"{len(naive_catches)} obvious-miss finding(s) only naive reviewers flagged"
+        )
+
+    # All satisfied with no flags → satisfied (rare on L-tier, normal on M)
+    if all(o["data"].get("verdict") == "satisfied" for o in outputs):
+        return "satisfied", f"all {len(outputs)} reviewer(s) satisfied"
+
+    # Some too_clean → director review
+    if too_clean:
+        return "director_review_required", (
+            f"{len(too_clean)} reviewer(s) flagged suspicious_too_clean"
+        )
+
+    return "director_review_required", "mixed signals — director must adjudicate"
+
+
+def write_summary(
+    eng: Path,
+    iter_n: int,
+    outputs: list[dict],
+    clusters: list[dict],
+    disagreements: list[dict],
+    naive_catches: list[dict],
+    too_clean: list[str],
+    aggregate_verdict: str,
+    rationale: str,
+    similarity_pairs: list[dict] | None = None,
+    failed: list[dict] | None = None,
+    roster_source: str = "",
+) -> Path:
+    out = eng / "consilium-summary.md"
+    lines: list[str] = []
+    lines.append(f"# Consilium synthesis — iter {iter_n}")
+    lines.append("")
+    lines.append(f"**Aggregate verdict:** {aggregate_verdict}  ")
+    lines.append(f"**Rationale:** {rationale}")
+    lines.append("")
+
+    lines.append("## Reviewer roster")
+    lines.append("")
+    lines.append("| Reviewer | Tier | Verdict | Findings | Summary |")
+    lines.append("|---|---|---|---|---|")
+    for o in outputs:
+        role = o["role"]
+        d = o["data"]
+        v = d.get("verdict", "?")
+        fc = len(d.get("findings", []))
+        s = d.get("summary", "").replace("|", "\\|")[:80]
+        lines.append(f"| {role} | {REVIEWER_TIERS.get(role, '?')} | {v} | {fc} | {s} |")
+    for f in failed or []:
+        where = f"; {', '.join(f['files'])}" if f["files"] else ""
+        lines.append(f"| {f['role']} | {REVIEWER_TIERS.get(f['role'], '?')} | FAILED | — | "
+                     f"{f['reason']}{where} |")
+    lines.append("")
+
+    if failed:
+        expected_n = len(outputs) + len(failed)
+        lines.append("## Failed reviewers")
+        lines.append("")
+        lines.append(f"{len(failed)} of {expected_n} expected reviewer(s) returned no review "
+                     f"({roster_source}). Their verdicts are absent from the aggregate, so "
+                     "this consilium is incomplete.")
+        lines.append("")
+        for f in failed:
+            where = ", ".join(f"`validation-outputs/{n}`" for n in f["files"]) or "nothing written"
+            lines.append(f"- **{f['role']}** ({REVIEWER_TIERS.get(f['role'], '?')}): "
+                         f"{f['reason']}. {where}")
+        lines.append("")
+
+    if clusters:
+        lines.append(f"## Findings ({len(clusters)} unique after dedup)")
+        lines.append("")
+        for i, c in enumerate(clusters, 1):
+            roles_s = ", ".join(c["found_by"])
+            lines.append(f"### {i}. **{c['max_severity'].upper()}** — {shown_issue(c)}")
+            lines.append(f"- Found by: {roles_s} ({len(c['found_by'])} reviewer(s))")
+            if c.get("evidence_path"):
+                lines.append(f"- Evidence: `{c['evidence_path']}`")
+            if c.get("fix_hint"):
+                lines.append(f"- Fix hint: {c['fix_hint']}")
+            if len(c["all_descriptions"]) > 1:
+                lines.append("- Variant descriptions:")
+                for d in c["all_descriptions"][:3]:
+                    lines.append(f"  - {d or '[empty]'}")
+            lines.append("")
+
+    if disagreements:
+        lines.append("## Disagreements")
+        lines.append("")
+        for d in disagreements:
+            mark = "**[CROSS-FAMILY]**" if d["kind"] == "cross-family" else "[intra-family]"
+            lines.append(
+                f"- {mark} {d['reviewer_a']}={d['verdict_a']} vs "
+                f"{d['reviewer_b']}={d['verdict_b']}"
+            )
+        if any(d["kind"] == "cross-family" for d in disagreements):
+            lines.append("")
+            lines.append("> Cross-family disagreement is a framing-contamination signal. "
+                         "Director must adjudicate by inspecting the disputed finding directly.")
+        lines.append("")
+
+    if naive_catches:
+        lines.append("## Naive-layer catches (obvious-miss signal)")
+        lines.append("")
+        lines.append("These findings were flagged ONLY by Sonnet/Haiku scoped reviewers. "
+                     "Stronger reviewers may have rationalized past them.")
+        lines.append("")
+        for c in naive_catches:
+            lines.append(f"- **{c['max_severity'].upper()}**: {shown_issue(c)}")
+            if c.get("evidence_path"):
+                lines.append(f"  - Evidence: `{c['evidence_path']}`")
+        lines.append("")
+
+    if too_clean:
+        lines.append("## Suspicious-too-clean flags")
+        lines.append("")
+        lines.append(f"Reviewer(s) returned 0 findings: {', '.join(too_clean)}. "
+                     "Either work is genuinely clean OR reviewer scan was shallow.")
+        lines.append("")
+
+    if similarity_pairs:
+        lines.append("## Similarity matrix (transparency)")
+        lines.append("")
+        lines.append("Pairwise similarity for findings the synth did NOT merge. "
+                     "Director: if two findings are actually the same issue, mark in verdict; "
+                     "if two findings sharing a path are actually distinct, also mark.")
+        lines.append("")
+        lines.append("| A | B | Issue similarity | Same evidence path |")
+        lines.append("|---|---|---|---|")
+        for p in similarity_pairs[:25]:  # cap to avoid bloat
+            lines.append(
+                f"| `{p['a_id']}` | `{p['b_id']}` | {p['issue_similarity']} | "
+                f"{'✓' if p['same_evidence_path'] else '—'} |"
+            )
+        if len(similarity_pairs) > 25:
+            lines.append(f"| ... | ({len(similarity_pairs) - 25} more pairs omitted) | | |")
+        lines.append("")
+
+    lines.append("## Statistics")
+    lines.append("")
+    lines.append(f"- Total raw findings: {sum(len(o['data'].get('findings', [])) for o in outputs)}")
+    lines.append(f"- Unique after dedup: {len(clusters)}")
+    convergent_count = sum(1 for c in clusters if len(c["found_by"]) >= 3)
+    lines.append(f"- Convergent (≥3 reviewers agree): {convergent_count}")
+    if outputs:
+        agree_pairs = 0
+        total_pairs = 0
+        verdicts = [o["data"].get("verdict", "") for o in outputs]
+        for i, va in enumerate(verdicts):
+            for vb in verdicts[i + 1:]:
+                total_pairs += 1
+                if va == vb:
+                    agree_pairs += 1
+        if total_pairs:
+            lines.append(f"- Pairwise verdict agreement: {agree_pairs}/{total_pairs} "
+                         f"({100 * agree_pairs // total_pairs}%)")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+    lines.append("*This synthesis is mechanical aggregation. Director writes the final "
+                 "verdict in `acceptance-log.md`, citing this synthesis where appropriate.*")
+    lines.append("")
+    out.write_text("\n".join(lines), encoding="utf-8")
+    return out
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Consilium synthesizer for adversary outputs")
+    parser.add_argument("engagement", help="Path to engagement/ directory")
+    parser.add_argument("--iter", type=int, default=None,
+                        help="Iteration number (default: read from engagement/iteration)")
+    parser.add_argument("--json", action="store_true",
+                        help="Output JSON summary to stdout")
+    parser.add_argument("--tier", choices=["M", "L"], default=None,
+                        help="Consilium tier that was run; expected roles with no final are "
+                             "listed as FAILED (default: inferred from role files on disk)")
+    args = parser.parse_args()
+
+    eng = Path(args.engagement).resolve()
+    if not eng.exists() or not eng.is_dir():
+        print(f"ERROR: engagement directory not found: {eng}", file=sys.stderr)
+        return 2
+
+    iter_n = args.iter if args.iter is not None else read_iter_counter(eng)
+    outputs = load_outputs(eng, iter_n)
+    roster_source, failed = find_failed_roles(eng, iter_n, outputs, args.tier)
+    for f in failed:
+        where = f" ({', '.join(f['files'])})" if f["files"] else ""
+        print(f"WARN: {f['role']} returned no review: {f['reason']}{where}", file=sys.stderr)
+    if not outputs:
+        print(f"No adversary outputs found in {eng}/validation-outputs/ for iter={iter_n}",
+              file=sys.stderr)
+        # No summary is written here on purpose: precheck's consilium-addressed gate
+        # passes on any non-empty summary, so a "nobody reviewed" summary would count
+        # as a consilium. A summary left by an earlier run is NOT current; say so.
+        old = eng / "consilium-summary.md"
+        if old.is_file():
+            head = old.read_text(encoding="utf-8", errors="replace").splitlines()[:1]
+            print(f"WARN: {old.name} on disk was NOT rewritten and does not describe "
+                  f"iter={iter_n} ({head[0] if head else 'empty'})", file=sys.stderr)
+        print("Run `python ~/.claude/scripts/adversary_lg.py engagement/ --consilium {M|L}` first.",
+              file=sys.stderr)
+        return 1
+
+    clusters = cluster_findings(outputs)
+    disagreements = detect_disagreements(outputs)
+    naive_catches = detect_naive_only_catches(clusters)
+    too_clean = detect_suspicious_too_clean(outputs)
+    similarity_pairs = compute_similarity_matrix(outputs)
+    verdict, rationale = determine_aggregate_verdict(
+        outputs, clusters, disagreements, naive_catches, too_clean,
+    )
+    verdict, rationale = account_for_failed_roles(verdict, rationale, failed)
+    empty = [c for c in clusters if not c["issue"].strip()]
+    if empty:
+        roles = sorted({r for c in empty for r in c["found_by"]})
+        print(f"WARN: {len(empty)} finding(s) with empty text from {', '.join(roles)}; "
+              "marked [EMPTY FINDING TEXT] in consilium-summary.md", file=sys.stderr)
+
+    summary_path = write_summary(
+        eng, iter_n, outputs, clusters, disagreements, naive_catches, too_clean,
+        verdict, rationale, similarity_pairs=similarity_pairs,
+        failed=failed, roster_source=roster_source,
+    )
+
+    if args.json:
+        print(json.dumps({
+            "engagement": str(eng),
+            "iter": iter_n,
+            "reviewers": len(outputs),
+            "unique_findings": len(clusters),
+            "convergent_critical": sum(
+                1 for c in clusters
+                if c["max_severity"] == "critical" and len(c["found_by"]) >= 2
+            ),
+            "cross_family_disagreements": sum(1 for d in disagreements if d["kind"] == "cross-family"),
+            "naive_only_catches": len(naive_catches),
+            "too_clean_flags": too_clean,
+            "aggregate_verdict": verdict,
+            "rationale": rationale,
+            "failed_roles": failed,
+            "empty_findings": len(empty),
+            "summary_path": str(summary_path),
+        }, ensure_ascii=False, indent=2))
+    else:
+        print(f"Consilium synthesis (iter={iter_n}, {len(outputs)} reviewers)")
+        print(f"  Aggregate verdict: {verdict}")
+        print(f"  Rationale: {rationale}")
+        print(f"  Unique findings: {len(clusters)}")
+        if failed:
+            print(f"  FAILED reviewers: {', '.join(f['role'] for f in failed)}")
+        if disagreements:
+            cf = sum(1 for d in disagreements if d["kind"] == "cross-family")
+            print(f"  Disagreements: {len(disagreements)} ({cf} cross-family)")
+        if naive_catches:
+            print(f"  Naive-only catches: {len(naive_catches)}")
+        if too_clean:
+            print(f"  Too-clean flags: {', '.join(too_clean)}")
+        print(f"  Summary written: {summary_path}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

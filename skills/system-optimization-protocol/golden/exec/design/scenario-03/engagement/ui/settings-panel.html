@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Account settings</title>
+  <link rel="stylesheet" href="../design-system/tokens.css">
+  <link rel="stylesheet" href="settings-panel.css">
+</head>
+<body>
+  <section class="panel" aria-labelledby="settings-title">
+    <h2 id="settings-title" class="panel__title">Account settings</h2>
+    <p class="panel__meta">Last updated 3 days ago. Changes apply to all devices.</p>
+    <form>
+      <div class="panel__row">
+        <label for="display-name">Display name</label>
+        <input id="display-name" name="display-name" type="text" autocomplete="nickname" aria-describedby="display-name-hint">
+        <p class="panel__hint" id="display-name-hint">Shown on your public profile.</p>
+      </div>
+      <div class="panel__row">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="email" aria-describedby="email-hint">
+        <p class="panel__hint" id="email-hint">We send receipts here.</p>
+      </div>
+      <button class="panel__save" type="submit">Save changes</button>
+    </form>
+  </section>
+</body>
+</html>

@@ -1,0 +1,42 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/post-compact-restore.sh" },
+          { "type": "command", "command": "bash ~/.claude/hooks/post-compact-context.sh" }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/session-start-project.sh" },
+          { "type": "command", "command": "python ~/.claude/scripts/skillopt-ready.py --hook", "timeout": 10 },
+          { "type": "command", "command": "python ~/.claude/scripts/harness-ready.py --hook", "timeout": 10 },
+          { "type": "command", "command": "python ~/.claude/scripts/metrics.py --hook", "timeout": 20 },
+          { "type": "command", "command": "python ~/.claude/scripts/check-agent-models.py --hook", "timeout": 15 },
+          { "type": "command", "command": "python ~/.claude/scripts/outcome-due.py --hook", "timeout": 15 },
+          { "type": "command", "command": "python ~/.claude/scripts/memory-doctor.py --hook", "timeout": 10 }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/pre-commit-check.sh" },
+          { "type": "command", "command": "bash ~/.claude/hooks/verification-gate.sh", "timeout": 120 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/hooks/lint-on-edit.sh", "timeout": 30 }
+        ]
+      }
+    ]
+  }
+}
