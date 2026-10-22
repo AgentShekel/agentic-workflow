@@ -1,0 +1,59 @@
+# Pipeline Metrics
+
+Updated after each feature completion (`/done`).
+
+## Feature Stats
+
+| Feature | Size | Pipeline Steps Used | Validation Rounds | Duration | Status |
+|---------|------|--------------------|--------------------|----------|--------|
+| example-feature | M | research → user-spec → tech-spec → tasks → do-feature → done | spec: 2, tasks: 1, code: 2 | 3 sessions | completed |
+
+## Validator Effectiveness
+
+Track findings per validator to detect patterns and tune sensitivity.
+
+### Most Common Findings (top 5)
+
+| # | Finding Pattern | Validator | Count | Action Taken |
+|---|----------------|-----------|-------|-------------|
+| 1 | | | | |
+
+### False Positive Rate
+
+| Validator | Total Findings | False Positives | FP Rate | Notes |
+|-----------|---------------|----------------|---------|-------|
+| skeptic | | | | |
+| completeness-validator | | | | |
+| security-auditor | | | | |
+| test-reviewer | | | | |
+| tech-spec-validator | | | | |
+| task-validator | | | | |
+| reality-checker | | | | |
+
+### Validation Rounds Distribution
+
+How many rounds before specs/tasks pass validation:
+
+| Stage | 1 round | 2 rounds | 3 rounds (max) | Notes |
+|-------|---------|----------|----------------|-------|
+| User-spec | | | | |
+| Tech-spec | | | | |
+| Tasks | | | | |
+| Code review | | | | |
+
+If consistently hitting 3 rounds → validators may be too strict or prompts need improvement.
+
+## Review Quality
+
+| Reviewer | Useful Findings | Noise | Quality Score |
+|----------|----------------|-------|--------------|
+| code-reviewer | | | |
+| security-auditor | | | |
+| test-reviewer | | | |
+| performance-validator | | | |
+
+## Improvement Log
+
+| Date | Change | Reason | Impact |
+|------|--------|--------|--------|
+| | | | |

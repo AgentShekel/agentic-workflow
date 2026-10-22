@@ -2,6 +2,20 @@
 
 All notable changes to agentic-workflow.
 
+## v0.8.1 — 2026-10-22 (Shared templates)
+
+- `shared/` ships the dev templates: `work-templates/` (user-spec, tech-spec,
+  task, decisions, metrics, research verdict), `interview-templates/` (feature
+  and skill interview plans) and `templates/new-project/` (the project-knowledge
+  skill, `CLAUDE.md`, README, `.gitignore`, `.env.example`). Installation copies
+  it to `~/.claude/shared/`, where `user-spec-planning`, `tech-spec-planning`,
+  `project-planning`, `task-creator` and the other skills and agents that name
+  these files look for them.
+
+### Counts
+
+60 agents (Managers 3 · Directors 4 · Leads 3 · Specialists 20 · Validators 30) · 47 skills · 26 main + 3 optional Python scripts · 3 Workflow engines + 2 LangGraph engines.
+
 ## v0.8.0 — 2026-10-22 (Spec-driven development for dev work)
 
 Dev features, refactors and new projects of size M/L now go through specs before

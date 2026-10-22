@@ -1,0 +1,50 @@
+---
+created: YYYY-MM-DD
+verdict: GO | NO-GO | CONDITIONAL | DEFER
+complexity: S | M | L
+type: Platform | Product | Mixed
+---
+
+# Feature Research: {Feature Name}
+
+## Summary
+
+1-2 sentence summary of the feature and its purpose.
+
+## Mission Alignment
+
+How this feature aligns with project goals.
+
+## Feasibility Assessment
+
+### Technical Feasibility
+Can we build this with current stack? What's needed?
+
+### Effort Estimate
+**Size:** S / M / L
+**Justification:** why this size
+
+### Dependencies
+- External services needed
+- Libraries to add
+- Other features that must exist first
+
+## Risk Assessment
+
+### Technical Risks
+| Risk | Impact | Probability | Mitigation |
+|------|--------|-------------|-----------|
+
+### Operational Risks
+| Risk | Impact | Probability | Mitigation |
+|------|--------|-------------|-----------|
+
+## Verdict
+
+**{GO | NO-GO | CONDITIONAL | DEFER}**
+
+**Rationale:** Why this verdict.
+
+**Conditions (if CONDITIONAL):** What must be true before proceeding.
+
+**Defer until (if DEFER):** What event/milestone triggers re-evaluation.

@@ -393,9 +393,12 @@ mechanics end-to-end.
    ```bash
    mkdir -p ~/.claude/agents
    cp agents/*/*.md ~/.claude/agents/
-   cp -r skills scripts workflows hooks ~/.claude/
+   cp -r skills scripts workflows hooks shared ~/.claude/
    ```
    (On Windows — corresponding paths in `%USERPROFILE%\.claude\`.)
+   `shared/` holds the dev templates: user-spec, tech-spec and task
+   templates, interview plans and the new-project scaffold. The skills
+   and agents that use them read them from `~/.claude/shared/`.
 
 3. Wire the hooks: merge the `hooks` block of
    `settings.hooks.example.json` into `~/.claude/settings.json`.

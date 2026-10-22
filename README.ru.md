@@ -405,9 +405,12 @@ SessionStart-записи в примере также запускают про
    ```bash
    mkdir -p ~/.claude/agents
    cp agents/*/*.md ~/.claude/agents/
-   cp -r skills scripts workflows hooks ~/.claude/
+   cp -r skills scripts workflows hooks shared ~/.claude/
    ```
    (на Windows — соответствующие пути в `%USERPROFILE%\.claude\`)
+   В `shared/` лежат dev-шаблоны: user-spec, tech-spec и задача, планы
+   интервью и заготовка нового проекта. Скиллы и агенты, которым они
+   нужны, читают их из `~/.claude/shared/`.
 
 3. Подключить хуки: перенести блок `hooks` из
    `settings.hooks.example.json` в `~/.claude/settings.json`.
