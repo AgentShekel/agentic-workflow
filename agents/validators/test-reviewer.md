@@ -17,6 +17,15 @@ tools:
 
 Follow the testing-methodology skill methodology. Read references/test-quality-review.md for detailed review criteria.
 
+## Engagement mode (SDD)
+
+Inside `engagement-workflow` the validate phase gives you no file paths, only an engagement
+directory and its `criteria.md`. If `criteria.md` frontmatter has `sdd: spec`, review the testing
+strategy and the AVP in `<engagement>/specs/tech-spec.md` (static: concrete commands, tools listed
+in `### Tools required`, concrete expected values; you do not execute them). If it has
+`sdd: impl`, review the tests the impl tasks wrote in the repo against the tech-spec's Testing
+Strategy. Return findings in the schema the caller's prompt gives you; write no report file.
+
 ## Input
 
 Orchestrator provides:

@@ -3,13 +3,25 @@ name: user-spec-planning
 domain: dev
 description: |
   [METHODOLOGY] User-spec creation through adaptive interview with
-  codebase scanning and dual validation. Preloaded by dev-product-analyst agent.
+  codebase scanning and dual validation. SDD phase 1: run by agency-intake
+  in the main loop (the interview needs the user). Also preloaded by
+  dev-product-analyst and dev-lead as reference.
 ---
 
 # User Spec Planning
 
 Thorough adaptive interview → codebase scan → user-spec.md → dual validation → user approval.
-Output: `work/{feature}/user-spec.md` with status `approved`.
+Output: `engagement/specs/user-spec.md` with status `approved`.
+
+**Who runs this.** SDD phase 1 of a dev engagement (see `dev-methodology` §"Spec-Driven
+Development"). `agency-intake` runs it in the main loop, step 5c, because the interview needs the
+user and nobody inside `engagement-workflow` can reach the user. It is never a specialist task
+inside the engine. Paths below are relative to the project root that holds `engagement/`.
+
+`engagement/specs/` is the feature folder. Every agent that takes a `feature_path` input
+(`code-researcher`, `interview-completeness-checker`, both userspec validators, and later the
+tech-spec validators) gets `feature_path = engagement/specs`; their default sub-paths
+(`code-research.md`, `logs/userspec/…`) then land inside `specs/`, which the whitelist allows.
 
 ## Interview Style
 
@@ -31,8 +43,8 @@ Conduct interview in Russian. Be thorough and opinionated — an engaged co-thin
 
 ### Phase 0: Init
 
-1. Check for existing interview: look in `work/*/logs/userspec/interview.yml` for `metadata.status: in_progress`. If found — load, show discussed topics summary, resume. If multiple found — show list, let user choose.
-2. Check for existing feature research: look for `work/{feature-name}/research-verdict.md`.
+1. Check for existing interview: `engagement/specs/logs/userspec/interview.yml` with `metadata.status: in_progress`. If found — load, show discussed topics summary, resume.
+2. Check for existing feature research: look for `engagement/specs/research-verdict.md`.
    If found and verdict is GO or CONDITIONAL:
    - Read verdict, use findings as starting context for interview
    - Skip code scanning in Phase 3 if `code-research.md` already exists from feature-research
@@ -40,15 +52,17 @@ Conduct interview in Russian. Be thorough and opinionated — an engaged co-thin
    If not found: proceed normally (feature-research is recommended for M/L features but not required).
 3. Get task description: "Опиши, что хочешь сделать."
 4. Determine work_type (feature / bug / refactoring) from description.
-5. Propose feature name (kebab-case), get user confirmation.
-6. Run `~/.claude/shared/scripts/init-feature-folder.sh {name}` — creates folder structure with interview.yml.
+5. Propose feature name (kebab-case), get user confirmation. It becomes the engagement name; the
+   two SDD engagements are `{name}-spec` and `{name}-impl`.
+6. Create the state: `mkdir -p engagement/specs/logs/userspec && cp ~/.claude/shared/interview-templates/feature.yml engagement/specs/logs/userspec/interview.yml`.
+   Do not run `init-feature-folder.sh`: it builds the retired `work/{feature}/` layout.
 7. Update interview.yml: set metadata.started, metadata.status: in_progress, phase1_feature_overview.feature_name, phase1_feature_overview.work_type.
 
 **Checkpoint:** interview.yml exists with status in_progress, feature name confirmed.
 
 ### Phase 1: Study Project Knowledge
 
-Read ALL files from `.claude/skills/project-knowledge/references/`. If directory missing or empty — warn user, suggest running project-planning skill (or `/init-project-knowledge` command).
+Read ALL files from `.claude/skills/project-knowledge/references/`. If the directory is missing, empty or still holds template placeholders, this is a new project: stop and return to `agency-intake` step 5c.0 (bootstrap) before any feature interview.
 
 These files are your context for the entire interview. Reference them when asking questions and proposing solutions.
 
@@ -65,9 +79,9 @@ These files are your context for the entire interview. Reference them when askin
 
 ### Phase 3: Code Scanning
 
-Launch `code-researcher` subagent (Task tool, opus) with feature path and feature description from Cycle 1.
+Launch `code-researcher` subagent (Task tool, opus) with `feature_path = engagement/specs` and the feature description from Cycle 1.
 
-After subagent completes — read `{feature_path}/code-research.md`. Use findings in Cycle 2 questions.
+After subagent completes — read `engagement/specs/code-research.md`. Use findings in Cycle 2 questions. The same file travels into both SDD engagements; the tech architect deepens it later.
 
 If during later phases a gap is discovered — launch `code-researcher` again with the specific question to investigate.
 
@@ -94,7 +108,7 @@ Run interview loop on remaining gaps.
 
 ### Phase 6: Completeness Check
 
-Launch `interview-completeness-checker` subagent (Task tool, sonnet) with feature path. It reviews interview.yml against PK files and code-research.md.
+Launch `interview-completeness-checker` subagent (Task tool, sonnet) with `feature_path = engagement/specs`. It reviews interview.yml against PK files and code-research.md.
 
 - `needs_more` → ask the suggested questions, re-run checker
 - `complete` → proceed to Phase 7
@@ -102,21 +116,24 @@ Launch `interview-completeness-checker` subagent (Task tool, sonnet) with featur
 ### Phase 7: Create User Spec
 
 1. Copy template to working file:
-   - Copy `~/.claude/shared/work-templates/user-spec.md.template` → `work/{feature}/user-spec.md`
+   - Copy `~/.claude/shared/work-templates/user-spec.md.template` → `engagement/specs/user-spec.md`
    - Edit sections one by one using Edit tool, replacing placeholders with interview data
    Reason: agent sees template structure and comments while editing each section, preventing drift from template format.
 2. Content rules:
    - "Что делаем" — self-contained, understandable without the interview
    - "Зачем" — concrete user value, not "улучшить UX"
    - Acceptance criteria — testable, no "работает корректно"
+   - Every acceptance criterion gets a stable id `AC-1`, `AC-2`, … (`- [ ] AC-1: …`). The tech-spec
+     traces its tasks to these ids and the impl engagement's `criteria.md` cites them, so an id is
+     never renumbered or reused once the spec is approved.
    - Every discussed topic from interview must appear in the spec
 3. If feature seems large (>10 criteria, >3 user flows, >5 integrations) — suggest splitting.
 
-Git commit: `draft(userspec): create user-spec for {feature}`
-
 ### Phase 8: Validation
 
-Run 2 validators in parallel (Task tool):
+Run 2 validators in parallel (Task tool) with `feature_path = engagement/specs`. Their reports
+land in `engagement/specs/logs/userspec/`, NOT in `validation-outputs/`: that directory belongs to
+the engine's validate phase and the precheck parses every JSON in it.
 - `userspec-quality-validator` (sonnet) — document structure, template compliance, formal completeness. Returns JSON with per-check pass/fail and findings list.
 - `userspec-adequacy-validator` (opus) — feasibility, over/underengineering, better alternatives. Returns JSON with findings by category and severity.
 
@@ -126,17 +143,20 @@ Run 2 validators in parallel (Task tool):
 - Disagree with finding → reject with reasoning
 - Conflict between validators → userspec-adequacy-validator takes priority (substance over form)
 
-After each validation round (validators wrote reports + you applied fixes), git commit: `chore(userspec): validation round {N} — {summary of fixes}`. Re-run validators. Max 3 iterations, then show remaining issues to user.
+After each validation round (validators wrote reports + you applied fixes), re-run validators. Max 3 iterations, then show remaining issues to user.
 
 ### Phase 9: User Approval
 
 Show user-spec.md link + validation summary. If changes requested — edit and show again.
 
 When approved:
-1. Set user-spec.md frontmatter `status: approved`
+1. Set user-spec.md frontmatter `status: approved` and `approved: {YYYY-MM-DD}`
 2. Set interview.yml `metadata.status: completed`
-3. Git commit: `chore(userspec): approve user-spec for {feature}`
-4. Suggest `/new-tech-spec {feature-name}`
+3. Return to `agency-intake` step 5c: it writes the `{name}-spec` engagement's `criteria.md`.
+
+After approval the user-spec is frozen. Only the user changes it: a gap found later (by the
+architect, a validator or the manager) comes back to the user as a question, and the fix is a
+re-approval, never a silent edit.
 
 ## Interview Loop
 
@@ -181,8 +201,8 @@ If understanding changes significantly during interview:
 ## Self-Verification
 
 - [ ] All cycles completed, completeness checker passed
-- [ ] user-spec.md filled with real content (no placeholders)
+- [ ] user-spec.md filled with real content (no placeholders), every AC has an `AC-N` id
 - [ ] Both validators passed (or issues resolved with user)
 - [ ] User approved, frontmatter status: approved
 - [ ] interview.yml metadata.status: completed
-- [ ] Suggested `/new-tech-spec` as next step
+- [ ] Control returned to `agency-intake` step 5c

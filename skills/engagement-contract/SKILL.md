@@ -25,7 +25,7 @@ If you are NOT inside an engagement (the user invoked you directly, no `engageme
 
 1. **Read `engagement/criteria.md` first.** Respect frontmatter (`size`, `ux_heavy`, `tools_required`). Acknowledge each `crit-N` you are addressing.
 
-2. **Write only to `engagement/executor-reports/{your-agent-name}.md`** — single output channel, append-only across iterations. Open each iteration with `## Iteration N` heading. **Per-task contract (S2):** if your dispatch includes a contract step, you propose your assertions **IN-BAND** (in your returned result) — you do NOT write `tasks/{id}.md` yourself; the engine/reviewer writes the co-signed file. Proposing in-band is not writing an engagement file, so this bullet (and bullet 3) stay intact.
+2. **Write only to `engagement/executor-reports/{your-agent-name}.md`** — single output channel, append-only across iterations. The only other paths inside `engagement/` you write are the ones your task names: its declared `files` in artefact mode (e.g. `specs/tech-spec.md`, `ui/…`), and `docs-diff.md` when you are `dev-technical-writer` (the file `docs-pipeline` owns). Open each iteration with `## Iteration N` heading. **Per-task contract (S2):** if your dispatch includes a contract step, you propose your assertions **IN-BAND** (in your returned result) — you do NOT write `tasks/{id}.md` yourself; the engine/reviewer writes the co-signed file. Proposing in-band is not writing an engagement file, so this bullet (and bullet 3) stay intact.
 
 3. **Source / project files in their normal paths.** Never create rogue files inside `engagement/`. The directory has a closed whitelist (defined in `engagement-protocol` §"Engagement = a directory"); anything outside is a protocol violation and gets REJECTed.
 
@@ -75,10 +75,11 @@ asked for the second one.
 If your task is too large for one seat, that is not something you fix by spawning: say so in your
 report (see the ruling rules below) so the lead can split it on the next iteration.
 
-**The one exception: spec-authoring methodologies.** `dev-product-analyst` (user-spec-planning,
-feature-research, project-planning) and `dev-tech-architect` (tech-spec-planning,
+**The one exception: spec-authoring methodologies.** `dev-product-analyst` (feature-research,
+project-planning Part B) and `dev-tech-architect` (tech-spec-planning,
 task-decomposition) run methodologies whose own phases dispatch named agents: `code-researcher`,
-`interview-completeness-checker`, `task-creator` and the validators of the spec being written. Those
+`task-creator`, `documentation-reviewer` (project-planning) and the validators of the spec being
+written. Those
 dispatches are steps of the method, not self-review of delivered work, so these two agents keep
 the Agent tool and may run exactly the agents their loaded methodology names, nothing else. The
 lead should not schedule the same spec validators again for that task; their results are in the

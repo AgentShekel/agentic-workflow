@@ -29,89 +29,78 @@ Core problems it solves:
 
 The full path from idea to production. Each step maps to a skill (methodology) and an agent (executor). Commands are gone; the lead decides which step to enter based on the engagement's `criteria.md`.
 
-### Step 0: Feature Research (recommended)
+Steps 0-3 are the SDD part of the pipeline (§"Spec-Driven Development" below). They run for
+M/L features, new projects and M/L refactors; S work, bugfixes, infra and audits start at Step 4
+from `criteria.md` alone.
+
+### Step 0: Feature Research (optional, inside SDD phase 1)
 
 **What:** Pre-filter: codebase exploration, feasibility check, GO/NO-GO verdict. Prevents wasted effort on non-viable features.
 
 **Process:**
 - Parses requirements from free-text description, detects ambiguities
 - Reads Project Knowledge files, checks mission alignment and scope
-- Launches `code-researcher` agent for codebase exploration (blast radius, reuse opportunities)
+- Codebase exploration (blast radius, reuse opportunities)
 - Assesses: mission alignment, architectural fit, complexity classification (Platform vs Product), effort (S/M/L), risks (technical + operational), dependencies
-- `feasibility-assessor` validates verdict (max 2 iterations)
 - Produces verdict: GO / NO-GO / CONDITIONAL / DEFER
 - User approves verdict before proceeding
 
-**Output:** `work/{feature}/research-verdict.md` + `work/{feature}/code-research.md`
+**Output:** `engagement/specs/research-verdict.md` + `engagement/specs/code-research.md`
 
 **Skill:** `feature-research`
-**Owner:** `dev-product-analyst` (dispatched by the engagement-workflow)
-**Note:** Recommended for M/L features and unclear scope. Optional for obvious S features (bug fixes, small enhancements).
+**Note:** Recommended for M/L features and unclear scope.
 
-### Step 1: User Spec
+### Step 1: User Spec (SDD phase 1, in intake)
 
 **What:** Structured interview to capture requirements in human-readable form (Russian).
 
 **Process:**
-- Agent reads Project Knowledge files to understand the project
-- Scans codebase for relevant code, patterns, integration points
-- Runs 3 interview cycles with the user (general → code-informed → edge cases)
-- `interview-completeness-checker` agent verifies coverage
-- Creates `user-spec.md` from interview data → git commit draft
-- 2 validators run in parallel (up to 3 iterations):
-  - `userspec-quality-validator` — document structure, acceptance criteria testability
-  - `userspec-adequacy-validator` — solution feasibility, over/underengineering
-- Git commit after each validation round
-- User approves → git commit approval (status: approved)
+- Runs in the main loop inside `agency-intake` step 5c.1: the interview needs the user, and nobody inside `engagement-workflow` can reach the user
+- `engagement/specs/` is the feature folder: every spec agent gets `feature_path = engagement/specs`
+- Reads Project Knowledge, `code-researcher` scans the codebase → `engagement/specs/code-research.md`
+- 3 interview cycles with the user (general → code-informed → edge cases), `interview-completeness-checker` verifies coverage
+- `user-spec.md` from the template; every acceptance criterion gets a stable id `AC-N`
+- 2 validators in parallel (up to 3 iterations): `userspec-quality-validator`, `userspec-adequacy-validator`; reports in `engagement/specs/logs/userspec/`
+- User approves → `status: approved`. From here the user-spec changes only through the user
 
-**Output:** `work/{feature}/user-spec.md` (status: approved)
+**Output:** `engagement/specs/user-spec.md` (status: approved)
 
 **Skill:** `user-spec-planning`
-**Owner:** `dev-product-analyst` (dispatched by the engagement-workflow)
+**Owner:** `agency-intake` (main loop)
 
-### Step 2: Tech Spec
+### Step 2: Tech Spec (SDD phase 2, the `{name}-spec` engagement)
 
-**What:** Technical architecture, decisions, testing strategy, implementation plan.
+**What:** Technical architecture, decisions, testing strategy, implementation tasks traced to AC ids.
 
 **Process:**
-- Reads approved user-spec
-- Researches codebase, checks dependencies, uses Context7 for external libraries
-- Asks technical clarification questions
-- Copies tech-spec template, edits sections in place → `tech-spec.md` with architecture (including Shared Resources for heavy objects like ML models, DB pools), decisions, testing strategy, brief Implementation Tasks (scope only — AC and TDD are added during task-decomposition) → git commit draft
-- Implementation Tasks include Verify-smoke (executable checks: curl, python -c, docker) and Verify-user (manual UI/UX checks) fields where applicable
-- Last two waves are always Audit Wave (3 parallel auditors: code, security, test) and Final Wave (QA + deploy)
-- 5 validators run in parallel (up to 3 iterations):
-  - `skeptic` — detects non-existent files, functions, APIs (mirages)
-  - `completeness-validator` — bidirectional requirements traceability, over/underengineering, solution depth
-  - `security-auditor` — OWASP Top 10 review
-  - `test-reviewer` — test plan adequacy
-  - `tech-spec-validator` — template compliance, task quality, wave conflict detection
-- Git commit after each validation round
-- User approves → git commit approval (status: approved)
+- `agency-intake` writes `criteria.md` with `sdd: spec`; `dev-lead` plans one artefact-mode task owned by `dev-tech-architect`
+- The architect reads the approved user-spec, deepens `code-research.md`, checks external libraries via Context7, writes `specs/tech-spec.md` (`status: draft`)
+- Implementation Tasks are written in the shape the engine executes: Covers (`AC-N`/`TC-N`), Owner, Files to modify (disjoint per wave), Depends on, Verify-smoke / Verify-user
+- Audit Wave and Final Wave are declarations that the impl engagement maps onto its validate phase
+- Gaps the architect cannot close go to `## Open questions`; the user-spec is never edited here
+- The engine's validate phase runs `skeptic`, `completeness-validator`, `security-auditor`, `test-reviewer`, `tech-spec-validator`, `reality-checker`
+- PROCEED only when the tech-spec has no open question left or the user accepts every assumed option as written; a different answer is a REJECT and a rework round
+- Normal acceptance of the tier (M: peer-opus adversary, L: full consilium) → human directive → `dev-manager`. The human directive PROCEED is the approval of the tech-spec
 
-**Output:** `work/{feature}/tech-spec.md` (status: approved)
+**Output:** `engagement/specs/tech-spec.md`; after ACCEPT intake sets `status: approved` + `approved_by`
 
 **Skill:** `tech-spec-planning`
 **Owner:** `dev-tech-architect` (dispatched by the engagement-workflow)
 
-### Step 3: Task Decomposition
+### Step 3: Task Decomposition (SDD phase 3, start of the `{name}-impl` engagement)
 
-**What:** Break tech-spec into atomic task files.
+**What:** Approved tech-spec → engagement plan, without re-design.
 
 **Process:**
-- For each Implementation Task in tech-spec, `task-creator` agent copies task template and fills it (parallel)
-- Each task file expands brief tech-spec scope into: acceptance criteria, TDD anchor (from Testing Strategy), context files, skills, reviewers, wave, dependencies → git commit draft
-- 2 validators run in parallel (up to 3 iterations):
-  - `task-validator` — template compliance, content quality
-  - `reality-checker` — validates against actual codebase (file existence, feasibility)
-- Cross-task integration check: both validators re-run on all tasks together — catches shared resource conflicts, duplicate heavy resource init, hidden dependencies (max 2 extra iterations)
-- Git commit after each validation round
-- User approves → git commit approval
+- `agency-intake` archives the spec engagement, opens `{name}-impl` with the specs copied in, flips only the tech-spec's approval metadata, writes `criteria.md` with `sdd: impl` and Done-when bullets `crit-N (AC-k)` / `crit-N (TC-k)`
+- `dev-lead` refuses to plan over an unapproved tech-spec, then maps Implementation Tasks one to one onto `plan.tasks` / `plan.waves`; Audit/Final waves → `plan.validators`
+- Any deviation the lead is forced into is recorded as `SDD drift` in `scope-sync.md`; the manager adjudicates it
+- The engine's decompose phase writes `tasks/*.md`; with `A.contracts` on, each task also gets a co-signed contract
 
-**Output:** `work/{feature}/tasks/*.md` (validated)
+**Output:** `plan.md`, `engagement/tasks/*.md`
 
 **Skill:** `task-decomposition`
-**Owner:** `dev-tech-architect` (dispatched by the engagement-workflow)
+**Owner:** `dev-lead` (the impl engagement's `lead:plan` step)
 
 ### Step 4: Implementation
 
@@ -155,9 +144,9 @@ Tasks can be code, user-action, deploy, config, or verification — task nature 
 **What:** Finalize feature, update project knowledge, archive.
 
 **Process:**
-- Reads user-spec, tech-spec, decisions.md
+- Reads user-spec, tech-spec (SDD) or `criteria.md`, and the handoff
 - Updates affected Project Knowledge files (architecture.md, patterns.md, deployment.md, etc.)
-- Moves `work/{feature}/` → `work/completed/{feature}/`
+- The engagement (with its `specs/`) is archived by `engagement-archive.py` after ACCEPT
 - `documentation-reviewer` validates PK updates
 - Commits changes
 
@@ -185,8 +174,8 @@ Tasks can be code, user-action, deploy, config, or verification — task nature 
 On-disk layout (project knowledge, work items, engagement items, `~/.claude/`) moved to
 **`references/project-structure.md`** (S8e skill diet, 2026-06-10) — load it when you need the
 directory layout. Hot path: Project Knowledge = `.claude/skills/project-knowledge/references/`
-(project/architecture/patterns/deployment/ux-guidelines); work items under `work/{feature}/`;
-engagement items under `engagement/` (see `engagement-protocol`).
+(project/architecture/patterns/deployment/ux-guidelines); engagement items, specs included,
+under `engagement/` (see `engagement-protocol`). The old `work/{feature}/` layout is retired.
 
 ---
 
@@ -195,18 +184,37 @@ engagement items under `engagement/` (see `engagement-protocol`).
 ### Commit Strategy
 Commit after each step where the repository state is stable and meaningful. Not after every action — after each result.
 
-- **Planning stages** (user-spec, tech-spec, tasks): draft commit → validation round commits → approval commit
 - **Single task execution**: implementation commit (tests pass) → review fix commits (tests pass) → status/decisions commit
 - **Feature execution**: teammates commit code + review fixes, lead commits statuses per wave
 - **Finalization**: single commit with PK updates + archive
 
 ### Spec-Driven Development
-Write specifications before code. The hierarchy: User Spec → Tech Spec → Tasks → Code. Code starts only after specs are approved.
+Write specifications before code. The hierarchy: User Spec → Tech Spec → Tasks → Code. Code starts only after both specs are approved by the human.
+
+**When:** dev, route `full`, M/L feature, new project or M/L refactor. Not for S, bugfixes, infra-only, audits; the user may waive it (`sdd: off` + reason in `criteria.md`).
+
+**How it maps onto the engine** (the engine is unchanged; SDD lives in intake, the leads and the acceptance gates):
+
+| Phase | Where | Artefact | Human sign-off |
+|---|---|---|---|
+| 0. Project brief (new project only) | `agency-intake` main loop (`project-planning` Part A), then the `{name}-bootstrap` engagement, `sdd: bootstrap` | `specs/project-brief.md`; then PK docs + infrastructure in the repo | approves the brief in chat; the docs at the bootstrap gate |
+| 1. User spec | `agency-intake` main loop (interview needs the user) | `specs/user-spec.md`, AC ids `AC-N` | approves in chat |
+| 2. Tech spec | `{name}-spec` engagement, `sdd: spec`, artefact mode, one `dev-tech-architect` task | `specs/tech-spec.md`, tasks traced to AC | human directive at the spec engagement's gate |
+| 3. Tasks + code | `{name}-impl` engagement, `sdd: impl`; dev-lead maps tech-spec tasks one to one | code, `tasks/*.md` | normal acceptance |
+
+**Why two engagements.** The engine plans tasks in discovery, before anything else runs, so a
+tech-spec written inside the same run could never drive its own task plan; and the engine has no
+mid-run human pause. The spec engagement's acceptance gate is the approval point.
+
+**Invariants:** the approved user-spec and project brief change only through the user; `status: approved` on a
+tech-spec is written only by intake when it opens `{name}-impl`; the impl lead does not re-design,
+it records forced deviations as `SDD drift`; `completeness-validator` traces user-spec ↔ tech-spec
+↔ code at the impl gate.
 
 ### Validation at Every Stage
-- User spec: 2 validators (quality + adequacy)
-- Tech spec: 5 validators (skeptic + completeness + security + test + template/task-quality)
-- Tasks: 2 validators (template + reality)
+- User spec: 2 validators (quality + adequacy), run from intake
+- Tech spec: 6 validators (skeptic + completeness + security + test + template + reality) in the spec engagement's validate phase
+- Tasks: dev-lead's coverage + disjoint-files self-check; per-task contract co-sign when `A.contracts` is on
 - Code: 3 reviewers (code + test + security) + optional validators (performance, migration, accessibility) + smoke verification
 - Audit Wave: 3 auditors (code + security + test) review all feature code holistically after implementation waves
 - QA tasks: pre-deploy QA (tests + acceptance criteria), post-deploy QA (Playwright + MCP verification on live environment)
@@ -279,9 +287,9 @@ All work enters via `agency-intake` (user says "мне надо агенси з�
 
 | Engagement kind | Steps the plan runs |
 |---|---|
-| **New project bootstrap** | infrastructure-setup → project-planning → (features follow) |
-| **New feature (M/L)** | Step 0 (research) → Step 1 (user-spec) → Step 2 (tech-spec) → Step 3 (tasks) → Step 4 (execute) → Step 5 (done) → Step 6 (ship, if applicable) |
-| **Small feature / ad-hoc** | Step 2 (tech-spec) → Step 3 → Step 4 → Step 5 |
+| **New project bootstrap** | SDD phase 0: brief interview in intake (`project-planning` Part A) → `{name}-bootstrap` engagement: `project-planning` Part B (PK docs) → `infrastructure-setup` → (features follow, each through SDD) |
+| **New feature (M/L), M/L refactor** | SDD: Step 1 (user-spec, intake) → Step 2 (`{name}-spec` engagement) → Step 3 + Step 4 (`{name}-impl` engagement) → Step 5 → Step 6 (ship, if applicable) |
+| **Small feature (S) / ad-hoc** | Step 4 from `criteria.md` → Step 5 |
 | **Bug fix** | Direct `code-writing` single-task against the bug, skip Steps 0-3 |
 | **Quality audit** | `code-reviewing` + `security-auditing` + `testing-methodology` sweep, no code changes |
 

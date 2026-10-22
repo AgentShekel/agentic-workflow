@@ -49,9 +49,8 @@ Verify JSON output exists in `engagement/validation-outputs/`:
 
 - **security-auditor** — mandatory if engagement touched auth, data access, external APIs, secrets handling, file I/O with user-controlled paths, or dependency additions.
 - **code-reviewer** — mandatory for every code-producing wave.
-- **reality-checker** — mandatory on tech-spec and task files.
-- **skeptic** — mandatory on tech-spec claims and user-spec acceptance criteria.
-- **completeness-validator** — required if engagement produced user-spec + tech-spec + tasks.
+- **SDD `sdd: spec`** — `skeptic`, `completeness-validator`, `security-auditor`, `test-reviewer`, `tech-spec-validator`, `reality-checker`. ACCEPT also needs the tech-spec's `## Open questions` to be "None" or every assumed option accepted as written in `human-directive.md`; an answer that differs from the assumption is a REJECT carrying that answer.
+- **SDD `sdd: impl`** — `completeness-validator` (traces user-spec ↔ tech-spec ↔ code), on top of the code validators below.
 - **anti-pattern-detector** — mandatory on every code-producing wave's diff.
 - **ux-review** — mandatory if `criteria.md` has `ux_heavy: true`.
 - **pre-deploy-qa** / **post-deploy-qa** — required if engagement crossed a deploy boundary.
@@ -70,6 +69,9 @@ These map to consilium findings or precheck failures:
 - Pre-deploy QA marked green but test suite shows failing tests in executor log.
 - `ux_heavy: true` engagement without `screens/{iteration}/{theme}/` populated, or §6 Exercised missing/empty.
 - Anti-pattern-detector flagged any of: skipped tests masked as passing, hidden-tab "fix" instead of removal, default-true feature flag, no-op commit.
+- `sdd: impl` whose code contradicts an approved tech-spec Decision or skips a tech-spec task without an `SDD drift` line in `scope-sync.md`. A recorded drift you adjudicate (SUSTAINED / OVERRULED with a reason); an unrecorded one is a REJECT.
+- `sdd: impl` started over a tech-spec without `status: approved` + `approved_by`, or over a user-spec that changed after approval.
+- `sdd: spec` with a requirements gap the architect resolved by inventing behaviour instead of listing it in `## Open questions`.
 
 ## Dev-specific anti-patterns (on top of protocol)
 

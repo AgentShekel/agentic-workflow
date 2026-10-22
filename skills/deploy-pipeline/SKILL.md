@@ -16,12 +16,34 @@ Read project-knowledge to understand the deployment target:
 - `.claude/skills/project-knowledge/references/architecture.md`
 - `.claude/skills/project-knowledge/references/patterns.md`
 
-If deployment target is not documented, ask the user:
+Inside an engagement also read `engagement/criteria.md` and, when they exist, the specs in the
+canonical engagement directory your prompt names (`{ENG}/specs/project-brief.md` §Deployment,
+`{ENG}/specs/tech-spec.md`), not copies in your worktree. If the PK files lack it, search the
+other project-knowledge references too: the fact may live under another name.
+
+The facts this skill needs come in three kinds:
 - Target platform (Vercel, Railway, Fly.io, AWS ECS, VPS, NPM, Chrome Web Store)
 - Environment details (URLs, project/service IDs, server access)
 - Required secrets and where to obtain them
 
-After gathering answers, immediately update `deployment.md` before proceeding with setup.
+**Inside an engagement you cannot reach the user.** Job layout, triggers, skip logic, caching and
+the deploy job's shape are yours: decide and record the ruling (`engagement-contract` §"Rule, do
+not stall"). The three facts above are not: when no source on disk names one, never put a guessed
+platform, URL, ID or address into a workflow or a doc.
+- If the task's done-when does not need the missing fact (it asks for CI, not deploy), deliver the
+  rest, leave the deploy job out per §Decision Framework, and list the missing fact in your report.
+- If the done-when needs it, write nothing for that part and return `blocked` with `notes`
+  starting `NEEDS_CONTEXT:`, naming the fact and the files you checked.
+
+Outside an engagement (the user invoked you directly), ask the user for the missing facts.
+
+Whatever you learn, write it into `deployment.md` with its source before proceeding with setup.
+
+**Writing the pipeline is the task; running it is not.** Inside an engagement commit only as your
+task prompt says (the engine merges locally) and never push to any remote, run a deploy, trigger
+a workflow run or touch a server. Anything that leaves the machine is the human's step after
+acceptance: list those steps in your report. Outside an engagement, push to main or production
+only after the user says yes; deploys go through CI/CD either way.
 
 ## CI/CD Convention
 
@@ -93,7 +115,10 @@ Document all required secrets in `.claude/skills/project-knowledge/references/de
 - Where to obtain value (dashboard URL or CLI command)
 - Which workflow uses it
 
-Guide user to add secrets in GitHub repository settings. Create `.env.example` with application-level variable names.
+Adding secret values in the repository settings is the user's step, never yours: name each
+secret and where it goes in `deployment.md` and, inside an engagement, in your report, which
+reaches the user through the handoff. Never ask for a value or write one anywhere. Create
+`.env.example` with application-level variable names.
 
 ## Documentation Updates
 
@@ -106,7 +131,7 @@ After configuring, update project-knowledge references. Append to existing conte
 ## Decision Framework
 
 **Add deploy job?**
-YES if: deployment target defined, user requests it, stable main branch.
+YES if: deployment target defined, `criteria.md` or the user asks for it, stable default branch (per the brief or `patterns.md`).
 NO if: early development, manual deploys preferred, manual review step needed (Chrome Web Store).
 
 **Use matrix strategy?**

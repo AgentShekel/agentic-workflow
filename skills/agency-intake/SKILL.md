@@ -44,6 +44,19 @@ If `engagement/` exists with `criteria.md`:
   ```
   Wait for choice before proceeding.
 
+SDD states (see step 5c) take precedence over the two branches above:
+- `engagement/specs/project-brief.md` exists with `status: draft`, `criteria.md` does not → an
+  interrupted new-project interview. Resume it (step 5c.0); do not classify again.
+- `engagement/specs/project-brief.md` has `status: approved`, `criteria.md` does not → the
+  interview finished before the bootstrap engagement was opened. Continue at step 5c.0 item 2; do
+  not interview again.
+- `criteria.md` has `sdd: bootstrap` and the latest verdict is ACCEPT → finish step 5c.0 item 3
+  (summary, then archive, then offer the first MVP feature).
+- `engagement/specs/logs/userspec/interview.yml` exists, `criteria.md` does not → an interrupted SDD phase 1.
+  Resume the user-spec interview (step 5c.1); do not classify again.
+- `criteria.md` has `sdd: spec` and the latest verdict is ACCEPT → the tech-spec passed its gate.
+  Do not stop at archiving: run step 5c.3 (archive the spec engagement, open `{name}-impl`).
+
 If `engagement/` does not exist or is empty → proceed normally to step 1.
 
 This step prevents the silent collision class where intake overwrites in-progress `criteria.md`, breaking the active engagement without anyone noticing.
@@ -234,6 +247,171 @@ This file is the source of truth for current iteration. Lead reads it before sub
 
 Without `engagement/iteration` at intake, handoff-precheck will treat the first handoff as "no counter required yet" (skip), but every subsequent iteration will need the file.
 
+### 5c. SDD track (dev only: specs before code)
+
+**When it applies.** Domain `dev`, route class `full`, and the work is a feature, a new project or
+a refactor that you judge M or L. A new project (no `.claude/skills/project-knowledge/references/`
+with real content: `project.md` and `architecture.md` both exist and `project.md` no longer holds the template's `[Project Name]` placeholder) starts at step 5c.0; a feature or refactor starts at 5c.1. It does not apply to
+S, `bounded`, bugfixes, infra-only work or pre-ship audits; those go straight to step 6. If the user says they do not want specs, write
+`sdd: off` in the frontmatter with their reason under Scope and go to step 6: the reason is the
+only trace that the gate was skipped on purpose.
+
+Say it in one line before starting:
+
+> Это фича уровня M, иду по SDD: сначала user-spec с тобой, потом отдельный заход на tech-spec, код только после твоего одобрения обоих.
+
+SDD splits the work into three phases and two engagements; a new project adds phase 0 and one
+engagement before them. Full rationale: `dev-methodology` §"Spec-Driven Development".
+
+**5c.0 — new project bootstrap (here, with the user; then the `{name}-bootstrap` engagement).**
+Say it in one line first:
+
+> Новый проект: сначала разберём с тобой, что строим и на чём, потом движок заполнит документацию проекта и поднимет инфраструктуру. Фичи пойдут по SDD уже после этого.
+
+1. Follow Part A of `~/.claude/skills/project-planning/SKILL.md` (Phases 1-2) end to end, like
+   5c.1 does for the user-spec: the interview needs the user, so you run it. Output:
+   `engagement/specs/project-brief.md` with `status: approved`, plus `code-research.md` when the
+   repo has code. Approval of the brief is the user's sign-off on what gets built and on what.
+2. Only with the brief at `status: approved`: write `criteria.md`, then continue with steps 5
+   (preflight), 5b, 6 (rules unchanged), 6b and 7. Never invoke the Workflow on a draft brief: the
+   engine runs an empty plan through to the handoff, so the lead's zero-task gate alone does not
+   stop it.
+
+   ```markdown
+   ---
+   engagement: {name}-bootstrap
+   created: {YYYY-MM-DD}
+   domain: dev
+   size: M                       # docs + infra; L only if the brief's infra is multi-service
+   ux_heavy: false               # nothing renders in a bootstrap
+   risk: {risk class}
+   sdd: bootstrap
+   tools_required: [{the stack's runtimes and package manager; docker if the brief asks for it}]
+   ---
+
+   # Acceptance criteria — {name}-bootstrap — {YYYY-MM-DD}
+
+   ## Scope
+   Bootstrap a new project from the approved brief `specs/project-brief.md` (approved {date}):
+   project-knowledge docs and `CLAUDE.md`, then infrastructure setup as the brief's
+   Infrastructure section asks. No feature code.
+
+   ## Deliverables expected
+   - `.claude/skills/project-knowledge/references/` files per `project-planning` §Output Files, `CLAUDE.md`.
+   - Infrastructure per `infrastructure-setup`, if the brief asks for it.
+
+   ## Done when
+   - crit-1: every feature in the brief's Features & MVP appears in project.md with its priority and MVP flag.
+   - crit-2: architecture.md and deployment.md state the stack and deployment the brief approved, with the brief's reasons.
+   - crit-3: no template placeholder remains; every TBD in a PK file traces to the brief's TBD section.
+   - crit-4 (only if infra is in scope): the `infrastructure-setup` checkpoints pass: the app starts, `git check-ignore .env` returns `.env`, gitleaks blocks a test secret, the test command passes.
+
+   ## Outcome hypothesis
+   {why this project exists, from the brief's Overview}
+   ```
+3. On ACCEPT, in the order `engagement-protocol` §"Engagement archival" fixes (verdict → summary →
+   archive): give the user the summary of what was delivered, then archive (step 7.5). The PK docs
+   and the infrastructure stay in the repo; the brief goes to the archive with the engagement.
+   Then offer the user the first Critical MVP feature
+   from the brief as the next agency task: it enters at 5c.1 (or step 6 if it is S), and the
+   brief's feature list is the interview's starting context.
+
+**5c.1 — user-spec (here, with the user).** Follow
+`~/.claude/skills/user-spec-planning/SKILL.md` end to end: it is the one methodology you execute
+yourself, because the interview needs the user and nobody inside the engine can reach them.
+Output, all under `engagement/specs/` (the feature folder; every spec agent gets
+`feature_path = engagement/specs`): `user-spec.md` with `status: approved` and AC ids `AC-1…N`,
+`code-research.md`, `logs/userspec/` (interview.yml + validator reports). Approval of the user-spec is the
+user's first SDD sign-off. If the interview shows the work is S after all, stop SDD, keep the
+user-spec as input, and continue to step 6 with an ordinary `criteria.md`.
+
+**5c.2 — the `{name}-spec` engagement.** Only with `engagement/specs/user-spec.md` at
+`status: approved` (step 7's SDD precondition checks it again before the run). Write `criteria.md` with this shape, then continue with
+steps 6 (open questions, risk, outcome hypothesis rules apply unchanged), 6b and 7:
+
+```markdown
+---
+engagement: {name}-spec
+created: {YYYY-MM-DD}
+domain: dev
+size: {M | L, from the user-spec}
+ux_heavy: false                 # nothing renders in a spec engagement
+risk: {the feature's risk class}
+sdd: spec
+tools_required: [{what the architect needs to read the repo and verify the AVP}]
+---
+
+# Acceptance criteria — {name}-spec — {YYYY-MM-DD}
+
+## Scope
+Tech-spec for the approved user-spec `specs/user-spec.md` (approved {date}). No code changes.
+For every validator that takes `feature_path`: `feature_path = engagement/specs`; any file report
+goes under `engagement/specs/logs/techspec/`.
+
+## Deliverables expected
+- `specs/tech-spec.md` from the template, `status: draft`, all sections filled.
+
+## Done when
+- crit-1: every AC-N of the user-spec is covered by at least one Implementation Task (Covers field), and no task covers nothing.
+- crit-2: every file, function, API and package the tech-spec names exists in the repo or in current library docs, or is explicitly marked as new.
+- crit-3: every code task names Owner, Files to modify and Depends on; same-wave tasks have disjoint Files to modify.
+- crit-4: every AVP step and Verify-smoke is a concrete command or tool call with a concrete expected value (no "verify it works"), and every tool it uses is listed in Tools required. This is a static review; reachability is checked by preflight when `{name}-impl` opens.
+- crit-5: Risks (at least 2) and Rollback Strategy are filled for this feature, not generic.
+- crit-6: every gap the architect could not close is listed in `## Open questions` with what it touches; the user-spec is unchanged.
+
+## Outcome hypothesis
+{the feature's hypothesis, from user-spec "Зачем"; the same block is copied into {name}-impl}
+```
+
+The spec engagement goes through the normal acceptance of its tier (step 7.4): on M the peer-opus
+adversary, on L the full consilium, then the human directive, then `dev-manager`. The human
+directive PROCEED on this engagement is the user's second SDD sign-off: approval of the
+tech-spec exactly as it stands.
+
+Put the tech-spec's `## Open questions` in front of the user at that pause. The accepted document
+must be the one `{name}-impl` builds, so:
+- PROCEED only if the section says "None" or the user accepts every "assumed meanwhile" option as
+  it is written. Record that acceptance in the directive note.
+- Any answer that differs from the assumed option is a change to the spec: resume with REJECT (or
+  DIRECTED) carrying the answers. The next iteration's architect writes them into the tech-spec
+  and the validators run again.
+REJECTs follow step 7.5 (next `iterN`; `human-directive.py` snapshots the executor reports), and
+the architect works from the previous iteration's findings and the human's answers. Gate
+failures split by cause:
+- a tool or environment failure you fixed outside the run: step 7.3 as written (`resumeFromRunId`);
+- a failure caused by the tech-spec itself (validator findings, `findings-dispositioned`, a
+  missing section): resuming would replay the finished architect step and change nothing. Start a
+  fresh Workflow invocation at the SAME `iterN` instead; the architect's rerun procedure
+  (`tech-spec-planning` §"Rework") repairs the draft from this iteration's validator outputs.
+
+**5c.3 — the `{name}-impl` engagement (after the spec engagement's ACCEPT).**
+1. Tell the user the tech-spec is accepted (one line, with its path), then archive the spec
+   engagement (`python ~/.claude/scripts/engagement-archive.py`, bare, from the project root):
+   verdict → summary → archive, as `engagement-protocol` §"Engagement archival" fixes. Note the archive leaf it prints: `engagement-archived/{date}-{name}-spec/primary`
+   (or `primary-2`, … when that leaf already existed).
+2. Create a fresh `engagement/` and copy the archived leaf's whole `specs/` folder into it.
+3. Flip the tech-spec frontmatter, and change nothing else in it: `status: approved`,
+   `approved_by: {archive leaf}/acceptance-log.md — ACCEPT {date}`. This is the only place
+   `status: approved` is ever written on a tech-spec. If you find an open question the directive
+   did not settle, do not answer it here: the spec was accepted too early; tell the user and
+   reopen the spec engagement instead of opening impl.
+4. Write `criteria.md`: frontmatter `engagement: {name}-impl`, `sdd: impl`,
+   `spec_from: {archive leaf}`, the feature's real `size`, `ux_heavy`, `risk`, and `tools_required`
+   that includes every tool in the tech-spec's AVP `### Tools required`, so step 5 preflight proves
+   the AVP can actually run here before any code is written.
+   Scope: "Implement the approved tech-spec `specs/tech-spec.md`; deviations are drift, not
+   design. A task titled `[tech-spec Task N]` is specified by Task N in the tech-spec: its
+   Description, Verify-smoke, Verify-user and Files to read bind the specialist and the reviewer.
+   New packages allowed: exactly those in tech-spec §Dependencies → New packages."
+   Deliverables: the tech-spec's Implementation Tasks by name. Done when: one bullet per
+   user-spec AC and per tech-spec TC, written `- crit-N (AC-k): {the criterion}` /
+   `- crit-N (TC-k): …`. Outcome hypothesis: the same block as the spec engagement.
+5. Run step 5 (preflight, `--auto-fix`) and step 5b (iteration counter) again on the new
+   `criteria.md`. The preflight that ran for the spec engagement knew nothing about the AVP; this
+   one proves its tools are reachable before any code is written. A tool that stays down blocks
+   the impl engagement exactly as step 5 describes.
+6. Continue with steps 6b and 7 as for any engagement.
+
 ### 6. Capture acceptance criteria
 
 Canonical schema lives in `engagement-protocol`. Inline version below is a working copy for secretary convenience — if the two diverge, `engagement-protocol` wins.
@@ -413,6 +591,32 @@ Every engagement (dev / design / marketing) runs through the `engagement-workflo
 
 **Operating limitation (honest — do not paper over it):** the Workflow tool is **harness-only** — it runs from the interactive main loop, NOT headless (`claude -p`) or cron. Agency work is interactive today, so this is the live path with no current gap. But there is **no warm automated non-Workflow fallback**: if the Workflow tool is unavailable (headless/cron context, or a tool outage), **fail closed** — tell the user the cascade needs an interactive session; do NOT improvise a degraded hand-dispatch (the leads are plan-only by design; an ad-hoc second orchestration would carry weaker guarantees than the gated path). A real headless fallback would be NEW work — no skeleton exists today (the prior headless-engine skeleton was deleted; nothing wired) — future work, not a wired path.
 
+**SDD precondition (blocking, dev, when `criteria.md` has `sdd:` other than `off`).** Before every
+invocation (first run, rework round, fresh rerun, `resumeFromRunId`), read the frontmatter of the
+files below and invoke nothing when a row fails. The lead plans zero tasks with an `SDD gate:`
+note when it sees the same failure, but the engine runs an empty plan through to the handoff and
+the gate can pass it, so that note stops nothing. This check is the gate.
+
+| `sdd:` | Must hold | On failure, go back to |
+|---|---|---|
+| `bootstrap` | `engagement/specs/project-brief.md` has `status: approved` | step 5c.0 item 1 |
+| `spec` | `engagement/specs/user-spec.md` has `status: approved` and AC ids `AC-N` | step 5c.1 |
+| `impl` | `engagement/specs/tech-spec.md` has `status: approved` and an `approved_by`; the part of `approved_by` before ` — ACCEPT` is an `acceptance-log.md` path whose latest verdict is ACCEPT, and its directory is `criteria.md`'s `spec_from` or sits inside it; `engagement/specs/user-spec.md` has `status: approved` | see below |
+
+`impl` recovery never runs 5c.3 item 1 (it would archive the impl engagement). Find the accepted
+spec leaf: the log `approved_by` names, else the `acceptance-log.md` under `spec_from` (its
+`primary` or `primary-N` leaf). If one has ACCEPT as its latest verdict, the impl engagement was
+assembled wrong: replace `engagement/specs/` with that leaf's `specs/`, then apply 5c.3 items 3-6
+to the existing `engagement/` (frontmatter flip, `spec_from` = that leaf, preflight, 6b; keep the
+existing `engagement/iteration` instead of resetting it in 5b). If none has
+ACCEPT, or none can be found, the spec was never accepted: invoke nothing, tell the user, and on
+their word abort the impl engagement as step 0 option 2 does (`engagement-aborted/...`) and
+reopen the spec engagement.
+
+On a failed row tell the user in one line, then go back:
+
+> Движок не запускаю: {файл} не одобрен ({что не так}). Возвращаюсь к шагу {N}.
+
 1. **Resolve args** (the script cannot call Date.now, so you stamp the time):
    - `repoDir` = the project root holding `engagement/`. dev (code mode): the git root — `git -C <cwd> rev-parse --show-toplevel`. design/marketing (artefact mode): the project dir / CWD (a git repo is not required).
    - `scriptsDir` = absolute `~/.claude/scripts`.
@@ -432,7 +636,11 @@ Every engagement (dev / design / marketing) runs through the `engagement-workflo
 
    Best-effort like `ledger-emit.py`: every failure warns and exits 0, so observability can never block the cascade. `ledger-emit.py` stays the right tool for one-off single events; this one exists for the three-event post-seam batch.
 3. **Gate failed / engine hard-stop** (`readyForAcceptance:false`): read **`error` first, then `gate.failures`** — a PRE-gate hard-stop (malformed plan, or a blocked / crashed / review-failed task in a wave) returns a human-readable `error` plus a stub `gate.failures` and performs NO consolidation; the handoff gate (when reached) returns `gate.failures`. Surface to the user. If the return carries `cleanupCommands`, run them ONLY on a fresh rerun (a `resumeFromRunId` resume reuses the worktrees, so don't clean before resuming). After the fix, re-invoke with `resumeFromRunId` so only changed steps re-run. Tooling-down is the one allowed user-touch — never push validation onto the user otherwise.
-4. **Gate passed** (`readyForAcceptance:true`): drive the **post-seam human-gate** — this STAYS LangGraph, the active acceptance path (NOT a fallback). Per `acceptance-protocol`:
+4. **Gate passed** (`readyForAcceptance:true`). On an `sdd:` engagement (other than `off`) first
+   check the return's `deliver`: empty means no task ran (the lead's zero-task `SDD gate:` or an
+   empty plan), and that is not a pass. Run no consilium and no manager, do not archive; re-run
+   the SDD precondition above and go back where it points. If every row holds, surface the empty
+   run to the user as a failure, like item 3. With a non-empty `deliver`, drive the **post-seam human-gate** — this STAYS LangGraph, the active acceptance path (NOT a fallback). Per `acceptance-protocol`:
    - **S-tier:** no manager phase. Producer self-attest + the gate's mechanical pass + a human glance suffice → archive (step 5).
    - **M/L-tier** — consilium → human gate → acceptor:
      1. One pass — fan out the consilium, auto-synthesize the summary, and pause at the human supreme-judge gate (prints a thread id; writes `consilium-summary.md`). `--interrupt` requires `--consilium`, so they are ONE command — do NOT split them (a second bare `--interrupt` call re-runs the whole consilium and re-spends it):
@@ -444,7 +652,7 @@ Every engagement (dev / design / marketing) runs through the `engagement-workflo
         python ~/.claude/scripts/adversary_lg.py engagement/ --resume-interrupt <thread> --decision PROCEED|REJECT|DIRECTED [--reasons '...' on REJECT] [--note ...]
         ```
      3. Dispatch the acceptor via Task: **`{domain}-manager`** (`dev-manager` / `design-manager` / `marketing-manager`) with the `engagement/` path + iteration N. It reads handoff + consilium-summary + human-directive and writes the verdict in `acceptance-log.md` (does NOT sweep-rerun validators).
-5. **Resolve verdict:** ACCEPT → free the slot by archiving. `engagement-archive.py`'s positional arg is the PROJECT ROOT (default CWD) — it appends `/engagement` itself, so run it BARE from the project root; passing `engagement/` makes it a silent exit-0 no-op:
+5. **Resolve verdict:** ACCEPT on an `sdd: spec` engagement → step 5c.3 (it archives and opens `{name}-impl`). ACCEPT on `sdd: bootstrap` → archive, then step 5c.0 item 3. Any other ACCEPT → free the slot by archiving. `engagement-archive.py`'s positional arg is the PROJECT ROOT (default CWD) — it appends `/engagement` itself, so run it BARE from the project root; passing `engagement/` makes it a silent exit-0 no-op:
    ```bash
    python ~/.claude/scripts/engagement-archive.py
    ```
@@ -468,9 +676,12 @@ Three-domain engagements are rejected — split into two engagements and ask use
 ## Anti-patterns
 
 - **Do not plan work yourself.** Planning happens inside the `engagement-workflow` `lead:plan` step (= the `{domain}-lead` agent). Secretary only captures intake and classifies.
-- **Do not dispatch specialists directly.** Specialists are reachable only through the Workflow — never from intake.
+- **Do not dispatch specialists directly.** Specialists are reachable only through the Workflow — never from intake. The exceptions are the two interviews: `code-researcher` in step 5c.0 (when the repo has code), and in step 5c.1 the agents `user-spec-planning` names (`code-researcher`, `interview-completeness-checker`, `userspec-quality-validator`, `userspec-adequacy-validator`). Those you dispatch yourself. Delivery specialists never are.
 - **Conducting is intake's job (all domains).** Invoking the `engagement-workflow` Workflow and driving the post-seam human-gate (§7) is routing/conducting — NOT planning or executing yourself (the Workflow does that internally). Do not hand any domain off via `Task({domain}-lead)` expecting it to dispatch — the leads are **plan-only** (the Workflow's `lead:plan` step); they do not orchestrate specialists. The Workflow is the default interactive pre-gate path; there is no warm non-Workflow fallback today (see §7a's operating-limitation note).
-- **Do not invoke methodology skills** (seo-audit, code-writing, ui-styling-guide, etc.). Methodologies are reference-only; leads pull them by name as needed.
+- **Do not invoke methodology skills** (seo-audit, code-writing, ui-styling-guide, etc.). Methodologies are reference-only; leads pull them by name as needed. The two exceptions are Part A of `project-planning` (step 5c.0) and `user-spec-planning` (step 5c.1), which you execute because their interviews need the user.
+- **Do not open `{name}-impl` before the spec engagement's ACCEPT, and do not write `status: approved` on a tech-spec anywhere except step 5c.3.** Code over an unapproved spec is the failure SDD exists to stop.
+- **Do not invoke the Workflow on an `sdd:` engagement whose precondition fails, and do not accept an `sdd:` run that delivered no task** (step 7). The lead's zero-task gate is a note, not a stop.
+- **Do not let the user-spec or the project brief drift.** After approval only the user changes them; a gap found downstream comes back to them as a question.
 - **Do not skip criteria.md.** Without it, director has nothing measurable to accept against.
 - **Do not skip pre-flight tools check.** Engagement starting with broken validation environment guarantees CONDITIONAL-loop later. Block at intake, save the rework.
 - **Do not skip ux_heavy classification.** Default to `true` if uncertain. The cost of an extra Playwright capture is trivial; the cost of missing UI screens is the loop.

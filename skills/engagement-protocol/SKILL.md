@@ -36,7 +36,7 @@ engagement/
 ├── criteria.md                 # secretary, semi-immutable (additions/removals locked; rephrasing allowed via lead/secretary, see "Mutability rules")
 ├── scope-sync.md               # director, optional, append-only after create
 ├── plan.md                     # lead, mutable until first dispatch, then frozen
-├── specs/                      # dev only — user-spec.md / tech-spec.md / research-verdict.md
+├── specs/                      # dev only — SDD feature folder (feature_path for spec agents): user-spec.md / tech-spec.md / research-verdict.md / code-research.md / project-brief.md (bootstrap) / logs/{userspec,techspec,research}/
 ├── tasks/*.md                  # ALL domains — atomic task files (mandatory L; recommended M with ≥2 specialists; skip S)
 ├── tasks/INDEX.md              # optional manifest; mandatory if size: L
 ├── brand/                      # design only — voice / tokens / guidelines
@@ -114,6 +114,8 @@ domain: marketing | dev | design
 size: S | M | L                                       # see Engagement size tier
 ux_heavy: false | minor | true                        # see UX-heavy engagements
 tools_required: [docker, playwright, postgres, ...]   # see Pre-flight check
+# sdd: bootstrap | spec | impl | off                  # OPTIONAL, dev only — see "SDD engagements" below
+# spec_from: engagement-archived/{date}-{name}-spec/primary   # REQUIRED when sdd: impl — the archive leaf holding the approved specs (primary-2, … on collision)
 # protocol_version: 4                                 # OPTIONAL — kept for future migration story; not required today
 ---
 
@@ -143,6 +145,24 @@ Guidance: 2 rework cycles, then user escalation. Counter is informational — es
 - Primary domain: {marketing | dev | design}
 - Secondary domain: {marketing | dev | design} — invoked at phase {N} by primary lead
 ```
+
+### SDD engagements (dev, `sdd:` frontmatter)
+
+Spec-driven development runs an M/L dev feature or refactor as two engagements; a new project
+first runs a bootstrap engagement, then its features take the same two (rationale: `dev-methodology` §"Spec-Driven Development"; conducting: `agency-intake` step 5c):
+
+| `sdd:` | Input | Output | Approval |
+|---|---|---|---|
+| (phase 0, no engagement run; new project only) | project interview in intake (`project-planning` Part A) | `specs/project-brief.md`, `status: approved` | the user, in chat |
+| `bootstrap` | approved project brief | PK docs + `CLAUDE.md` (`project-planning` Part B, `dev-product-analyst`), then infrastructure (`dev-devops-engineer`); code mode, no feature code | the tier's normal acceptance |
+| (phase 1, no engagement run) | user interview in intake | `specs/user-spec.md`, AC ids `AC-N`, `status: approved` | the user, in chat |
+| `spec` | approved user-spec | `specs/tech-spec.md`, `status: draft`; artefact mode, one task owned by `dev-tech-architect` | the tier's normal acceptance; human directive PROCEED + `dev-manager` ACCEPT |
+| `impl` | approved user-spec + tech-spec (`status: approved`, `approved_by` set by intake) | code; tasks map one to one from tech-spec Implementation Tasks; Done-when bullets read `crit-N (AC-k)` / `crit-N (TC-k)` | the tier's normal acceptance |
+| `off` | — | ordinary engagement; the user's reason for skipping specs is under Scope | — |
+
+Invariants: the approved user-spec and project brief change only through the user; `status: approved` on a
+tech-spec is written only by intake when it opens `{name}-impl`; a deviation the impl lead is
+forced into is recorded as `SDD drift` in `scope-sync.md` and adjudicated by the manager.
 
 ### Pre-flight check (intake-time, blocking)
 
@@ -205,7 +225,7 @@ When `A.contracts` is enabled, before a task is implemented the owner proposes �
 
 **Binds the per-task review rubric ONLY. A contract NEVER waives criteria.md or any PROTOCOL gate.** If a deliverable satisfies every co-signed assertion yet violates a cited criterion, the per-task review verdict is STILL `rework`. The validate phase, consilium, and manager keep judging against `criteria.md`, not the contract. Every assertion MUST cite a `crit-N` parent; a parentless assertion is a scope-creep flag.
 
-**Reviewer's rubric-co-author role** (analogous to the acceptor's scope-sync freeze): the co-signing reviewer has last word on the rubric; the owner has last word on contest. The per-task review JUDGE is `code-reviewer` (code mode) / `reality-checker` (artefact mode); the contract WRITER is `reality-checker` in both modes (it has Write — code-reviewer is read-only, so in code mode the writer and the later judge are deliberately different parties). Contested assertion ids are recorded in the per-task review verdict (and the owner's executor-report) and judged against `criteria.md` text DIRECTLY.
+**Reviewer's rubric-co-author role** (analogous to the acceptor's scope-sync freeze): the co-signing reviewer has last word on the rubric; the owner has last word on contest. The per-task review JUDGE is `code-reviewer` (code mode) / `reality-checker` (artefact mode, contract path only; without `A.contracts` the artefact judge is the engine's default reviewer, which is why SDD spec engagements list `reality-checker` in `plan.validators`); the contract WRITER is `reality-checker` in both modes (it has Write — code-reviewer is read-only, so in code mode the writer and the later judge are deliberately different parties). Contested assertion ids are recorded in the per-task review verdict (and the owner's executor-report) and judged against `criteria.md` text DIRECTLY.
 
 ### `validation-log.md` (lead, append-only)
 
@@ -945,7 +965,7 @@ If `resolution=None`, the event is blocking: caller MUST halt dispatch and escal
 Every lead and dispatched specialist follows this contract — it keeps engagement state predictable across the dispatch tree:
 
 - Read `engagement/criteria.md` first; respect `ux_heavy` and `tools_required`.
-- Write only to `engagement/executor-reports/{your-name}.md` (single output channel, append-only across iterations with `## Iteration N` headings).
+- Write only to `engagement/executor-reports/{your-name}.md` (single output channel, append-only across iterations with `## Iteration N` headings). The only other `engagement/` paths a specialist writes are the ones its task names: declared `files` in artefact mode (e.g. `specs/tech-spec.md`), and `docs-diff.md` for `dev-technical-writer` (owned by `docs-pipeline`).
 - Source/project files in their normal paths; never create rogue files in `engagement/` (whitelist enforced in § "Engagement = a directory").
 - Open report with **Criteria acknowledgement** (bullets citing `crit-N` verbatim, not paraphrased).
 - Disclose anti-patterns explicitly: skipped tests, hidden elements, mocks for real fns, try-except swallow.

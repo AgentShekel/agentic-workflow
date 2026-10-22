@@ -99,13 +99,42 @@ The Workflow script replaces the old mid-lead dispatch tree — you do NOT route
 | Bugfix, multi-component | M | tasks per component, waves by dependency. |
 | Refactor | M or L | foundational/shared changes first wave, dependents later. |
 | Pre-ship audit | M | usually 0 delivery tasks — plan is validator-only (see §3); set `waves:[]` or a single no-op note. |
-| New project | L | discovery (user-spec/tech-spec authoring as tasks) → delivery waves → infra; `decompose:true`. |
+| New project | M | SDD: never planned as one engagement. First `sdd: bootstrap`, then each feature as `sdd: spec` / `sdd: impl`, all per §2a. |
 | Infra, single task | M | 1 task, owner `dev-devops-engineer`. |
 | Infra, full setup | L | scaffolding wave → services → CI/CD, `decompose:true`. |
 
 **Disjoint-files rule is load-bearing:** if two same-wave tasks would touch the same file, either merge them into one task or split into sequential waves. Parallel waves assume zero file overlap.
 
 **Promotion:** if the brief's real scope outgrows the intake `size:` (≥2 axes of complexity, or deploy + multi-component), promote (S→M→L) and say so in `notes`. Never demote.
+
+### 2a. SDD engagements (`criteria.md` frontmatter `sdd:`)
+
+Spec-driven development splits an M/L feature or refactor into two engagements; a new project
+first gets a bootstrap engagement, then each feature takes the same two (full flow: `dev-methodology` §"Spec-Driven Development"). The `sdd:` key tells you which one you
+are planning; it overrides the table above.
+
+**`sdd: bootstrap`** — new project: project-knowledge docs and infrastructure, no feature code.
+- `deliverable_mode: "code"` (the docs live in the repo, outside `engagement/`).
+- Precondition: `specs/project-brief.md` has `status: approved`. If not, plan zero tasks and write `SDD gate: project brief not approved` in `notes`.
+- Wave 1: `{id: "T1", owner: "dev-product-analyst", files: [".claude/skills/project-knowledge/SKILL.md", ".claude/skills/project-knowledge/references/project.md", ".claude/skills/project-knowledge/references/architecture.md", ".claude/skills/project-knowledge/references/patterns.md", ".claude/skills/project-knowledge/references/deployment.md", "CLAUDE.md"]}`, plus `references/ux-guidelines.md` when the brief says significant UI and the backlog path when the brief names one. List paths, not globs: the reviewer opens each one. The analyst runs `project-planning` Part B.
+- Wave 2, only if the brief's Infrastructure section asks for setup: `{id: "T2", owner: "dev-devops-engineer", depends_on: ["T1"]}` running `infrastructure-setup` against the PK T1 wrote. Its `files` list every path you expect from the brief's stack, no globs: the framework's entry and config files, `.gitignore`, `.env.example`, the pre-commit config, the smoke test, the Docker files if asked, and the two PK files below. T2 appends to `deployment.md` / `patterns.md`, so it can never share a wave with T1.
+- `validators`: `infrastructure-reviewer` when T2 exists, plus §3 as usual. Do not list `documentation-reviewer`: the analyst runs it inside the method.
+
+**`sdd: spec`** — produce the tech-spec, no code.
+- `deliverable_mode: "artefact"`. One task: `{id: "T1", owner: "dev-tech-architect", files: ["specs/tech-spec.md"], crit_refs: <all Done-when crit ids>, depends_on: []}`, one wave. `decompose` follows the usual rule (true on L).
+- Precondition: `specs/user-spec.md` has `status: approved`. If not, plan zero tasks and write `SDD gate: user-spec not approved` in `notes`.
+- `validators`: `skeptic`, `completeness-validator`, `security-auditor`, `test-reviewer`, `tech-spec-validator`, `reality-checker`. `reality-checker` must be listed here: the engine makes it the per-task judge only when `A.contracts` is on, so without this line nobody checks the spec's claims and AVP against the code.
+- `ux_heavy: "false"`: nothing renders in a spec engagement, whatever the feature is.
+
+**`sdd: impl`** — build exactly what the approved tech-spec says.
+- `deliverable_mode: "code"`. Plan by `task-decomposition`: tech-spec Implementation Tasks map one to one onto `plan.tasks`/`plan.waves`; Audit and Final waves map onto `plan.validators` (+ a deploy task if declared).
+- Precondition: `specs/tech-spec.md` has `status: approved` and a non-null `approved_by`. If not, plan zero tasks and write `SDD gate: tech-spec not approved` in `notes`.
+- You do not re-design. Any deviation you are forced into goes to `notes` + `scope-sync.md` as `SDD drift: {task} — {what}`; the manager adjudicates it.
+- `completeness-validator` is mandatory: it traces user-spec ↔ tech-spec ↔ code both ways.
+- Write the exact `plan.validators` list into `plan.md` under `## Validators planned` (the `engagement-protocol` plan.md schema). The validators cannot see your returned object; completeness-validator reads this section to check that each Audit/Final declaration has its validator.
+
+**No `sdd:` key** — plan as before from `criteria.md` alone. That is correct for S, bugfixes,
+infra, audits and engagements where the user waived SDD (`sdd: off` with a reason).
 
 ### 3. Validator selection (→ plan.validators)
 
@@ -116,7 +145,7 @@ The Workflow script replaces the old mid-lead dispatch tree — you do NOT route
 - `ux-review` — if `ux_heavy: true` (validates `screens/` + `traces/` + §6 Exercised).
 - HTTP-contract exercised endpoint test — if the deliverable is an HTTP surface (route/controller/API endpoint), regardless of `ux_heavy`; it must drive the assembled request path with supertest/TestClient/equivalent, not necessarily a browser.
 - `pre-deploy-qa` / `post-deploy-qa` — if the engagement deploys.
-- `reality-checker`, `skeptic`, `completeness-validator` — on spec-heavy L work (tech-spec / task claims to verify).
+- `sdd: spec` / `sdd: impl` — the fixed sets in §2a.
 
 Put the applicable set in `plan.validators`; the Workflow's validate phase runs them then adversarially verifies each finding.
 
@@ -133,6 +162,8 @@ You author/patch only `plan.md` (and `scope-sync.md` for sharpening). The rest a
 | `criteria.md` | secretary (you may patch for sharpening only, recorded in scope-sync) |
 | `scope-sync.md` | you (sharpening) / manager (escalation) |
 | `plan.md` | **you** (frozen after this step) |
+| `specs/user-spec.md` | secretary (SDD phase 1; frozen once approved) |
+| `specs/tech-spec.md` | `dev-tech-architect` in `sdd: spec`; read-only in `sdd: impl` |
 | `tasks/*.md`, `tasks/INDEX.md` | decompose step |
 | `executor-reports/*.md` | specialists |
 | `validation-outputs/*`, `validation-log.md` | validate step |

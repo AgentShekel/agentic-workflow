@@ -18,6 +18,15 @@ Validate tech-spec template compliance at the provided path.
 - feature_path: Path to feature folder (e.g., `work/my-feature`)
 - report_path: Path for JSON report (e.g., `logs/techspec/v1-template-review.json`)
 
+## Engagement mode (SDD)
+
+Inside `engagement-workflow` the validate phase gives you no `feature_path`, only an engagement
+directory and its `criteria.md`. If `criteria.md` frontmatter has `sdd: spec` or `sdd: impl`, use
+`feature_path = <engagement>/specs` (the SDD feature folder: `user-spec.md`, `tech-spec.md`,
+`code-research.md`). Task files, when they exist, are `<engagement>/tasks/*.md`, not
+`{feature_path}/tasks/`. Return your findings in the schema the caller's prompt gives you; with
+no `report_path`, write no report file (the engine writes `validation-outputs/` itself).
+
 ## Process
 
 Read these files:
@@ -85,6 +94,7 @@ This subsection is a REQUIRED part of the template on M/L specs. It is NOT meta-
       - issue: "AVP missing `### Executability review` subsection — on M/L the AVP-executor (pre-deploy-qa / post-deploy-qa) must counter-sign that the verification plan is runnable before user approval."
       - fix: "Add `### Executability review` under `## Agent Verification Plan` with a line `Executability review: pre-deploy-qa — approved — <one line>`."
    c. **One+ matches** → read that subsection's verdict line. It MUST name an executor agent (`pre-deploy-qa` or `post-deploy-qa`) AND a verdict token (`approved` or `changes_required`). Missing either → **major** (category `verification`): "Executability review present but incomplete — needs `{agent} — {approved|changes_required}`." Token is `changes_required` → **major** (category `verification`): AVP not executable yet; resolve before approval.
+   d. **SDD spec engagement** (`criteria.md` has `sdd: spec`): the expected line is exactly `Executability review: validate-phase — reality-checker + test-reviewer against the spec engagement's AVP criterion`. The executor co-sign is replaced by those two reviewers, which run in parallel with you, so do not demand `pre-deploy-qa` here and do not judge runnability yourself. The line present → pass; absent or still the old executor form without a verdict → **major** as in (c).
 4. State the outcome in your summary verbatim: `Executability review (size {M|L}): present | absent`.
 
 On M/L the AVP has THREE required subsections (Verification approach, Tools required, Executability review) — never report a 2-subsection AVP as complete on M/L.

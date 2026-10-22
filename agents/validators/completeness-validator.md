@@ -19,6 +19,32 @@ Validate completeness of requirements coverage in a feature folder.
 
 Orchestrator provides `feature_path` — path to feature folder (e.g., `work/my-feature`).
 
+## Engagement mode (SDD)
+
+Inside `engagement-workflow` the validate phase gives you no `feature_path`, only an engagement
+directory and its `criteria.md`. If `criteria.md` frontmatter has `sdd: spec` or `sdd: impl`, use
+`feature_path = <engagement>/specs` (the SDD feature folder: `user-spec.md`, `tech-spec.md`,
+`code-research.md`). Task files, when they exist, are `<engagement>/tasks/*.md`, not
+`{feature_path}/tasks/`. Return your findings in the schema the caller's prompt gives you; with
+no `report_path`, write no report file (the engine writes `validation-outputs/` itself).
+
+### `sdd: impl` — trace through to code
+
+In an impl engagement the chain is longer. Read `<engagement>/specs/user-spec.md`,
+`<engagement>/specs/tech-spec.md`, `<engagement>/plan.md`, `<engagement>/tasks/*.md`,
+`<engagement>/criteria.md`, `<engagement>/scope-sync.md` (if present) and the repo at the
+integration HEAD. Trace each `AC-N` / `TC-N` → criteria `crit-N` → plan task → the files that task
+changed → the code and the test that prove it. A TC the tech-spec assigns to an Audit/Final Wave
+declaration traces structurally instead: the matching validator is listed in `<engagement>/plan.md` under `## Validators planned` and the
+TC states a concrete check. Do not look for that validator's output file: validators run in
+parallel with you, and the precheck and the manager verify the proof-of-run afterwards.
+Report as findings:
+- an AC, or a task-owned TC, with no implementing code or no test (missing);
+- a declaration-owned TC whose validator is missing from `plan.md` `## Validators planned` (missing);
+- code or a task that serves no AC/TC and is not infrastructure a covered task needs (scope creep);
+- a tech-spec task or Decision the code does not follow, with no `SDD drift` line in `scope-sync.md`
+  (unrecorded drift — severity high).
+
 ## Process
 
 ### 1. Discover available documents

@@ -1,7 +1,7 @@
 # Skills and Reviewers Catalog
 
 Single source of truth for selecting skills and reviewers in Implementation Tasks.
-Used by: tech-spec-planning (Phase 4), task-decomposition (Phase 1).
+Used by: tech-spec-planning (Phase 4, step 4).
 
 ## Execution Skills
 
@@ -29,7 +29,7 @@ Prompt tasks (LLM system prompts, user templates) use `prompt-engineering` skill
 | Agent | What it checks | Model |
 |-------|---------------|-------|
 | `code-reviewer` | Code quality: structure, patterns, naming, complexity, error handling | sonnet |
-| `security-auditing` | OWASP Top 10, injection, XSS, auth, input validation, secrets | sonnet |
+| `security-auditor` | OWASP Top 10, injection, XSS, auth, input validation, secrets | sonnet |
 | `test-reviewer` | Test quality: coverage, meaningful assertions, test pyramid balance | sonnet |
 | `skill-checker` | Skill compliance: frontmatter, structure, skill-authoring guidelines | sonnet |
 | `prompt-reviewer` | Prompt quality: clarity, positive framing, examples over rules, compression, XML structure, success criteria | sonnet |
@@ -40,9 +40,9 @@ Prompt tasks (LLM system prompts, user templates) use `prompt-engineering` skill
 
 | Skill | Default reviewers |
 |-------|------------------|
-| `code-writing` | `code-reviewer`, `security-auditing`, `test-reviewer` |
-| `infrastructure-setup` | `code-reviewer`, `security-auditing`, `infrastructure-reviewer` |
-| `deploy-pipeline` | `code-reviewer`, `security-auditing`, `deploy-reviewer` |
+| `code-writing` | `code-reviewer`, `security-auditor`, `test-reviewer` |
+| `infrastructure-setup` | `code-reviewer`, `security-auditor`, `infrastructure-reviewer` |
+| `deploy-pipeline` | `code-reviewer`, `security-auditor`, `deploy-reviewer` |
 | `documentation-writing` | `code-reviewer` |
 | `skill-authoring` | `skill-checker` |
 | `pre-deploy-qa` | none — QA is its own verification |
@@ -59,25 +59,25 @@ When `reviewers` field is empty in a task — fall back to the default set for t
 ### Code task (most common)
 ```yaml
 skills: [code-writing]
-reviewers: [code-reviewer, security-auditing, test-reviewer]
+reviewers: [code-reviewer, security-auditor, test-reviewer]
 ```
 
 ### Infrastructure setup task
 ```yaml
 skills: [infrastructure-setup]
-reviewers: [code-reviewer, security-auditing, infrastructure-reviewer]
+reviewers: [code-reviewer, security-auditor, infrastructure-reviewer]
 ```
 
 ### Deploy pipeline task
 ```yaml
 skills: [deploy-pipeline]
-reviewers: [code-reviewer, security-auditing, deploy-reviewer]
+reviewers: [code-reviewer, security-auditor, deploy-reviewer]
 ```
 
 ### Task handling user input or auth
 ```yaml
 skills: [code-writing]
-reviewers: [code-reviewer, security-auditing, test-reviewer]
+reviewers: [code-reviewer, security-auditor, test-reviewer]
 ```
 Security-auditor is already in the default set for code-writing. No extra action needed.
 

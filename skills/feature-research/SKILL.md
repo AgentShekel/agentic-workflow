@@ -12,7 +12,7 @@ description: |
 Pre-filter step before `user-spec-planning`. Takes a rough feature idea, runs structured analysis, produces GO/NO-GO verdict. Prevents wasted effort on non-viable, misaligned, or duplicated features.
 
 **Input:** Feature description (free text from user)
-**Output:** `work/{feature}/research-verdict.md` + `work/{feature}/code-research.md`
+**Output:** `engagement/specs/research-verdict.md` + `engagement/specs/code-research.md` (`engagement/specs/` is the SDD feature folder, `feature_path` for every agent below)
 **When to use:** Recommended for M/L features and unclear scope. Optional for obvious S features.
 
 ## Phase 1: Requirement Parsing
@@ -26,7 +26,7 @@ Pre-filter step before `user-spec-planning`. Takes a rough feature idea, runs st
 3. Detect ambiguities — list explicitly: "Unclear: [X]. Assuming [Y] — correct?"
 4. Determine feature type: `new_feature` | `enhancement` | `bug_fix` | `refactoring` | `infrastructure`
 5. Propose feature name (kebab-case), get user confirmation.
-6. Run `~/.claude/shared/scripts/init-feature-folder.sh {name}` — creates folder structure.
+6. Create the feature folder: `mkdir -p engagement/specs/logs/research` (not `init-feature-folder.sh`, which builds the retired `work/` layout).
 
 **Checkpoint:** Feature folder exists, requirements parsed, ambiguities clarified.
 
@@ -42,7 +42,7 @@ Pre-filter step before `user-spec-planning`. Takes a rough feature idea, runs st
 
 2. Check for duplicates/overlaps:
    - Grep codebase for similar functionality keywords
-   - Check `work/` and `work/completed/` for related features
+   - Check `engagement-archived/*/primary*/specs/` (and legacy `work/`, `work/completed/`) for related features
    - If overlap found — report: "Found existing [X] in [path]. This feature overlaps/extends it."
 
 3. Check mission alignment:
@@ -126,7 +126,7 @@ Categories to consider: rollback difficulty, deployment risk, user adoption, ext
 
 ### 5.1 Produce verdict
 
-Assemble findings into `work/{feature}/research-verdict.md`:
+Assemble findings into `engagement/specs/research-verdict.md`:
 
 ```markdown
 ---
@@ -195,7 +195,7 @@ Launch `feasibility-assessor` subagent (sonnet) with `research-verdict.md` path 
 - Scope assessed against PK (not just gut feeling)
 - No blind spots (common gaps: rollback plan, data migration, external service SLAs)
 
-Report: `work/{feature}/logs/research/feasibility-review.json`
+Report: `engagement/specs/logs/research/feasibility-review.json`
 
 If findings → fix verdict, re-run validator (max 2 iterations).
 

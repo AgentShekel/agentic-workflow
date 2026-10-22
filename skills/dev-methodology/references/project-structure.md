@@ -22,25 +22,27 @@ Features and roadmap live in the project backlog (external to PK).
 
 **CLAUDE.md is minimal.** It contains only the project name, a reference to project-knowledge skill, methodology overview, and default branch. All real information lives in Project Knowledge files.
 
-**`project-planning` skill** creates PK from scratch in new projects (invoked by `dev-product-analyst` at project bootstrap).
+**`project-planning` skill** creates PK from scratch in new projects: the interview runs in `agency-intake` step 5c.0 and produces `engagement/specs/project-brief.md`; `dev-product-analyst` writes the PK files from that brief in the `{name}-bootstrap` engagement.
 
 **`documentation-writing` skill** manages existing PK: audits, updates, checks consistency. Used by `dev-technical-writer` at Step 5 (Done).
 
-## Work Items
+## Work Items (SDD feature folder)
+
+The spec artefacts of a feature live in the engagement, in `engagement/specs/`, which is the
+`feature_path` every spec agent receives:
 
 ```
-work/{feature}/
-├── user-spec.md          # Requirements (Russian, for human)
-├── tech-spec.md          # Architecture (English, for agent)
-├── decisions.md          # Decisions made during implementation
-├── tasks/
-│   ├── 1.md              # Atomic task files
-│   ├── 2.md
-│   └── 3.md
-└── logs/                 # Working logs (interview, research, reviews)
+engagement/specs/
+├── user-spec.md          # Requirements (Russian, for human), AC ids AC-N; approved in intake
+├── tech-spec.md          # Architecture (English, for agent); approved at the {name}-spec gate
+├── research-verdict.md   # Optional feature-research verdict
+├── project-brief.md      # New project only: bootstrap brief (Russian), approved in intake
+├── code-research.md      # code-researcher output, deepened by the architect
+└── logs/                 # userspec/ (interview.yml + validator reports), techspec/, research/
 ```
 
-Completed features are archived to `work/completed/{feature}/`.
+`specs/` travels from `{name}-spec` into `{name}-impl` and is archived with each engagement. The
+old `work/{feature}/` layout is retired; existing `work/` folders in projects are legacy.
 
 ## Agency Engagement Items
 

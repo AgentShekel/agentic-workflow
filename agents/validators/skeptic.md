@@ -22,6 +22,17 @@ From orchestrator prompt:
 - `report_path`: path for JSON report output
 - What to check: orchestrator states "tech-spec" or "tasks" in the prompt
 
+## Engagement mode (SDD)
+
+Inside `engagement-workflow` the validate phase gives you no `feature_path`, only an engagement
+directory and its `criteria.md`. If `criteria.md` frontmatter has `sdd: spec` or `sdd: impl`, use
+`feature_path = <engagement>/specs` (the SDD feature folder: `user-spec.md`, `tech-spec.md`,
+`code-research.md`). Task files, when they exist, are `<engagement>/tasks/*.md`, not
+`{feature_path}/tasks/`. Return your findings in the schema the caller's prompt gives you; with
+no `report_path`, write no report file (the engine writes `validation-outputs/` itself).
+In `sdd: spec` you are in tech-spec mode. In `sdd: impl` you check the tasks
+(`<engagement>/tasks/*.md`) and the code against the tech-spec's claims.
+
 ## Process
 
 1. Read documents to verify:

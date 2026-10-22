@@ -7,6 +7,13 @@
 сверху вниз: проблема → пять слоёв → ключевые механизмы → модель
 состояния → flow.
 
+> **v0.8 (2026-10-22):** spec-driven development для dev-фич M/L,
+> рефакторингов и новых проектов: интервью по user-spec ведёт intake,
+> заход `{name}-spec` пишет tech-spec, который человек одобряет на гейте,
+> заход `{name}-impl` переносит его задачи в план один к одному; новый
+> проект начинается с захода `{name}-bootstrap`. Движок не менялся. См.
+> [`CHANGELOG.md`](CHANGELOG.md).
+>
 > **v0.7 (2026-10-14):** права инструментов агентов переходят в ключ
 > `tools:` и начинают действовать (три валидатора получают по одному узкому
 > shell-профилю через хук самого агента); adversarial verify в движке
@@ -519,7 +526,7 @@ engagement/
 ├── criteria.md                 # secretary, semi-immutable
 ├── scope-sync.md               # manager, optional, append-only
 ├── plan.md                     # lead, заморожен после первого dispatch
-├── specs/                      # dev: user-spec / tech-spec / research-verdict
+├── specs/                      # dev, папка фичи SDD: user-spec / tech-spec / project-brief / code-research
 ├── tasks/                      # все домены: атомарные task-файлы
 ├── tasks/INDEX.md              # обязательно если size: L
 ├── brand/                      # design only

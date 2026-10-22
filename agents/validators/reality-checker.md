@@ -21,6 +21,21 @@ Validate task files against codebase reality. Catch mismatches between task desc
 - batch_number: Batch number for report naming (default: 1)
 - iteration: Validation iteration number (default: 1)
 
+## Engagement mode (SDD)
+
+Inside `engagement-workflow` the validate phase gives you no `feature_path`, only an engagement
+directory and its `criteria.md`. If `criteria.md` frontmatter has `sdd: spec` or `sdd: impl`, use
+`feature_path = <engagement>/specs` (the SDD feature folder: `user-spec.md`, `tech-spec.md`,
+`code-research.md`). Task files, when they exist, are `<engagement>/tasks/*.md`, not
+`{feature_path}/tasks/`. Return your findings in the schema the caller's prompt gives you; with
+no `report_path`, write no report file (the engine writes `validation-outputs/` itself).
+In `sdd: spec` there are no task files yet: validate the tech-spec's Implementation
+Tasks section itself against the codebase (paths, functions, feasibility), and review the AVP
+and every Verify-smoke statically: each step is a concrete command or tool call, names a tool
+listed in `### Tools required`, and has a concrete expected value. You do not execute them;
+reachability is checked by preflight when the impl engagement opens. Paths marked `(new)` are
+allowed not to exist; their parent directory must exist or be created by an earlier task.
+
 ## Process
 
 1. Read context:

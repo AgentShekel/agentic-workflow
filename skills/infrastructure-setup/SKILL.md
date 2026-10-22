@@ -16,14 +16,19 @@ Read project-knowledge references:
 - `.claude/skills/project-knowledge/references/patterns.md` — code conventions, branching strategy, testing
 - `.claude/skills/project-knowledge/references/deployment.md` — deployment strategy
 
-If files lack needed info, search other project-knowledge references — info may exist under different names. If missing entirely, ask the user and immediately update the relevant doc.
+If files lack needed info, search other project-knowledge references — info may exist under different names. Inside an engagement you cannot reach the user: if a fact is missing entirely, take the convention below, write it into the relevant doc as a decision with its reason, and list it in your report.
 
 **Autonomous decisions** (based on project-knowledge):
 - Framework init commands, folder structure, test framework, .gitignore patterns
 
-**Ask user:**
+**Decided before the engagement** (the user answered these in the bootstrap interview):
 - Docker: needed? Local dev, production, or both?
 - Pre-commit strictness: gitleaks only, or add lint/format?
+
+Read them from the brief's §Infrastructure: `{ENG}/specs/project-brief.md`, in the canonical
+engagement directory your prompt names, not in your worktree. Without a brief, or when it is
+silent: Docker only if `deployment.md` names a container platform; pre-commit per Phase 5. Record
+the choice in your report.
 
 ## Phase 1: Framework Initialization
 
@@ -45,7 +50,7 @@ Add `src/prompts/` if project uses LLM prompts. Add `src/messages/` if project u
 
 ## Phase 3: Docker (conditional)
 
-Set up only if specified in project-knowledge or user confirms.
+Set up only if specified in project-knowledge or in the brief's Infrastructure section.
 
 **Checkpoint:** `docker build` succeeds, container starts.
 
@@ -72,9 +77,9 @@ Create `.env.example` with required variable names (no values).
 Convention: gitleaks for secret scanning. Target: total pre-commit time under 10 seconds.
 
 Pre-commit scope (fast, staged files only):
-- gitleaks (~2-5 seconds)
-- Lint staged files
-- Format check
+- gitleaks (~2-5 seconds), always
+- Lint staged files, unless the brief's Infrastructure section says gitleaks only
+- Format check, same condition
 
 Full test suites, integration tests, builds belong in CI.
 
@@ -92,7 +97,8 @@ Update project-knowledge references (append, don't overwrite):
 - `deployment.md` — required environment variables
 - `patterns.md` (Git Workflow section) — pre-commit hooks and what they check
 
-Commit:
+Commit (outside an engagement only; inside one the engine's task prompt owns the single commit,
+so skip this step there or that commit finds nothing and fails):
 ```
 chore: setup project infrastructure
 
@@ -115,5 +121,5 @@ Verify before commit: `git status` shows no `.env` files (only `.env.example`).
 - [ ] `.env.example` exists (if project uses env vars)
 - [ ] Smoke test passes
 - [ ] Documentation updated
-- [ ] All infrastructure committed
+- [ ] All infrastructure committed (outside an engagement); inside one, all intended changes present in the worktree and ready for the engine's commit
 - [ ] Docker works (if applicable)

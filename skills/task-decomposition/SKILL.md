@@ -2,116 +2,97 @@
 name: task-decomposition
 domain: dev
 description: |
-  [METHODOLOGY] Tech-spec decomposition into atomic task files with
-  parallel creation and validation. Preloaded by dev-tech-architect agent.
+  [METHODOLOGY] Approved tech-spec → atomic engagement tasks. SDD phase 3:
+  dev-lead applies it in the `{name}-impl` engagement when it maps the
+  tech-spec's Implementation Tasks onto the plan. Preloaded by dev-lead and
+  dev-tech-architect.
 ---
 
 # Task Decomposition
 
-Decompose tech-spec Implementation Tasks into individual task files with parallel creation and validation.
+Turn the approved tech-spec's Implementation Tasks into the `{name}-impl` engagement's plan tasks
+without losing intent.
 
-**Input:** `work/{feature}/tech-spec.md` (status: approved)
-**Output:** `work/{feature}/tasks/*.md` (validated)
-**Language:** Task files in English, communication in Russian
+**Input:** `engagement/specs/tech-spec.md` (status: approved) + `engagement/specs/user-spec.md`
+**Output:** `plan.tasks` / `plan.waves` returned by `dev-lead`; the engine's decompose phase writes
+`engagement/tasks/*.md` and `tasks/INDEX.md` from them.
 
-## Integrity rules (read before Phase 1)
+**Where this runs.** Inside `engagement-workflow`, at the `lead:plan` step of the impl engagement.
+Nobody here can reach the user, and nobody spawns subagents: the older multi-agent flow
+(`task-creator` fan-out, `task-validator` + `reality-checker` batches, user approval of the task
+set) belonged to the retired `work/{feature}/` pipeline and does not run inside an engagement.
+The checks it performed now happen at three engine seams: your self-check below, the per-task
+review (and the co-signed contract when `A.contracts` is on), and the validate phase.
+
+## Integrity rules (read first)
 
 Decomposition is a lossy migration of intent, not a summary. The rules that keep meaning intact
 across the conversion live in one shared file:
 [decomposition-integrity.md](references/decomposition-integrity.md).
 
-Load it before creating tasks. Non-negotiable subset: every task names its **Source** and repeats
+Load it before mapping. Non-negotiable subset: every task names its **Source** and repeats
 the **Common objective**; the source wins on any conflict with task wording; requirements that
 exist because of a risk carry that risk into `## Non-goals / must not break`; small same-shape
 edits batch into ONE task instead of one seat each; the coverage check in §6 runs before the set
 is handed over.
 
-## Phase 1: Create Tasks
+## Step 1: Gate on approval
 
-1. Ask user for feature name if not provided.
+Read `engagement/specs/tech-spec.md`. Frontmatter must say `status: approved` with a non-null
+`approved_by`. If it does not, return a plan with zero delivery tasks and put
+`SDD gate: tech-spec not approved` in `notes`: the impl engagement does not start on a draft.
 
-2. Read `work/{feature}/tech-spec.md`. Check frontmatter `status: approved`.
-   If not approved — tell user: "tech-spec не утверждён. Сначала запусти `/new-tech-spec` и доведи до approved." Stop.
+## Step 2: Map tasks one to one
 
-3. Read `work/{feature}/user-spec.md`.
+For each Implementation Task in the code waves (everything before Audit Wave and Final Wave):
 
-4. Note the task template path: `~/.claude/shared/work-templates/tasks/task.md.template`
+| tech-spec field | plan task field |
+|---|---|
+| `Task N: {Name}` | `id` = `T{N}`, `title` = `{Name} [tech-spec Task N]` |
+| Owner | `owner` |
+| Files to modify | `files` (repo-relative, unchanged) |
+| Covers (`AC-N`, `TC-N`) | `crit_refs` = the `crit-N` ids of the impl `criteria.md` Done-when bullets that cite those AC/TC ids (bullets read `- crit-3 (AC-2): …`) |
+| Depends on | `depends_on` |
+| Wave | the task's position in `plan.waves` |
+| Description, Verify-smoke, Verify-user, Files to read | not copied: the plan schema has no per-task field for them. The `[tech-spec Task N]` marker in the title and the impl `criteria.md` Scope line send the specialist and the reviewer to that task in `specs/tech-spec.md` |
 
-5. Read skills/reviewers catalog from [skills-and-reviewers.md](~/.claude/skills/tech-spec-planning/references/skills-and-reviewers.md) — for passing correct skills/reviewers to task-creators.
+Rules:
+- **One to one, unless a recorded drift says otherwise.** Do not merge, split or drop tech-spec
+  tasks on your own judgement. The only deviations are the cases below, and each one is written
+  as `SDD drift` so the manager adjudicates it. A task that cannot run as written
+  (overlapping files in one wave, a missing owner, a file that does not exist) is a spec defect:
+  record it in `notes` and `scope-sync.md` as `SDD drift: {task} — {what}` and plan the nearest
+  executable shape. The manager adjudicates drift at acceptance. A path marked `(new)` is
+  expected not to exist yet; drop the marker in `files`.
+- **Batching (drift).** §5 of the integrity reference still applies: if the tech-spec gave
+  several same-shape one-line edits a seat each, batch them and record the batch as drift.
+- **No new work (drift).** A task that covers no AC/TC and is not infrastructure another task
+  depends on does not enter the plan; record the dropped task as drift.
 
-6. For each task in Implementation Tasks — launch [`task-creator`](~/.claude/agents/task-creator.md) subagent in parallel.
-   Pass each task-creator:
-   - feature_path, task_number, task_name
-   - template_path: `~/.claude/shared/work-templates/tasks/task.md.template`
-   - files_to_modify, files_to_read (from tech-spec)
-   - depends_on, wave, skills, reviewers, verify (from tech-spec)
-   - teammate_name (if specified in tech-spec, optional)
-   Each task-creator copies the template to `tasks/{N}.md` first, then edits each section in place. This ensures no sections are skipped.
+## Step 3: Map Audit Wave and Final Wave onto the validate phase
 
-7. Confirm each task-creator returned a file path. Skip reading task content — preserve context budget for validation phase.
-8. Git commit: `draft(tasks): create {N} tasks from tech-spec for {feature}`
+| tech-spec declaration | engagement plan |
+|---|---|
+| Code Audit | `code-reviewer` in `plan.validators` |
+| Security Audit | `security-auditor` in `plan.validators` |
+| Test Audit | `test-reviewer` in `plan.validators` |
+| QA (pre-deploy) | `pre-deploy-qa` in `plan.validators` |
+| Deploy | a `dev-devops-engineer` task in the last delivery wave |
+| Post-deploy verification | `post-deploy-qa` in `plan.validators` |
 
-**Checkpoint:**
-- [ ] All `tasks/*.md` files created
-- [ ] Each task-creator returned file path
-- [ ] Draft committed
+Always add `completeness-validator` (traceability user-spec ↔ tech-spec ↔ code) and
+`anti-pattern-detector`.
 
-## Phase 2: Validation (up to 3 iterations)
+## Step 4: Coverage and cross-task self-check
 
-Tech-spec was already validated by 6 validators. This phase checks only: (1) task-creator correctly expanded tasks by template, (2) no mismatches with real code appeared during detailing.
-
-### Validators
-
-Launch both in parallel:
-
-[`task-validator`](~/.claude/agents/task-validator.md) (sonnet) — Template Compliance + AC/TDD carry-forward:
-- Batch: 5 tasks per call
-- Pass: feature_path, task_numbers array, batch_number, iteration
-- Report: `logs/tasks/template-batch{N}-review.json`
-
-[`reality-checker`](~/.claude/agents/reality-checker.md) (sonnet) — Reality & Adequacy:
-- Batch: 3 tasks per call
-- Pass: feature_path, task_numbers array, batch_number, iteration
-- Report: `logs/tasks/reality-batch{N}-review.json`
-
-### Process
-
-1. Launch both validators in parallel (task-validator in batches of 5, reality-checker in batches of 3).
-2. Read JSON reports, collect findings.
-3. If issues found — for each task with issues, launch [`task-creator`](~/.claude/agents/task-creator.md) in fix mode:
-   - Pass: same inputs as creation + `mode: fix` + `findings` from validators
-   - task-creator reads existing task, applies fixes, overwrites file
-4. After each validation round, git commit: `chore(tasks): validation round {N} — {summary}`
-5. Re-validate fixed tasks (repeat 1-4). Maximum 3 iterations.
-6. If problems remain after 3rd iteration — show user: "Вот что осталось — давай решим вместе."
-
-### Cross-Task Integration Check
-
-After individual validation passes, run a final cross-task check:
-
-1. Launch both validators on ALL tasks in a single batch (not split into smaller batches):
-   - `task-validator` — focus: shared resource ownership (one owner, consumers depend_on owner), no competing instances in same wave
-   - `reality-checker` — focus: duplicate heavy resource init, hidden dependencies, inconsistent approaches across tasks
-
-2. If issues found → launch `task-creator` in fix mode for affected tasks. Re-validate fixed tasks.
-
-3. Max 2 iterations for cross-task check (on top of the 3 individual iterations).
-
-**Checkpoint:**
-- [ ] Both validators: status=approved OR user resolved remaining issues
-- [ ] Cross-task integration check: no cross-task conflicts
-
-## Phase 3: Present to User
-
-1. Summary: task count, waves, dependencies, validation results (iterations, issues found/fixed).
-2. Wait for user approval.
-3. Git commit: `chore(tasks): task decomposition approved for {feature}`
-4. Suggest next step: the engagement-workflow deliver phase runs the tasks wave-based.
-
-**Checkpoint:**
-- [ ] Summary presented to user
-- [ ] User approved task decomposition
-- [ ] Approval committed
+Before returning the plan:
+1. **Coverage (§6 of the integrity reference).** Every `AC-N` and every `TC-N` reaches at least
+   one plan task through `crit_refs`, or, for a TC the tech-spec assigns to an Audit/Final
+   declaration, the matching validator in `plan.validators`. An uncovered id is a hole, not a
+   judgement call.
+2. **Disjoint files per wave.** No two same-wave tasks share a file.
+3. **Shared resources.** Each heavy resource in tech-spec Architecture → Shared resources has one
+   owning task; its consumers depend on that task.
 
 ## Per-task contract (S2 — when A.contracts is enabled)
 
@@ -119,6 +100,7 @@ On M/L engagements run with `A.contracts` on, each `tasks/{id}.md` ALSO carries 
 
 ## Final Check
 
-- [ ] All phases completed (tasks created, validation passed)
-- [ ] All tasks match template (frontmatter: status, depends_on, wave, skills, reviewers, teammate_name)
-- [ ] Validation: both validators passed or user confirmed remaining issues
+- [ ] tech-spec approved (`status: approved`, `approved_by` set) before any task was planned
+- [ ] Every code task mapped one to one; every deviation recorded as `SDD drift`
+- [ ] Audit/Final waves mapped onto `plan.validators` (+ deploy task if declared)
+- [ ] Every `AC-N` / `TC-N` covered; same-wave files disjoint

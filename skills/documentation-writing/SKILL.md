@@ -46,6 +46,11 @@ Templates with placeholder structure are in `~/.claude/shared/templates/new-proj
 
 ## Workflows
 
+Inside an engagement the trigger is your task brief, not a user message, and you cannot reach the
+user. Each step below that asks the user has its in-engagement rule next to it; the rest of the
+engine path follows `engagement-contract` §"Rule, do not stall": decide, record the ruling with its
+evidence in your report, keep going. Outside an engagement, ask the user as written.
+
 ### 1. Audit
 
 **Trigger:** User asks to audit, check quality, or find bloat.
@@ -63,13 +68,18 @@ Templates with placeholder structure are in `~/.claude/shared/templates/new-proj
    - Universal patterns in patterns.md → flag for removal (those belong in code-writing skill)
 3. Preserve operational details: server addresses, SSH configs, deploy commands, log paths, env var names, monitoring URLs. These belong in docs even if they seem "obvious" — they can't be read from code.
 4. Create audit report with issues by file
-5. Ask user which to fix → apply approved changes → verify consistency
+5. Outside an engagement: ask the user which to fix → apply approved changes → verify consistency.
+   Inside one: apply the fixes the brief and `criteria.md` cover, then verify consistency. Remove
+   content only when the brief asks for it or the repository proves it false (code, config,
+   manifests or tests show the file, symbol, service or setting is gone or renamed); anything else you would cut, and every issue outside the brief's scope, goes to your
+   report, unapplied (and into `docs-diff.md` as `flagged-for-followup` when you write one).
 
 ### 2. Edit
 
 **Trigger:** User asks to edit or update specific documentation.
 
-1. Identify target file/section (ask if unclear)
+1. Identify target file/section. If unclear: outside an engagement ask; inside one pick the file
+   that owns the fact per §File Structure and record that ruling
 2. Read current content
 3. Apply changes following documentation principles
 4. Check if changes affect other files (e.g., tech stack mentioned elsewhere) → update related files
@@ -81,7 +91,11 @@ Templates with placeholder structure are in `~/.claude/shared/templates/new-proj
 1. Read all project-knowledge files
 2. Extract: tech stack names/versions, service names, DB names, env var names, platform names
 3. Find inconsistencies (e.g., "PostgreSQL" vs "Postgres" vs "postgres")
-4. Report → ask user for correct terminology → standardize across all files
+4. Report → settle the correct term → standardize across all files. Outside an engagement, ask
+   the user for it. Inside one, take it from evidence, in this order: the name the code and config
+   use (package, service, env var), then the approved spec or brief in `{ENG}/specs/`, then
+   `architecture.md`. Record each choice with its evidence. When the evidence splits (both names
+   live in code), change nothing for that term and list it in your report as unresolved.
 
 ### 4. Show Status
 

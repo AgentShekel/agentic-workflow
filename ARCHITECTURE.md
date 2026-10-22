@@ -7,6 +7,13 @@ this do», this document answers «how exactly is it built inside». Read
 top to bottom: problem → five layers → key mechanisms → state model →
 flow.
 
+> **v0.8 (2026-10-22):** spec-driven development for dev M/L features,
+> refactors and new projects: the user-spec interview runs in intake, a
+> `{name}-spec` engagement produces the tech-spec that the human approves
+> at the gate, and a `{name}-impl` engagement maps its tasks onto the plan
+> one to one; new projects start with a `{name}-bootstrap` engagement. The
+> engine is unchanged. See [`CHANGELOG.md`](CHANGELOG.md).
+>
 > **v0.7 (2026-10-14):** agent tool grants move to the `tools:` key and
 > bind (three validators get one narrow shell profile through an
 > agent-scoped hook); the engine's adversarial verify becomes asymmetric
@@ -517,7 +524,7 @@ engagement/
 ├── criteria.md                 # secretary, semi-immutable
 ├── scope-sync.md               # manager, optional, append-only
 ├── plan.md                     # lead, frozen after first dispatch
-├── specs/                      # dev: user-spec / tech-spec / research-verdict
+├── specs/                      # dev, SDD feature folder: user-spec / tech-spec / project-brief / code-research
 ├── tasks/                      # all domains: atomic task files
 ├── tasks/INDEX.md              # mandatory if size: L
 ├── brand/                      # design only

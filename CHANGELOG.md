@@ -2,6 +2,70 @@
 
 All notable changes to agentic-workflow.
 
+## v0.8.0 — 2026-10-22 (Spec-driven development for dev work)
+
+Dev features, refactors and new projects of size M/L now go through specs before
+code: a user-spec the user approves, a tech-spec approved at the human gate, then
+an implementation that follows the tech-spec task by task. The engine
+(`workflows/engagement-workflow.js`) is unchanged; the flow lives in intake, the
+leads and the acceptance gates.
+
+### The SDD track
+
+- **Phase 1, user-spec, in `agency-intake`.** The interview needs the user, and no
+  agent inside the engine can reach the user, so intake runs `user-spec-planning`
+  in the main loop (step 5c.1). Every acceptance criterion gets a stable id
+  `AC-N`. Once approved, the user-spec changes only through the user.
+- **Phase 2, the `{name}-spec` engagement** (`criteria.md` frontmatter
+  `sdd: spec`). Artefact mode, one task: `dev-tech-architect` writes
+  `specs/tech-spec.md`. The validate phase runs `skeptic`,
+  `completeness-validator`, `security-auditor`, `test-reviewer`,
+  `tech-spec-validator` and `reality-checker`. The human directive at the gate is
+  the approval of the tech-spec; PROCEED requires every open question to be
+  settled, and an answer that changes the spec sends it back for rework.
+- **Phase 3, the `{name}-impl` engagement** (`sdd: impl`). Intake copies the
+  approved specs in, flips only the approval metadata and reruns preflight with
+  every tool the AVP names. `dev-lead` maps the tech-spec's Implementation Tasks
+  onto the plan one to one; a deviation it is forced into is recorded as
+  `SDD drift` and adjudicated by `dev-manager`. `completeness-validator` traces
+  each `AC-N` / `TC-N` through the plan to code and tests.
+- **New projects** start with a `{name}-bootstrap` engagement (`sdd: bootstrap`):
+  intake runs the `project-planning` interview and gets an approved
+  `specs/project-brief.md`; the engagement fills project-knowledge and sets up
+  infrastructure from that brief. Each feature then takes the spec/impl path.
+- **SDD precondition** in intake step 7: before every run, including rework and
+  resume, intake checks the approval the `sdd:` value needs; a run that delivered
+  no task is never accepted. `sdd: off` with a reason waives the track.
+
+### Specs and validators
+
+- `engagement/specs/` is the feature folder (`user-spec.md`, `tech-spec.md`,
+  `code-research.md`, `logs/`) and the `feature_path` every spec agent receives.
+  `skeptic`, `reality-checker`, `tech-spec-validator`, `completeness-validator` and
+  `test-reviewer` derive it from `criteria.md` when the validate phase passes no
+  path.
+- Tech-spec Implementation Tasks carry `Covers` (AC/TC ids), `Owner`,
+  `Files to modify` (new files marked `(new)`) and `Depends on`, in the shape the
+  engine executes. Technical criteria get ids `TC-N`; a TC no code task can own is
+  covered by an Audit or Final Wave declaration.
+- In a spec engagement the AVP is reviewed statically (concrete commands, listed
+  tools, concrete expected values); reachability is proven by preflight when the
+  impl engagement opens.
+
+### Specialists inside the engine
+
+- `deploy-pipeline`, `dev-devops-engineer` and `documentation-writing` take facts
+  from project-knowledge, `criteria.md` and `specs/`. A fact the done-when needs
+  and the disk does not hold returns `blocked` with `NEEDS_CONTEXT`. No push to a
+  remote, deploy or pipeline run happens inside an engagement.
+- `engagement-contract` and `engagement-protocol` name the engagement paths a
+  specialist may write besides its executor report: its task's declared artefact
+  files, and `docs-diff.md` for `dev-technical-writer`.
+
+### Counts
+
+60 agents (Managers 3 · Directors 4 · Leads 3 · Specialists 20 · Validators 30) · 47 skills · 26 main + 3 optional Python scripts · 3 Workflow engines + 2 LangGraph engines.
+
 ## v0.7.0 — 2026-10-14 (Tool grants that apply, findings that cannot vanish, hooks)
 
 Three themes: agent tool grants now actually restrict what an agent can do, a
