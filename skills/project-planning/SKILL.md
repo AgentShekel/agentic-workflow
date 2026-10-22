@@ -226,8 +226,8 @@ Use Edit tool to replace template placeholders with real content. Content langua
   not the directory: the engine commits every change in the worktree, but its reviewer reads only
   the task's declared files, so an untouched template would be committed unreviewed.
 - If `CLAUDE.md` is missing, copy `~/.claude/shared/templates/new-project/CLAUDE.md` and fill the
-  project name, the one-line description from the brief's Overview, and the default branch from
-  its Git workflow section.
+  project name, the one-line description from the brief's Overview, the default branch from
+  its Git workflow section, and the backlog path from its Backlog section ("none" if it names none).
 - Copy nothing else from that template: `work/` is the retired layout, and `.gitignore` /
   `.env.example` belong to `infrastructure-setup`.
 

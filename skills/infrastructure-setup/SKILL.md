@@ -51,6 +51,7 @@ Add `src/prompts/` if project uses LLM prompts. Add `src/messages/` if project u
 ## Phase 3: Docker (conditional)
 
 Set up only if specified in project-knowledge or in the brief's Infrastructure section.
+Start `.dockerignore` from `~/.claude/shared/templates/infrastructure/static/.dockerignore` and trim it to the stack.
 
 **Checkpoint:** `docker build` succeeds, container starts.
 
@@ -75,6 +76,8 @@ Create `.env.example` with required variable names (no values).
 ## Phase 5: Pre-commit Hooks
 
 Convention: gitleaks for secret scanning. Target: total pre-commit time under 10 seconds.
+Starting points: `~/.claude/shared/templates/infrastructure/static/husky-pre-commit-gitleaks.sh` (Node, husky) and
+`~/.claude/shared/templates/infrastructure/static/pre-commit-config.yaml` (Python, pre-commit framework).
 
 Pre-commit scope (fast, staged files only):
 - gitleaks (~2-5 seconds), always
@@ -88,6 +91,8 @@ Full test suites, integration tests, builds belong in CI.
 ## Phase 6: Testing Infrastructure
 
 Set up test framework, create smoke test: 1-2 tests verifying setup works (import main module, check environment).
+Starting points: `~/.claude/shared/templates/infrastructure/tests/smoke.test.ts` (Vitest) and `~/.claude/shared/templates/infrastructure/tests/test_smoke.py` (pytest); replace
+the placeholder test with a real import of the main module.
 
 **Checkpoint:** test command passes.
 

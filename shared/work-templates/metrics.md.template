@@ -1,12 +1,12 @@
 # Pipeline Metrics
 
-Updated after each feature completion (`/done`).
+Updated at Step 5 (Done) of each feature.
 
 ## Feature Stats
 
 | Feature | Size | Pipeline Steps Used | Validation Rounds | Duration | Status |
 |---------|------|--------------------|--------------------|----------|--------|
-| example-feature | M | research → user-spec → tech-spec → tasks → do-feature → done | spec: 2, tasks: 1, code: 2 | 3 sessions | completed |
+| example-feature | M | research → user-spec → tech-spec → tasks → implementation → done | spec: 2, tasks: 1, code: 2 | 3 sessions | completed |
 
 ## Validator Effectiveness
 

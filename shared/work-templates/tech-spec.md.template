@@ -216,12 +216,12 @@ the {name}-impl engagement's criteria.md cites them next to AC-N.
 
 #### Task N-1: Security Audit
 - **Description:** Full-feature security audit. Read all source files created/modified in this feature. Analyze for OWASP Top 10 across all components, cross-component auth/data flow. Write audit report.
-- **Skill:** security-auditor
+- **Skill:** security-auditing
 - **Reviewers:** none
 
 #### Task N: Test Audit
 - **Description:** Full-feature test quality audit. Read all test files created in this feature. Verify coverage, meaningful assertions, test pyramid balance across all components. Write audit report.
-- **Skill:** test-master
+- **Skill:** testing-methodology
 - **Reviewers:** none
 
 ### Final Wave
@@ -238,7 +238,7 @@ the {name}-impl engagement's criteria.md cites them next to AC-N.
 
 #### Task N+1: Deploy (if applicable)
 - **Description:** Deploy + verify logs
-- **Skill:** infrastructure
+- **Skill:** deploy-pipeline
 - **Reviewers:** none
 
 #### Task N+2: Post-deploy verification (if applicable)

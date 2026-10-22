@@ -29,7 +29,7 @@ Deployment process, infrastructure, and production operations for AI agents.
 
 ## Environment Variables
 
-**See:** [.env.example](../../.env.example) in project root
+**See:** [.env.example](../../../../.env.example) in project root
 
 [List all required environment variables with their purpose - NO VALUES]
 

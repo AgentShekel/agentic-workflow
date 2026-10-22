@@ -2,6 +2,22 @@
 
 All notable changes to agentic-workflow.
 
+## v0.8.2 — 2026-10-22 (Infrastructure templates, template fixes)
+
+- `shared/templates/infrastructure/` ships a `.dockerignore`, gitleaks pre-commit
+  hooks (husky and the pre-commit framework) and Vitest / pytest smoke tests;
+  `infrastructure-setup` names them as starting points in Phases 3, 5 and 6.
+- `project-planning` writes the backlog path into the new project's `CLAUDE.md`,
+  and the template has a `Backlog` line for it.
+- Templates follow the `engagement/specs/` layout. The tech-spec Audit and Final
+  waves name shipped skills, task Context Files point at the project's
+  project-knowledge references, and the deployment template's `.env.example`
+  link resolves to the project root.
+
+### Counts
+
+60 agents (Managers 3 · Directors 4 · Leads 3 · Specialists 20 · Validators 30) · 47 skills · 26 main + 3 optional Python scripts · 3 Workflow engines + 2 LangGraph engines.
+
 ## v0.8.1 — 2026-10-22 (Shared templates)
 
 - `shared/` ships the dev templates: `work-templates/` (user-spec, tech-spec,
