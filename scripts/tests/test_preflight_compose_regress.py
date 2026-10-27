@@ -94,7 +94,7 @@ def test_compose_file_injection_matrix(tmp_path: Path):
         os.environ.pop("COMPOSE_FILE", None)
 
 
-def test_run_cmd_injects_compose_file_env(tmp_path: Path):
+def test_run_cmd_injects_compose_file_env(tmp_path: Path, monkeypatch):
     pf = load_preflight()
     os.environ.pop("COMPOSE_FILE", None)
     seen = {}
@@ -109,8 +109,8 @@ def test_run_cmd_injects_compose_file_env(tmp_path: Path):
         seen["env"] = kw.get("env")
         return FakeCompleted()
 
-    pf.subprocess.run = fake_run
-    pf.shutil.which = lambda _c: "/usr/bin/docker"
+    monkeypatch.setattr(pf.subprocess, "run", fake_run)
+    monkeypatch.setattr(pf.shutil, "which", lambda _c: "/usr/bin/docker")
 
     with chdir_tmp(_mkdir(tmp_path, "nd", ["docker-compose.dev.yml"])):
         pf.run_cmd(["docker", "compose", "exec", "-T", "postgres", "pg_isready"])
@@ -148,14 +148,16 @@ def test_discovery_failure_is_inert(tmp_path: Path):
         ["db", "postgres", "pg"]
 
 
-def test_compose_services_swallows_failures(tmp_path: Path):
+def test_compose_services_swallows_failures(tmp_path: Path, monkeypatch):
     pf = load_preflight()
 
     def boom(*_a, **_kw):
         raise OSError("docker not there")
 
-    pf.subprocess.run = boom
-    pf.shutil.which = lambda _c: "/usr/bin/docker"
+    # pf.subprocess / pf.shutil ARE the global modules: assigning to them leaked the stub into
+    # every later test in the run (they all saw "docker not there"). monkeypatch restores them.
+    monkeypatch.setattr(pf.subprocess, "run", boom)
+    monkeypatch.setattr(pf.shutil, "which", lambda _c: "/usr/bin/docker")
     d = _mkdir(tmp_path, "svc_fail", ["docker-compose.yml"])
     assert pf._compose_services(d) == [], "discovery must never raise into the caller"
 

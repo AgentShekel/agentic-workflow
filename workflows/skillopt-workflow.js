@@ -187,10 +187,11 @@ const RECORD_SCHEMA = {
 }
 const META_SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['ran', 'lessons', 'line_count', 'detail'],
+  required: ['ran', 'attributions', 'lessons', 'line_count', 'detail'],
   properties: {
     ran: { type: 'boolean' },
-    lessons: { type: 'array', items: { type: 'string' }, description: 'the process/content lessons written this cycle' },
+    attributions: { type: 'array', items: { type: 'string' }, description: 'one "<target> #<n>: <verdict>" per ATTRIBUTION row appended to the log this cycle (empty when no earlier promotion was exercised since)' },
+    lessons: { type: 'array', items: { type: 'string' }, description: 'the process/content lessons written this cycle (empty = NO_ENTRY, reason in detail)' },
     line_count: { type: 'integer', description: 'total lines of the meta file after the write (cap ~150)' },
     detail: { type: 'string' },
   },
@@ -750,19 +751,32 @@ log(`record: ran=${record.ran} resolved=${(record.resolved_signals || []).length
 // those belong in the corpus and go through the gate.
 // ===========================================================================
 phase('meta')
-let metaUpdate = { ran: false, lessons: [], line_count: 0, detail: 'dry-run or nothing to learn from — meta untouched' }
-// Gate failures count as material, and are in fact the richest kind: a cycle where every
-// selected edit failed the golden gate is precisely the "edits phrased as X keep tripping the
-// floor scenario" lesson the next cycle most needs. Keying only on promoted/dropped/rolled-back
-// skipped exactly that case.
-const gateFailures = gatedClean.filter(g => g.verdict && g.verdict.verdict === 'fail')
-if (!DRY && (promotedReal.length || mustRollback || gateFailures.length || (dropped && dropped.length))) {
+let metaUpdate = { ran: false, attributions: [], lessons: [], line_count: 0, detail: 'dry-run — meta untouched' }
+// Runs on every non-dry cycle that reaches this phase. It used to key on this cycle's material
+// (promotions, rollbacks, gate failures, drops), but step 7a attributes EARLIER promotions from
+// engagements that ran since, which is material even when this cycle produced none. The prompt
+// itself returns NO_ENTRY when nothing supports a lesson. Cycles that exit early
+// (no-cycle-due / no-edits-proposed / all-edits-dropped) still skip this phase; the
+// interactive director path covers attribution there (protocol step 7).
+if (!DRY) {
   metaUpdate = await agent(
     `You are the ${DIRECTOR} updating the OPTIMIZER-SIDE memory at ${META} after a ${DOMAIN} SkillOpt cycle. This memory is read by the NEXT cycle's reflect and select steps.
 
-Read ${META} first (create it with a "## Shared process" and a "## ${DOMAIN}" section if absent). Then:
+FIRST, attribute earlier promotions (system-optimization-protocol step 7a). In ${LOG}, take every edit an earlier "### CYCLE" block for ${DOMAIN} lists as accepted and applied to the corpus, in which at least one engagement since that cycle's date actually reached the edited text (ran the agent but never reached that section = no row, stays eligible), and that has no FINAL "### ATTRIBUTION" row yet (helped, hurt and no observed effect are final; confounded is provisional, so revisit those edits and write a new row once an engagement isolates one). Edits no engagement has exercised get no row. For each, read what ran since: later SIGNAL entries and reflections in ${LOG}, and the engagements' engagement-reflections.md, acceptance-log.md and executor-reports under the engagement roots ${SCRIPTS}/skillopt-ready.py scans (its --reflection-root / SKILLOPT_REFLECTION_ROOTS / DEFAULT_REFLECTION_ROOTS; skip roots that do not exist). Find the point where the agent applied, skipped or tripped over the edited text, and append to ${LOG}:
+### ATTRIBUTION | domain: ${DOMAIN} | <today> | by: ${DIRECTOR}
+edit: <CYCLE date> #<n> | <target> | <what the edit changed, one line>
+observed: <engagement + the point where behaviour diverged or did not>
+verdict: helped | hurt | no observed effect | confounded
+Verdicts: helped = AT LEAST TWO engagements show the agent applying the edited text and the targeted failure not recurring where the old text let it through (cite both); hurt = a later failure traces to the edited text itself (if that failure is already a "### SIGNAL" in the log, cite it in observed:; only when it is absent, append one with rule_wrong on that target in the log's usual SIGNAL shape, keeping the engagement and evidence of the failure, so it is counted once); no observed effect = the edited text was reached and behaviour did not change, or the targeted class recurred (an outcome, not a diagnosis: do not conclude rule_ignored from recurrence alone; cite the recurrence's existing SIGNAL, or mint one with the targeted class when absent, so the next cycle's reflect step sees it); confounded = several edits of the same cycle touch the behaviour and nothing isolates one, OR one engagement is all that stands behind it, OR the agent's model/tier changed in between. PREFER confounded whenever one of those holds: an invented attribution misleads every later cycle. Gate PASS, promotion and merge are not evidence of help. Never edit earlier ATTRIBUTION rows; a newly isolated edit gets a new row.
+
+Then read ${META} (create it with a "## Shared process" and a "## ${DOMAIN}" section if absent) and:
 1. Judge the PREVIOUS lessons against what happened this cycle: which held, which misled, which were never relevant. Revise or delete what did not earn its place — this file is not append-only.
-2. Add at most 2-3 new lessons, each grounded in THIS cycle's evidence (a gate verdict, a rollback, a dropped edit), never generic advice. Address the FUTURE OPTIMIZER, not the target: "edits phrased as X kept failing the floor scenario", not "validators should check X".
+2. Add AT MOST ONE new lesson in "## Shared process" and one in "## ${DOMAIN}", each grounded in a record (an ATTRIBUTION row, this cycle's gate verdict, rollback or dropped edit), never generic advice, in exactly this shape:
+   - cue: <the shape of optimisation situation it applies to, not this cycle's facts>
+     lesson: <the editing operation to perform, naming the kind of target it concerns>
+     evidence: <the attribution rows, gate verdicts or rollbacks it rests on>
+     confidence: high | medium — <why>   (high = two or more final attribution rows agree; medium = one final row, or this cycle's gate verdicts and rollback agree)
+   Aim between too generic ("write clearer rules") and too specific to fire again. A lesson resting only on confounded rows or on a single gate verdict is a guess: narrow it to what the record shows, or write none. When no record supports a lesson, write none and start detail with "NO_ENTRY: <why>" — a cycle with nothing to learn is a normal outcome. A free-form older lesson you keep is rewritten in this shape. Address the FUTURE OPTIMIZER, not the target: "edits phrased as X kept failing the floor scenario", not "validators should check X".
    Phrase every lesson as edit SHAPE (scope, trigger condition, severity choice, target file), never as the content of a golden scenario: no scenario slugs, no fixture details, no quoted pass-criteria. The next proposer reads this file, and the golden set is held out from it.
 3. Keep the split: cross-domain lessons about HOW to optimise go under "## Shared process" (all three directors read it); ${DOMAIN}-specific editing heuristics go under "## ${DOMAIN}".
 4. HARD CAP ~150 lines total. If the file would exceed it, prune the weakest lessons first and say which in detail. An unbounded meta file stops being read, which costs more than any single lesson in it.
@@ -780,10 +794,10 @@ This cycle: ${JSON.stringify({
       rolled_back: mustRollback,
     }, null, 2)}
 
-Return per schema: ran:true, lessons[] (the lesson lines you wrote), line_count (of the file after your write), detail.`,
+Return per schema: ran:true, attributions[] (one "<target> #<n>: <verdict>" per ATTRIBUTION row you appended), lessons[] (the lessons you wrote; empty = NO_ENTRY), line_count (of the meta file after your write), detail.`,
     { label: 'meta:director', phase: 'meta', schema: META_SCHEMA }) || metaUpdate
 }
-log(`meta: ran=${metaUpdate.ran} lessons=${(metaUpdate.lessons || []).length} lines=${metaUpdate.line_count}`)
+log(`meta: ran=${metaUpdate.ran} attributions=${(metaUpdate.attributions || []).length} lessons=${(metaUpdate.lessons || []).length} lines=${metaUpdate.line_count}`)
 
 // ---- SEAM ----
 // Commons edits that passed the gate STOP here for the human commons-maintainer

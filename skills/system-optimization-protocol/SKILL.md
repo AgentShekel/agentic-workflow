@@ -39,7 +39,7 @@ low-volume, subjective-output agency with no automatic scorer.
 | Validation gate | Golden-scenario **rubric judgment** (Codex reads pass/fail, director adjudicates; `skill-testing` harness only for executable high-blast checks). A regression detector over a held-out set, not an improvement measure |
 | `round<r>__before.md` snapshot | Pre-edit file copies under `skillopt-snapshots/<ts>/` — the restore point |
 | Momentum (anti-forgetting) | Slow-update: golden-set before/after, 4-bucket categorisation, **rollback on regressed>0** |
-| Meta-learning | Two-level meta (shared process + domain content), written each cycle and read by the next |
+| Meta-learning | Two-level meta (shared process + domain content), written each cycle and read by the next; lessons rest on per-edit attribution rows (`helped` / `hurt` / `no observed effect` / `confounded`) from later engagements, gate verdicts and rollbacks |
 | Optimizer ≠ target | **Codex proposes edits (cross-family); director judges. Never the same brain.** |
 
 ## Role boundary (judge-only — non-negotiable)
@@ -235,16 +235,8 @@ reasons: no agent runs on the scenario, so the verdict predicts behaviour rather
 edit; whether the edit actually helps stays unmeasured until later engagements (or an executable
 scenario run) show it. The gate's job is that the edit breaks nothing the set guards.
 
-**Executable path (pilot, design 03/04 only).** `scripts/golden_exec.py` runs the real validator
-headlessly on `golden/exec/<domain>/<scenario>/` fixtures, baseline vs edited agent, and grades
-the output in code (`--selftest` first). On a haiku validator an edit's effect appears in only a
-fraction of runs: KB-design-01 was invisible at 3 and at 10 reps per arm and separated at 20
-(floor scenario flagged 0/20 vs 9/20). Budget ~20 reps per arm and read the engagement count, not
-only the pass rate. The effect is model-dependent: after the validator moved to sonnet the same
-edit fired 1/10, because the stronger model applied WCAG correctly despite the wrong rule. A
-clean executable run therefore never makes a wrong rule safe; it confirms a rubric verdict on a
-high-blast validator edit and does not replace it. Write gate evidence in MR bodies
-accordingly: "no regression on N scenarios", never "improves".
+**Executable path (pilot, design 03/04 only):** `scripts/golden_exec.py`, baseline vs edited agent
+on real fixtures, about 20 reps per arm; how to read it: [references/executable-gate.md](references/executable-gate.md).
 
 **Gate self-check** (after any change to a gate prompt, a golden scenario, or the judge model, and
 before trusting a cycle's verdicts): run the known-bad edits in [golden/known-bad.md](golden/known-bad.md)
@@ -384,11 +376,18 @@ cluster it just closed stays live and the readiness checker re-fires it next ses
   byte-identical on disk to never having run, and a trigger that is always on stops being read.
 - **Rolled back** → write nothing. The signals stay open.
 
-### 7. Meta (two-level — see Zazor-2 split)
+### 7. Attribute, then meta (two-level — see Zazor-2 split)
 
 Written at the end of every cycle and read by the reflect and select steps of the next one.
 It records how to EDIT better, never target-facing rules — those belong in the corpus and go
 through the gate.
+
+**7a. Attribute earlier promotions** that later engagements have exercised: one `### ATTRIBUTION`
+log row per edit, verdict `helped` / `hurt` / `no observed effect` / `confounded` (provisional,
+preferred when not isolated). Rules and format: [references/attribution.md](references/attribution.md).
+Rolled-back cycles run this step too (step 6 only skips their `resolved:` line).
+
+**7b. Lessons.**
 
 - **Shared process lessons** (`skill-evolution-meta.md`, all 3 directors read+write):
   lessons about *how to optimise* that hold across domains, e.g. "after demoting a
@@ -399,6 +398,8 @@ through the gate.
 - Judge the previous lessons against what this cycle did before adding new ones, and delete
   what misled. The file is not append-only, and the ~150-line cap is load-bearing: an
   unbounded meta file stops being read, which costs more than any lesson in it.
+- **At most one new lesson per section per cycle**, shaped per `references/attribution.md` §7b;
+  no supporting record means `NO_ENTRY: <why>`, not a guess.
 
 ## Edit format (patches, like SkillOpt)
 
@@ -456,7 +457,7 @@ manager/director agent definitions.
   as `success_due` / `success_signals`, never as readiness.
 - `skill-rejected-edits.md` — negative memory (above).
 - `skill-evolution-meta.md` — two-level meta (shared process + per-domain content). Written
-  by step 7, read by steps 1 and 2 of the next cycle.
+  by step 7b, read by steps 1 and 2 of the next cycle (7a's rows go to the log).
 - `skillopt-snapshots/<ts>/` — pre-edit file copies; the rollback source for step 5.
 - Golden sets — `~/.claude/skills/system-optimization-protocol/golden/<domain>/` (scenarios
   + rubric; grow incrementally, start with 3 known-tricky cases per domain). Held out: read by

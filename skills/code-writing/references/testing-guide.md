@@ -73,7 +73,7 @@ expect(user.name).toBe('Alice')
 
 ```
 1. Write tests for requirements + edge cases
-2. Run tests → all should FAIL (no implementation)
+2. Run tests → all should FAIL on the missing behaviour (see SKILL.md Phase 2)
 3. Write code to make tests pass
 4. Run tests → all should PASS
 5. Refactor if needed (tests stay green)

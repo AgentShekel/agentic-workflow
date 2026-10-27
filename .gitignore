@@ -55,3 +55,6 @@ desktop.ini
 **/config/cache/
 **/config/runtime/
 .coverage
+
+# Local tool installs (scripts/install-quality-gates.sh)
+/tools/

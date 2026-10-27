@@ -81,7 +81,10 @@ description: |
 
    - Write tests for: business logic, validations, transforms, error handling. Skip trivial code without logic (simple getters, one-liners, configs)
    - Write tests for requirements and edge cases
-   - Tests should fail initially (no implementation yet)
+   - Run each new test before the implementation exists and read the failure. It fails on the
+     missing behaviour: an assertion about a result the code does not yet produce, or the absence
+     of the exact function you are about to add. A typo, a wrong import path or a broken fixture
+     does not count; fix the test until it fails for the right reason.
    - One test = one scenario, test behavior not implementation
    - If mocking >3 dependencies → wrong test type, use integration test
 
@@ -109,7 +112,14 @@ description: |
    - Tests mentioned in task (if applicable)
    - Save full test suite for end of feature
 
-3. **Smoke Verification** (if task has Verification Steps → Smoke or User)
+3. **Structural Gates** (changed files only)
+
+   If your changed files include Python, TS/JS, Go, Rust, Java or Clojure source, read
+   [quality-gates.md](references/quality-gates.md) and run its three gates (complexity × coverage,
+   duplication, mutation) on them. Each miss is fixed or carries a one-line reason; a gate that
+   could not run goes into the report as not run, with the reason.
+
+4. **Smoke Verification** (if task has Verification Steps → Smoke or User)
 
    Execute each command from the Smoke section. Record results in decisions.md Verification section.
    If a check fails — fix the code before proceeding to reviews.
@@ -118,7 +128,7 @@ description: |
    Smoke catches integration bugs that mocked tests miss:
    real API responses, library initialization, config validity.
 
-4. **Run Reviews** (launch in parallel)
+5. **Run Reviews** (launch in parallel)
 
    **Reviewer selection:**
    - Working on a task file → run reviewers from the task's "Reviewers" section
@@ -134,7 +144,7 @@ description: |
    `{N}` = task number from task file; `"standalone"` if no task file.
    On re-review: new file with incremented round number, old file stays.
 
-5. **Process Findings**
+6. **Process Findings**
 
    Evaluate each finding on merit — severity is metadata, not a filter.
    A valid minor fix still improves quality. Reason: skipping valid findings
@@ -161,6 +171,7 @@ Verify each item before marking complete. If any item fails, return to the relev
 
 - [ ] All phases completed (Preparation, Implementation, Post-work)
 - [ ] Tests pass
+- [ ] Structural gates run on changed files, or reported as not run with the reason
 - [ ] Smoke verification executed (if task had Smoke/User checks)
 - [ ] Each reviewer finding evaluated and logged
 - [ ] Findings log table produced

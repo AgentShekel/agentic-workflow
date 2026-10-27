@@ -10,8 +10,9 @@ description: |
   copywriter, analyst, etc.) follows when running inside an agency engagement.
   Carve-out from engagement-protocol — the specialist subset only, without
   lifecycle / cross-domain / archival detail: the 6 output bullets, evidence
-  before claims, no self-spawned subagents, rule-do-not-stall and the
-  NEEDS_CONTEXT convention. Preloaded by specialist agents via skills
+  before claims, the repeated-finding diagnosis on rework attempt 2+, no
+  self-spawned subagents, rule-do-not-stall and the NEEDS_CONTEXT convention.
+  Preloaded by specialist agents via skills
   frontmatter. Pure reference — no triggers.
 ---
 
@@ -61,6 +62,27 @@ iteration** and put the result in the report.
 reaches a commit: reports, artefacts, config edits, design and marketing deliverables.
 
 *(Adapted from `verification-before-completion` in obra/superpowers, MIT.)*
+
+## A repeated finding attacks the premise, not the patch
+
+On rework attempt 2 or later, compare the findings in your rework brief with the ones your earlier
+`## Rework attempt N` sections in your executor report answered. A finding that comes back after
+a fix means the fix did not hold, and a variation of the same fix tends to fail the same gate.
+
+Before editing, under the new `## Rework attempt N` heading, diagnose why it did not hold, in one
+of two ways:
+
+- **Wrong premise.** Write the assumption the earlier fixes shared in one sentence ("the date is
+  always in UTC", "the reviewer wants a shorter headline"), name the evidence that breaks it (the
+  finding's text, a test output, a line of `criteria.md`), and pick a fix that does not rest on it.
+- **Incomplete fix.** The premise holds but the fix missed something: a second call site, a
+  screen that was not re-rendered, a check that was never run. Name what was missed and the
+  evidence for it, then finish the fix.
+
+Then continue; this is a diagnosis step, not a stop. If neither fits, the finding may be wrong or
+out of your reach: say that in the report with the evidence, per "Rule, do not stall" below.
+
+*(Idea from "Attack the Premise" in unclebob/ub-mode.)*
 
 ## You are a leaf — do not spawn subagents
 

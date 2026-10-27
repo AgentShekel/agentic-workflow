@@ -343,7 +343,11 @@ signals from the manager's `skill-evolution-log.md`:
    produced no edit writes `adjudicated:`. Either way the trigger clears,
    so it cannot fire forever on a cluster nobody can close.
 8. **Meta** — what this cycle learned about editing is written back for
-   the next one to read.
+   the next one to read. First, every earlier promotion that later
+   engagements have exercised gets an attribution verdict (`helped`,
+   `hurt`, `no observed effect`, or `confounded` when the effect cannot
+   be isolated); a lesson must cite those verdicts or gate records,
+   otherwise the cycle writes `NO_ENTRY`.
 
 The director **never authors edits itself** — Codex is the proposer,
 the director is the judge, the human is the commons-maintainer for

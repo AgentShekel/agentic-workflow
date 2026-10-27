@@ -2,6 +2,38 @@
 
 All notable changes to agentic-workflow.
 
+## v0.9.0 — 2026-10-27 (Structural code gates, attribution of promoted edits)
+
+- `code-writing` Phase 3 runs three deterministic gates on the changed source
+  files before the reviewers: CRAP under 10 for every added or changed function,
+  no duplicate pair at 0.8 or above that touches new code, and no surviving
+  mutant in new code. The tools are [unclebob/crapper](https://github.com/unclebob/crapper),
+  [dryer](https://github.com/unclebob/dryer) and [mutator](https://github.com/unclebob/mutator);
+  `scripts/install-quality-gates.sh` installs them at pinned commits, and
+  `references/quality-gates.md` covers the commands, the scope and the traps
+  (a failed coverage command, a relative interpreter path in the mutant test
+  command, kills carried over from an earlier run). A gate that cannot run is
+  reported as not run.
+- TDD in `code-writing`: a new test has to fail on the missing behaviour, not on
+  a typo or a wrong import path.
+- `engagement-contract`: on rework attempt 2 or later, a finding that comes back
+  gets a written diagnosis (a wrong premise or an incomplete fix, with the
+  evidence) before the next edit.
+- `system-optimization-protocol` step 7 attributes earlier promotions once real
+  engagements have reached the edited text: `helped`, `hurt`, `no observed
+  effect` or `confounded`, logged as `### ATTRIBUTION` rows. Meta lessons take a
+  cue / lesson / evidence / confidence shape and rest on those rows or on gate
+  records; without them the cycle writes `NO_ENTRY`. The `skillopt-workflow`
+  META step does the same. Ideas for both from
+  [unclebob/ub-mode](https://github.com/unclebob/ub-mode) and
+  [google-research/harness2](https://github.com/google-research/harness2).
+- `test_preflight_compose_regress.py` restores the subprocess and shutil stubs it
+  installs, so later tests in a full run no longer see them.
+
+### Counts
+
+60 agents (Managers 3 · Directors 4 · Leads 3 · Specialists 20 · Validators 30) · 47 skills · 26 main + 3 optional Python scripts · 3 Workflow engines + 2 LangGraph engines.
+
 ## v0.8.2 — 2026-10-22 (Infrastructure templates, template fixes)
 
 - `shared/templates/infrastructure/` ships a `.dockerignore`, gitleaks pre-commit
