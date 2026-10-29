@@ -10,7 +10,7 @@
 # GHSA-47pj-3jcm-6whg, namespace prefix matching in the Postgres/SQLite stores).
 
 langgraph==1.2.0
-langgraph-checkpoint-sqlite==3.1.1
+langgraph-checkpoint-sqlite==3.1.2
 langchain-core==1.5.1
 
 # Only needed for --invoker api (opt-in; subprocess mode is the default and needs neither).
